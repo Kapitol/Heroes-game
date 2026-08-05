@@ -12,8 +12,20 @@
 const SKELETONS = { sheet: 'art/skeletons.png', cols: 2, rows: 3 };
 export const SPRITE = {
   skeleton: { ...SKELETONS, row: 0, h: 50 },
-  archer:   { ...SKELETONS, row: 1, h: 50 },
   knight:   { ...SKELETONS, row: 2, h: 58 },
+  // The archer draws its idle and firing poses from the pose sheet, but has a
+  // second sheet of real animation: a four-frame walk and a four-frame
+  // collapse. `anim` is optional everywhere — anything without one falls back
+  // to the two poses.
+  archer: {
+    ...SKELETONS, row: 1, h: 50,
+    anim: {
+      sheet: 'art/archer-anim.png', cols: 4, rows: 4, stripText: true, auto: true, h: 46,
+      walk: [0, 1, 2, 3],
+      death: [8, 9, 10, 11],
+      arrow: 12,
+    },
+  },
 };
 
 // ai:

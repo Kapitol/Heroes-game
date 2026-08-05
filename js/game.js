@@ -737,6 +737,8 @@ function rangedAI(m, h, d, dt) {
     S.projectiles.push({
       proj: true, x: m.x, y: m.y, vx: 0, vy: 0,
       target: h, speed: 9, dmg: m.dmg, splash: 0, life: 3, mine: false,
+      // Painted shooters carry their own painted ammunition.
+      art: m.sprite && m.sprite.anim && m.sprite.anim.arrow !== undefined ? m.sprite.anim : null,
     });
     Audio.sfx.swing();
   }

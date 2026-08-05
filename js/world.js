@@ -34,6 +34,22 @@ export const BIOMES = [
         fence: [10],
         bush:  [11],
       },
+      // Flat markings scattered over the road itself. The road is the surface
+      // you stare at for the whole march, so breaking it up matters more than
+      // any amount of extra verge detail.
+      decals: {
+        src: 'art/decals.png', cols: 4, rows: 3, scale: 0.30,
+        // Weighted, not uniform. Cracks, moss and gravel can sit anywhere
+        // without shouting; a mirror-bright puddle or a bloodstain reads as an
+        // event, so they stay rare.
+        pool: [11, 11, 11, 4, 4, 5, 5, 6, 6, 2, 2, 3, 3, 8, 8, 0, 9, 10, 1, 7],
+      },
+      // Rare and large. Repetition reads worst when everything is the same
+      // size, so a handful of big pieces does more than a dozen small ones.
+      landmarks: [
+        { src: 'art/landmarks.png', cols: 2, rows: 2, scale: 0.30 },
+        { src: 'art/landmarks-2.png', cols: 2, rows: 2, scale: 0.30 },
+      ],
       fill: '#4a5236',
     },
     ground: '#3a4a2c', groundAlt: '#41522f', path: '#8d7c58', pathAlt: '#9a8862',
@@ -114,6 +130,33 @@ export function propAt(x, y, biome) {
   if (edge) return h > 0.74 ? 'bush' : null;
   if (h > 0.76) return biome.props[Math.abs(x * 3 + (y | 0) * 11 + 7) % biome.props.length];
   return null;
+}
+
+/** A flat marking on the road at this tile, or null. */
+export function decalAt(x, y, biome) {
+  if (!biome.art || !biome.art.decals) return null;
+  if (Math.abs(y) > HALF + 1.2) return null;          // road and its lip only
+  const h = hash2(x * 13 + 7, y * 5 + 3);
+  if (h < 0.945) return null;
+  const pool = biome.art.decals.pool;
+  return pool[Math.floor(hash2(x + 313, y + 71) * pool.length) % pool.length];
+}
+
+/**
+ * A landmark at this tile, or null. Kept well off the road and deliberately
+ * scarce — one every thirty tiles or so — because their whole job is to be
+ * the thing you have not seen for a while.
+ */
+export function landmarkAt(x, y, biome) {
+  const set = biome.art && biome.art.landmarks;
+  if (!set) return null;
+  const ay = Math.abs(y);
+  if (ay < HALF + 2.5 || ay > VERGE - 1) return null;
+  if (hash2(x * 29 + 3, y * 17 + 9) < 0.985) return null;
+  const si = Math.floor(hash2(x + 5, y + 13) * set.length) % set.length;
+  const sheet = set[si];
+  const n = sheet.cols * sheet.rows;
+  return { sheet, cell: Math.floor(hash2(x + 991, y + 17) * n) % n };
 }
 
 // Distance the hero marches between one encounter and the next.

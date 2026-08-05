@@ -38,7 +38,7 @@ const chroma = (r, g, b) => (r + b) * 0.5 - g;
  * sprites. Each cell records its own anchor: the bottom centre of whatever is
  * actually painted, which is the point that must sit on the ground tile.
  */
-export function sheet(src, cols, rows) {
+export function sheet(src, cols, rows, opts) {
   let s = sheets.get(src);
   if (!s) {
     s = { img: new Image(), ready: false, cells: null, canvas: null };
@@ -56,7 +56,19 @@ export function sheet(src, cols, rows) {
 
   const id = c.getImageData(0, 0, w, h);
   const d = id.data;
+  // Some sheets arrive with their row labels painted on. The art itself never
+  // reaches pure white — bone is cream — so anything at the very top of every
+  // channel is text, and gets dropped with the background.
+  const stripText = !!(opts && opts.stripText);
   for (let i = 0; i < d.length; i += 4) {
+    if (stripText) {
+      // Label text is neutral grey-white; the artwork never is — bone is warm,
+      // with red well above blue. Testing for neutrality catches the
+      // anti-aliased edges that a pure-white test leaves behind as ghosts.
+      const mn = Math.min(d[i], d[i + 1], d[i + 2]);
+      const mx = Math.max(d[i], d[i + 1], d[i + 2]);
+      if (mn > 185 && mx - mn < 14) { d[i + 3] = 0; continue; }
+    }
     const m = chroma(d[i], d[i + 1], d[i + 2]);
     if (m > 60) { d[i + 3] = 0; continue; }
     if (m > 18) {
@@ -71,6 +83,15 @@ export function sheet(src, cols, rows) {
   c.putImageData(id, 0, 0);
 
   // Trim each grid cell to its content.
+  const cells = opts && opts.auto ? sliceAuto(d, w, h) : sliceGrid(d, w, h, cols, rows);
+
+  s.canvas = cv;
+  s.cells = cells;
+  s.ready = true;
+  return s;
+}
+
+function sliceGrid(d, w, h, cols, rows) {
   const cw = Math.floor(w / cols), chh = Math.floor(h / rows);
   const cells = [];
   for (let ry = 0; ry < rows; ry++) {
@@ -96,11 +117,63 @@ export function sheet(src, cols, rows) {
       });
     }
   }
+  return cells;
+}
 
-  s.canvas = cv;
-  s.cells = cells;
-  s.ready = true;
-  return s;
+/**
+ * Slice a sheet by finding its content instead of assuming a grid.
+ *
+ * Generated sheets rarely land on an even lattice — rows end up different
+ * heights and columns drift — and a uniform grid then cuts sprites in half.
+ * Finding the empty gutters instead works whatever the spacing, and returns
+ * cells in reading order.
+ */
+function sliceAuto(d, w, h) {
+  const solid = (i) => d[i * 4 + 3] > 24;
+  const rowFull = [];
+  for (let y = 0; y < h; y++) {
+    let n = 0;
+    for (let x = 0; x < w; x += 3) if (solid(y * w + x)) { n++; if (n > 2) break; }
+    rowFull.push(n > 2);
+  }
+  const bands = runs(rowFull, 20);
+
+  const cells = [];
+  for (const [y0, y1] of bands) {
+    const colFull = [];
+    for (let x = 0; x < w; x++) {
+      let n = 0;
+      for (let y = y0; y <= y1; y += 2) if (solid(y * w + x)) { n++; break; }
+      colFull.push(n > 0);
+    }
+    for (const [x0, x1] of runs(colFull, 14)) {
+      // Trim the band's own vertical slack off this column.
+      let ty = y1, by = y0;
+      for (let y = y0; y <= y1; y++)
+        for (let x = x0; x <= x1; x++)
+          if (solid(y * w + x)) { if (y < ty) ty = y; if (y > by) by = y; break; }
+      cells.push({
+        x: x0, y: ty, w: x1 - x0 + 1, h: by - ty + 1,
+        ax: (x1 - x0 + 1) / 2, ay: by - ty + 1,
+      });
+    }
+  }
+  return cells;
+}
+
+// Contiguous true-runs of at least `min` length.
+function runs(flags, min) {
+  const out = [];
+  let start = null;
+  for (let i = 0; i < flags.length; i++) {
+    if (flags[i] && start === null) start = i;
+    else if (!flags[i] && start !== null) {
+      if (i - start >= min) out.push([start, i - 1]);
+      start = null;
+    }
+  }
+  if (start !== null && flags.length - start >= min) out.push([start, flags.length - 1]);
+  return out;
 }
 
 export function drawSprite(ctx, s, index, sx, sy, scale, flip, src) {

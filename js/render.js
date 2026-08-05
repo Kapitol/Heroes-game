@@ -6,7 +6,7 @@
 // that run underground.
 
 import { TILE_W, TILE_H, toScreen, tilePath, hash2, clamp } from './iso.js';
-import { HALF, VERGE, propAt } from './world.js';
+import { HALF, VERGE, propAt, decalAt, landmarkAt } from './world.js';
 import { drawActor, drawShadow, drawProp, drawCoin, drawTelegraph } from './sprites.js';
 import * as Atlas from './atlas.js';
 
@@ -53,7 +53,7 @@ export function render(ctx, S, t, dt) {
   ctx.translate(ox, oy);
   ctx.scale(cam.zoom, cam.zoom);
 
-  if (painted) drawTexturedGround(ctx, S, cw, ch);
+  if (painted) { drawTexturedGround(ctx, S, cw, ch); drawDecals(ctx, S); }
   else drawGround(ctx, S, t);
   drawStains(ctx, S);
   drawTelegraphs(ctx, S);
@@ -231,6 +231,25 @@ function bandPath(ctx, S, grow = 0) {
   ctx.closePath();
 }
 
+// Flat markings lying on the road: puddles, ruts, moss, spilt bones. They sit
+// on the ground with no depth sorting of their own, because nothing can pass
+// behind a puddle.
+function drawDecals(ctx, S) {
+  const a = S.biome.art;
+  const sh = Atlas.sheet(a.decals.src, a.decals.cols, a.decals.rows);
+  if (!sh) return;
+  const cx = Math.round(S.cam.x);
+  const span = Math.ceil(11 / S.cam.zoom) + 9;
+  for (let y = -Math.ceil(HALF) - 1; y <= Math.ceil(HALF) + 1; y++) {
+    for (let x = cx - span; x <= cx + span; x++) {
+      const cell = decalAt(x, y, S.biome);
+      if (cell === null) continue;
+      const p = toScreen(x + 0.2 + hash2(x, y + 5) * 0.6, y + 0.2 + hash2(x + 9, y) * 0.6);
+      Atlas.drawSprite(ctx, sh, cell, p.x, p.y, a.decals.scale * (0.8 + hash2(x + 3, y + 3) * 0.5));
+    }
+  }
+}
+
 // Painted on the ground under everything, so a boss move is always something
 // you had a second to answer.
 function drawTelegraphs(ctx, S) {
@@ -251,6 +270,18 @@ function drawDepthPass(ctx, S, t, painted) {
 
   const items = [];
   const sheet = b.art && b.art.props ? Atlas.sheet(b.art.props, b.art.propCols, b.art.propRows) : null;
+
+  // Landmarks share the depth pass with everything else, so the hero can walk
+  // behind a mausoleum the same way they walk behind a tree.
+  for (let y = -VERGE; y <= VERGE; y++) {
+    for (let x = cx - span; x <= cx + span; x++) {
+      const lm = landmarkAt(x, y, b);
+      if (!lm) continue;
+      const lsh = Atlas.sheet(lm.sheet.src, lm.sheet.cols, lm.sheet.rows);
+      if (!lsh || !lsh.cells[lm.cell]) continue;
+      items.push({ propCell: lm.cell, propSheet: lsh, scale: lm.sheet.scale, x: x + 0.5, y: y + 0.5 });
+    }
+  }
   for (let y = -VERGE; y <= VERGE; y++) {
     for (let x = cx - span; x <= cx + span; x++) {
       const kind = propAt(x, y, b);
@@ -296,7 +327,10 @@ function drawFighter(ctx, o, p, t) {
   const sink = o.dead ? (1 - o.fade) * 10 : 0;
   drawShadow(ctx, p.x, p.y, 11 * (o.scale || 1) * fade, 0.4 * fade);
   ctx.save();
-  if (o.dead) {
+  // Anything with its own collapse animation plays that instead of the
+  // generic topple, or it would fall over twice.
+  const ownDeath = !!(o.sprite && o.sprite.anim && o.sprite.anim.death);
+  if (o.dead && !ownDeath) {
     ctx.translate(p.x, p.y);
     ctx.rotate((1 - o.fade) * 1.2 * (o.fx >= 0 ? 1 : -1));
     ctx.translate(-p.x, -p.y);
@@ -339,6 +373,23 @@ function drawPaintedFighter(ctx, o, sx, sy, t) {
 
 function drawProjectile(ctx, x, y, o) {
   const z = 18;
+  // A painted missile is turned to point where it's going. Screen direction,
+  // not world direction — the iso squash means those aren't the same angle.
+  if (o.art) {
+    const sh = Atlas.sheet(o.art.sheet, o.art.cols, o.art.rows, o.art);
+    if (sh && sh.cells[o.art.arrow]) {
+      const c = sh.cells[o.art.arrow];
+      const ang = Math.atan2((o.vx + o.vy) * TILE_H / 2, (o.vx - o.vy) * TILE_W / 2);
+      const scale = 26 / c.w;
+      ctx.save();
+      ctx.translate(x, y - z);
+      ctx.rotate(ang);
+      ctx.drawImage(sh.canvas, c.x, c.y, c.w, c.h,
+        -c.w * scale / 2, -c.h * scale / 2, c.w * scale, c.h * scale);
+      ctx.restore();
+      return;
+    }
+  }
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (let i = 3; i >= 0; i--) {
