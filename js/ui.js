@@ -34,7 +34,7 @@ export function init(state, handlers) {
                     'hpGlobe', 'hpText', 'xpGlobe', 'xpStrip', 'xpText', 'skills', 'gearList',
                     'statList', 'gearPanel', 'menuPanel', 'runStats', 'deathOverlay', 'reviveNum',
                     'overlay', 'ovBtn', 'btnGear', 'btnMenu', 'btnReset', 'deathText',
-                    'draftPanel', 'draftCards', 'draftClock', 'lootBar', 'lootFill', 'perkList',
+                    'draftPanel', 'draftCards', 'draftClock', 'perkList',
                     'draftPurse', 'btnPause', 'pausedTag', 'volSlider', 'volValue', 'btnMute'])
     el[id] = $(id);
 
@@ -194,6 +194,9 @@ export function frame(S, dt) {
     r.b.classList.toggle('ready', left <= 0);
   });
 
+  // The minigame is its own screen: the road HUD would only compete with it.
+  document.body.classList.toggle('minigame', S.phase === 'drop');
+
   el.stageName.textContent = S.biome.name;
   el.stageSub.textContent = `Section ${S.section}`;
 
@@ -201,8 +204,8 @@ export function frame(S, dt) {
   if (S.phase === 'march') {
     el.waveText.textContent = 'Marching…';
     el.waveBar.querySelector('i').style.width = '0%';
-  } else if (S.phase === 'loot') {
-    el.waveText.textContent = 'Grab the spoils!';
+  } else if (S.phase === 'drop') {
+    el.waveText.textContent = 'The Coffin Drop';
   } else if (S.phase === 'draft') {
     el.waveText.textContent = 'The stall is open';
   } else {
@@ -211,8 +214,6 @@ export function frame(S, dt) {
     el.waveBar.querySelector('i').style.width = `${S.waveTotal ? (1 - left / S.waveTotal) * 100 : 0}%`;
   }
 
-  el.lootBar.classList.toggle('hidden', S.phase !== 'loot');
-  if (S.phase === 'loot') el.lootFill.style.width = `${Math.max(0, S.lootTimer / 5.5) * 100}%`;
 
   if (toastTimer > 0) {
     toastTimer -= dt;

@@ -9,6 +9,7 @@ import { TILE_W, TILE_H, toScreen, tilePath, hash2, clamp } from './iso.js';
 import { HALF, VERGE, propAt, decalAt, landmarkAt } from './world.js';
 import { drawActor, drawShadow, drawProp, drawCoin, drawTelegraph } from './sprites.js';
 import * as Atlas from './atlas.js';
+import * as Coffin from './coffin.js';
 
 let lightCv = null, lightCtx = null;
 
@@ -59,7 +60,6 @@ export function render(ctx, S, t, dt) {
   drawTelegraphs(ctx, S);
   drawDepthPass(ctx, S, t, !!painted);
   drawGroundEffects(ctx, S, t);
-  drawCoins(ctx, S, t);
 
   ctx.restore();
 
@@ -71,6 +71,9 @@ export function render(ctx, S, t, dt) {
   ctx.scale(cam.zoom, cam.zoom);
   drawOverheads(ctx, S, t);
   ctx.restore();
+
+  // The payout game takes the whole screen; it is a scene of its own.
+  if (S.phase === 'drop' && S.drop) Coffin.draw(ctx, S.drop, cw, ch, b.accent);
 }
 
 // --- backdrop ---------------------------------------------------------------
@@ -546,28 +549,6 @@ function drawProjectile(ctx, x, y, o) {
     ctx.fill();
   }
   ctx.restore();
-}
-
-// --- the coin scramble ------------------------------------------------------
-
-function drawCoins(ctx, S, t) {
-  for (const c of S.coins) {
-    const p = toScreen(c.x, c.y);
-    ctx.globalAlpha = c.life < 0.4 ? c.life / 0.4 : 1;
-    drawCoin(ctx, p.x, p.y, c.z, c.spin, c.big);
-    ctx.globalAlpha = 1;
-  }
-  for (const s of S.sparks) {
-    const p = toScreen(s.x, s.y);
-    ctx.globalAlpha = s.life;
-    ctx.strokeStyle = '#ffe9a8';
-    ctx.lineWidth = 2;
-    const r = (1 - s.life) * 22 + 4;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y - s.z, r, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
 }
 
 // --- effects ----------------------------------------------------------------

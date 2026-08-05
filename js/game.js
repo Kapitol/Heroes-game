@@ -15,6 +15,7 @@ import { makeCamera, render, fitZoom } from './render.js';
 import { SKILLS, skillById, rollDraft, applyCard, priceCards, MAX_SKILLS } from './perks.js';
 import * as UI from './ui.js';
 import * as Audio from './audio.js';
+import * as Coffin from './coffin.js';
 
 const SAVE_KEY = 'cryptheroes.v3';
 
@@ -23,6 +24,13 @@ const SAVE_KEY = 'cryptheroes.v3';
 // are rolled from a weighted roster and a given type may not show for minutes.
 // Ignored unless the key names a real monster.
 const DEV_SPAWN = new URLSearchParams(location.search).get('spawn');
+
+// Dev hook: ?drop drops you straight into the payout minigame with a fixed
+// pot, and loops it, so it can be tuned without fighting a wave for every
+// attempt. ?drop=500 sets the pot.
+const DEV_DROP = new URLSearchParams(location.search).has('drop')
+  ? Math.max(1, Number(new URLSearchParams(location.search).get('drop')) || 250)
+  : null;
 const LEASH = 1.9;          // how far the hero will step off their mark
 
 const cv = document.getElementById('game');
@@ -33,7 +41,7 @@ const S = {
   biome: biomeFor(1),
   hero: makeHero(),
   monsters: [], projectiles: [], effects: [], floats: [], pickups: [], stains: [],
-  coins: [], sparks: [],
+  drop: null,
   gold: 0, gear: { weapon: 0, armor: 0, ring: 0, amulet: 0 },
   perks: {}, loadout: ['cleave', 'mend'], cd: [0, 0, 0, 0],
   // `stage` is the global encounter count and drives every difficulty curve.
@@ -42,7 +50,7 @@ const S = {
   stage: 1, section: 1, wave: 1, wavesInSection: 3,
   phase: 'march', phaseT: 0,
   queue: [], spawnTimer: 0, waveTotal: 0, formation: null,
-  marchTo: 0, lootTimer: 0, lootBanked: 0, draft: null, draftTimer: 0,
+  marchTo: 0, draft: null, draftTimer: 0,
   kills: 0, earned: 0, deaths: 0, best: 1,
   running: false, paused: false, reviveTimer: 0, time: 0,
 };
@@ -77,17 +85,31 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (k >= '1' && k <= '4') castSkill(+k - 1);
   else if (k === 'e') UI.togglePanel('gearPanel');
+  else if (S.phase === 'drop' && S.drop && (k === 'a' || e.code === 'ArrowLeft')) { e.preventDefault(); Coffin.nudge(S.drop, -1); }
+  else if (S.phase === 'drop' && S.drop && (k === 'd' || e.code === 'ArrowRight')) { e.preventDefault(); Coffin.nudge(S.drop, 1); }
+  else if (e.code === 'Space' && S.phase === 'drop' && S.drop) { e.preventDefault(); Coffin.release(S.drop); }
   else if (k === 'p' || e.code === 'Space') { e.preventDefault(); togglePause(); }
   else if (k === 'escape') UI.togglePanel('menuPanel');
 });
 
-// Tapping is only ever for grabbing coins.
+// Pointer input belongs entirely to the Coffin Drop: drag to pick the lane,
+// let go to commit.
+const dropX = (e) => e.clientX - cv.getBoundingClientRect().left;
 cv.addEventListener('pointerdown', (e) => {
   Audio.resume();
-  if (S.phase !== 'loot' || !S.view) return;
-  const r = cv.getBoundingClientRect();
-  grabCoin(e.clientX - r.left, e.clientY - r.top);
+  if (S.phase === 'drop' && S.drop) Coffin.aim(S.drop, dropX(e));
 });
+cv.addEventListener('pointermove', (e) => {
+  if (S.phase === 'drop' && S.drop && e.buttons) Coffin.aim(S.drop, dropX(e));
+});
+// Deliberately not `pointerleave`: the canvas is the whole window, and sliding
+// a finger or cursor off its edge while lining up a lane would commit the drop
+// by accident.
+for (const ev of ['pointerup', 'pointercancel']) {
+  cv.addEventListener(ev, () => {
+    if (S.phase === 'drop' && S.drop) Coffin.release(S.drop);
+  });
+}
 
 function togglePause(force) {
   if (!S.running) return;
@@ -108,7 +130,6 @@ function enterStage(stage, silent) {
   S.monsters.length = 0;
   S.projectiles.length = 0;
   S.queue.length = 0;
-  S.coins.length = 0;
   if (S.stains.length > 14) S.stains.splice(0, S.stains.length - 14);
   if (!silent && S.biome !== prevBiome) UI.banner(S.biome.name);
 }
@@ -415,74 +436,37 @@ function takeCard(i) {
   nextSection();
 }
 
-// --- the coin scramble ------------------------------------------------------
+// --- the payout game -------------------------------------------------------
 
-function startLoot() {
-  S.phase = 'loot';
-  S.lootTimer = 5.5;
-  S.lootBanked = 0;
-  S.coins.length = 0;
+function startDrop(forcedPot) {
+  S.phase = 'drop';
   const mul = stats().goldMul;
-
-  for (const m of S.monsters) {
-    const total = Math.round((m.dropGold || 0) * mul);
-    if (total <= 0) continue;
-    // Split each drop into a few coins so the scramble has things to chase.
-    const n = m.boss ? 14 : m.champion ? 8 : 2 + (Math.random() < 0.4 ? 1 : 0);
-    for (let i = 0; i < n; i++) {
-      const big = m.boss || m.champion || Math.random() < 0.18;
-      S.coins.push({
-        x: m.x, y: m.y, z: 6 + Math.random() * 10,
-        vx: (Math.random() - 0.5) * 3.2, vy: (Math.random() - 0.5) * 3.2,
-        vz: 60 + Math.random() * 90,
-        spin: Math.random() * 6.28, spinV: 6 + Math.random() * 8,
-        value: Math.max(1, Math.round(total / n * (big ? 1.8 : 0.8))),
-        big, life: 1,
-      });
-    }
-  }
+  let pot = forcedPot || 0;
+  if (!forcedPot) for (const m of S.monsters) pot += Math.round((m.dropGold || 0) * mul);
   S.monsters.length = 0;
-  if (!S.coins.length) endLoot();
+  S.floats.length = 0;      // stale damage numbers would bleed through the shaft
+  S.effects.length = 0;
+  if (pot <= 0) { S.drop = null; afterDrop(); return; }
+  S.drop = Coffin.start(pot);
+  Audio.sfx.descend();
 }
 
-function updateLoot(dt) {
-  S.lootTimer -= dt;
-  for (const c of S.coins) {
-    c.spin += c.spinV * dt;
-    c.vz -= 260 * dt;
-    c.z += c.vz * dt;
-    c.x += c.vx * dt;
-    c.y += c.vy * dt;
-    if (c.y < -HALF) { c.y = -HALF; c.vy *= -0.6; }
-    if (c.y > HALF) { c.y = HALF; c.vy *= -0.6; }
-    if (c.z <= 0) {                      // bounce, then settle
-      c.z = 0;
-      c.vz = -c.vz * 0.45;
-      c.vx *= 0.6; c.vy *= 0.6;
-      if (c.vz < 22) { c.vz = 0; c.vx = 0; c.vy = 0; }
-    }
-    if (S.lootTimer < 0.6) c.life = S.lootTimer / 0.6;
+function updateDrop(dt) {
+  const cw = cv.width / S.dpr, ch = cv.height / S.dpr;
+  if (Coffin.update(S.drop, dt, cw, ch, Audio.sfx) === 'done') {
+    const won = Coffin.payout(S.drop);
+    S.gold += won;
+    S.earned += won;
+    Audio.sfx.coin();
+    UI.toast(`◍ ${won.toLocaleString()} recovered`);
+    S.drop = null;
+    if (DEV_DROP) startDrop(DEV_DROP);     // loop it while it's being tuned
+    else afterDrop();
   }
-  for (let i = S.sparks.length - 1; i >= 0; i--)
-    if ((S.sparks[i].life -= dt * 3) <= 0) S.sparks.splice(i, 1);
-
-  if (S.lootTimer <= 0) endLoot();
 }
 
-// Uncollected coins are still worth half. Missing the minigame should cost you
-// something, but an idle player must never be able to stall out entirely.
-function endLoot() {
-  let left = 0;
-  for (const c of S.coins) left += c.value;
-  const auto = Math.round(left * 0.5);
-  if (auto > 0) {
-    S.gold += auto;
-    S.earned += auto;
-    UI.toast(`Swept up ◍ ${auto}`);
-  }
-  S.coins.length = 0;
-  S.sparks.length = 0;
-  // Mid-section: straight on to the next wave. End of section: the stall.
+// Mid-section: straight on to the next wave. End of section: the stall.
+function afterDrop() {
   if (S.wave < S.wavesInSection) {
     S.wave++;
     S.stage++;
@@ -491,27 +475,6 @@ function endLoot() {
   } else {
     openDraft();
   }
-}
-
-function grabCoin(px, py) {
-  const { ox, oy, zoom } = S.view;
-  let best = null, bd = 34 * 34;
-  for (const c of S.coins) {
-    // Same projection the renderer used, so the hitbox is where the coin looks.
-    const sx = ox + ((c.x - c.y) * 32) * zoom;
-    const sy = oy + ((c.x + c.y) * 16 - c.z - (c.big ? 11 : 7)) * zoom;
-    const d2 = (sx - px) ** 2 + (sy - py) ** 2;
-    if (d2 < bd) { bd = d2; best = c; }
-  }
-  if (!best) return;
-  S.gold += best.value;
-  S.earned += best.value;
-  S.lootBanked += best.value;
-  S.sparks.push({ x: best.x, y: best.y, z: best.z, life: 1 });
-  float(best.x, best.y, `+${best.value}`, '#ffe08a', best.big);
-  S.coins.splice(S.coins.indexOf(best), 1);
-  Audio.sfx.coin();
-  if (!S.coins.length) endLoot();
 }
 
 // --- the draft --------------------------------------------------------------
@@ -577,9 +540,9 @@ function update(dt) {
     marchStep(dt);
   } else if (S.phase === 'fight') {
     fightStep(dt, st);
-  } else if (S.phase === 'loot') {
+  } else if (S.phase === 'drop') {
     idleStep(dt, st);
-    updateLoot(dt);
+    if (S.drop) updateDrop(dt);
   } else if (S.phase === 'draft') {
     idleStep(dt, st);
     updateDraft(dt);
@@ -626,8 +589,7 @@ function fightStep(dt, st) {
 
   if (!target) {
     if (!S.queue.length && !S.monsters.some(m => !m.dead)) {
-      // Everything is down: the spoils drop.
-      startLoot();
+      startDrop();          // everything is down: the spoils go in the box
       return;
     }
     idleStep(dt, st);
@@ -696,7 +658,7 @@ function updateMonsters(dt) {
     m.slow = Math.max(0, (m.slow || 0) - dt);
     m.stateT += dt;
     if (m.emerge < 1) m.emerge = Math.min(1, m.emerge + dt * 2);
-    if (h.dead || S.phase === 'loot' || S.phase === 'draft') { m.walk = 0; continue; }
+    if (h.dead || S.phase === 'drop' || S.phase === 'draft') { m.walk = 0; continue; }
 
     const d = Math.hypot(h.x - m.x, h.y - m.y);
     m.atkTimer = Math.max(0, m.atkTimer - dt);
@@ -908,6 +870,16 @@ function load() {
 setInterval(() => { if (S.running) save(); }, 8000);
 
 // --- loop -------------------------------------------------------------------
+
+// Has to run after the whole module has evaluated: startDrop reaches for
+// `stats`, which is a const further down and would still be in its temporal
+// dead zone if this fired next to the other setup.
+if (DEV_DROP) {
+  Audio.init();
+  S.running = true;
+  document.getElementById('overlay').classList.add('hidden');
+  startDrop(DEV_DROP);
+}
 
 let last = performance.now();
 function loop(now) {

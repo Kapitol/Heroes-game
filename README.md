@@ -29,10 +29,12 @@ modules, which browsers refuse to load over `file://`.
 2. **Encounter.** A formation blocks the way and streams in through the gates
    of the road. The hero holds their mark and fights automatically. Your only
    input is *when* to spend each cooldown.
-3. **Scramble.** Survive and the spoils burst out of the bodies and bounce
-   across the road. Tap coins for five and a half seconds. Whatever you miss is
-   swept up at half value — missing the minigame costs you, but an idle player
-   can never stall out.
+3. **The Coffin Drop.** Survive and the spoils go in a coffin, and the coffin
+   goes down a crypt shaft. Drag to choose a lane, let go to drop it. Buttress
+   stones bleed its speed, chutes pile speed on, and each slab needs a minimum
+   speed to smash through — so how deep it gets, and what multiplier you are
+   paid, comes down to one read of the board before you commit. Do nothing and
+   it drops on its own after seven seconds and banks whatever it reaches.
 4. **Boon stall.** Only at the end of a **section** — 3 or 4 waves — three
    cards come up and each has a **price in gold**. Buy one or walk on and keep
    the purse. Boons compete directly with the armoury for the same gold, which
@@ -48,7 +50,7 @@ gear, so each attempt is stronger than the last.
 | | |
 |---|---|
 | Skills | tap a rune, or `1`–`4` |
-| Gold | tap coins during the scramble |
+| Gold | drag to aim the coffin, release to drop |
 | Boons | buy one of three cards at the end of a section |
 | Armoury | the ⚒ globe, or `E` |
 | Pause | the ⏸ button, or `P` / `Space` |
@@ -180,6 +182,13 @@ minutes. `?spawn=archer` fills every wave with one key:
 
 Any key from `MONSTERS` in `js/encounters.js` works; anything else is ignored.
 
+### Working on the minigame
+
+`?drop` skips straight into the Coffin Drop and loops it, so it can be tuned
+without fighting a wave for every attempt. `?drop=500` sets the pot:
+
+    http://localhost:8124/index.html?drop=420
+
 ## How it's drawn
 
 **Isometric, not 3D.** A tile is a 64×32 diamond; screen position is
@@ -206,7 +215,8 @@ torches. One offscreen canvas, no per-tile cost.
 
 | | |
 |---|---|
-| `js/game.js` | phases, combat resolution, the scramble, saving |
+| `js/game.js` | phases, combat resolution, saving |
+| `js/coffin.js` | the Coffin Drop payout game |
 | `js/encounters.js` | monsters, their four AIs, formations, bosses |
 | `js/perks.js` | the seven abilities and the ten stacking perks |
 | `js/world.js` | the road, the biomes, procedural scenery |
