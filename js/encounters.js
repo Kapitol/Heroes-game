@@ -34,14 +34,14 @@ export const SPRITE = {
 //   charger  wind up, dash through, recover
 //   exploder sprint in and burst on contact or death
 export const MONSTERS = {
-  fallen:   { name: 'Fallen One',  kind: 'fallen',   ai: 'melee',    hp: 20,  dmg: 4,  speed: 2.6,  atk: 0.9, range: 0.9, scale: 0.85, gold: 9,  xp: 5 },
-  skeleton: { sprite: SPRITE.skeleton, name: 'Skeleton',    kind: 'skeleton', ai: 'melee',    hp: 34,  dmg: 7,  speed: 2.1,  atk: 1.2, range: 1.0, scale: 1.0,  gold: 15, xp: 9 },
-  archer:   { sprite: SPRITE.archer, name: 'Bone Archer', kind: 'skeleton', ai: 'ranged',   hp: 26,  dmg: 9,  speed: 2.0,  atk: 1.9, range: 6.5, scale: 0.95, gold: 23, xp: 13, keep: 5.2 },
-  zombie:   { name: 'Rotting Dead',kind: 'zombie',   ai: 'melee',    hp: 74,  dmg: 11, speed: 1.35, atk: 1.6, range: 1.0, scale: 1.05, gold: 23, xp: 14 },
-  imp:      { name: 'Hellspawn',   kind: 'imp',      ai: 'charger',  hp: 30,  dmg: 12, speed: 3.2,  atk: 0.9, range: 0.9, scale: 0.8,  gold: 25, xp: 15 },
-  bloater:  { name: 'Bloated One', kind: 'zombie',   ai: 'exploder', hp: 44,  dmg: 26, speed: 2.3,  atk: 1.2, range: 1.0, scale: 1.1,  gold: 31, xp: 18 },
-  wraith:   { name: 'Wraith',      kind: 'wraith',   ai: 'ranged',   hp: 52,  dmg: 15, speed: 2.4,  atk: 1.6, range: 7.0, scale: 1.0,  gold: 33, xp: 20, keep: 5.8 },
-  knight:   { sprite: SPRITE.knight, name: 'Dread Knight',kind: 'skeleton', ai: 'melee',    hp: 150, dmg: 20, speed: 1.5,  atk: 1.5, range: 1.1, scale: 1.15, gold: 54, xp: 34, armor: 14 },
+  fallen:   { name: 'Fallen One',  kind: 'fallen',   ai: 'melee',    hp: 20,  dmg: 4,  speed: 2.6,  atk: 0.9, range: 0.9, scale: 0.85, skulls: 9,  xp: 5 },
+  skeleton: { sprite: SPRITE.skeleton, name: 'Skeleton',    kind: 'skeleton', ai: 'melee',    hp: 34,  dmg: 7,  speed: 2.1,  atk: 1.2, range: 1.0, scale: 1.0,  skulls: 15, xp: 9 },
+  archer:   { sprite: SPRITE.archer, name: 'Bone Archer', kind: 'skeleton', ai: 'ranged',   hp: 26,  dmg: 9,  speed: 2.0,  atk: 1.9, range: 6.5, scale: 0.95, skulls: 23, xp: 13, keep: 5.2 },
+  zombie:   { name: 'Rotting Dead',kind: 'zombie',   ai: 'melee',    hp: 74,  dmg: 11, speed: 1.35, atk: 1.6, range: 1.0, scale: 1.05, skulls: 23, xp: 14 },
+  imp:      { name: 'Hellspawn',   kind: 'imp',      ai: 'charger',  hp: 30,  dmg: 12, speed: 3.2,  atk: 0.9, range: 0.9, scale: 0.8,  skulls: 25, xp: 15 },
+  bloater:  { name: 'Bloated One', kind: 'zombie',   ai: 'exploder', hp: 44,  dmg: 26, speed: 2.3,  atk: 1.2, range: 1.0, scale: 1.1,  skulls: 31, xp: 18 },
+  wraith:   { name: 'Wraith',      kind: 'wraith',   ai: 'ranged',   hp: 52,  dmg: 15, speed: 2.4,  atk: 1.6, range: 7.0, scale: 1.0,  skulls: 33, xp: 20, keep: 5.8 },
+  knight:   { sprite: SPRITE.knight, name: 'Dread Knight',kind: 'skeleton', ai: 'melee',    hp: 150, dmg: 20, speed: 1.5,  atk: 1.5, range: 1.1, scale: 1.15, skulls: 54, xp: 34, armor: 14 },
 };
 
 // Bosses each own a pair of telegraphed moves and an enrage threshold.
@@ -49,7 +49,7 @@ export const BOSSES = [
   {
     key: 'butcher', name: 'The Butcher', kind: 'brute',
     hp: 250, dmg: 17, speed: 1.6, atk: 1.7, range: 1.6, scale: 1.55,
-    gold: 300, xp: 150,
+    skulls: 300, xp: 150,
     moves: [
       { id: 'slam',   tell: 1.0, cd: 6.5,  radius: 3.4, mult: 1.7, colour: '#ff7a3a', text: 'SLAM' },
       { id: 'charge', tell: 0.9, cd: 9.0,  radius: 1.6, mult: 1.5, colour: '#ffd76a', text: 'CHARGE' },
@@ -58,7 +58,7 @@ export const BOSSES = [
   {
     key: 'warden', name: 'The Bone Warden', kind: 'skeleton', sprite: { ...SPRITE.knight, h: 72 },
     hp: 225, dmg: 13, speed: 1.9, atk: 1.4, range: 1.2, scale: 1.5,
-    gold: 330, xp: 165,
+    skulls: 330, xp: 165,
     moves: [
       { id: 'summon', tell: 1.2, cd: 11.0, radius: 2.6, mult: 0,   colour: '#9fe8ff', text: 'SUMMON', adds: ['skeleton', 'archer'] },
       { id: 'nova',   tell: 1.1, cd: 7.5,  radius: 4.2, mult: 1.7, colour: '#a8c8ff', text: 'BONE NOVA' },
@@ -67,7 +67,7 @@ export const BOSSES = [
   {
     key: 'ogre', name: 'The Flame Ogre', kind: 'brute',
     hp: 310, dmg: 19, speed: 1.5, atk: 1.9, range: 1.7, scale: 1.7,
-    gold: 380, xp: 190,
+    skulls: 380, xp: 190,
     moves: [
       { id: 'nova',   tell: 1.0, cd: 6.0,  radius: 4.6, mult: 1.6, colour: '#ff6a2a', text: 'FIRE NOVA' },
       { id: 'charge', tell: 1.0, cd: 10.0, radius: 1.8, mult: 1.7, colour: '#ffb84a', text: 'RAMPAGE' },
@@ -122,7 +122,7 @@ export function formationFor(stage) {
 export const stageScale = (stage) => ({
   hp: Math.pow(1.20, stage - 1),
   dmg: Math.pow(1.13, stage - 1),
-  gold: Math.pow(1.24, stage - 1),
+  skulls: Math.pow(1.24, stage - 1),
   xp: Math.pow(1.17, stage - 1),
 });
 
@@ -135,7 +135,7 @@ export function makeMonster(key, stage, pos, champion) {
     ...t, key, x: pos.x, y: pos.y,
     hp, maxHp: hp,
     dmg: Math.round(t.dmg * s.dmg * (champion ? 1.5 : 1)),
-    gold: Math.round(t.gold * s.gold * (champion ? 4 : 1)),
+    skulls: Math.round(t.skulls * s.skulls * (champion ? 4 : 1)),
     xp: Math.round(t.xp * s.xp * (champion ? 4 : 1)),
     scale: t.scale * (champion ? 1.35 : 1),
     name: champion ? `Champion ${t.name}` : t.name,
@@ -155,7 +155,7 @@ export function makeBoss(stage, pos) {
     x: pos.x, y: pos.y,
     hp, maxHp: hp,
     dmg: Math.round(b.dmg * s.dmg),
-    gold: Math.round(b.gold * s.gold),
+    skulls: Math.round(b.skulls * s.skulls),
     xp: Math.round(b.xp * s.xp),
     atkTimer: 1.2,
     moveCd: b.moves.map(m => m.cd * 0.6),

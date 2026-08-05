@@ -1,7 +1,8 @@
 // DOM layer: globes, the rune belt, the armoury, the draft cards.
 
 import { heroStats } from './entities.js';
-import { SKILLS, skillById, PERKS, MAX_SKILLS } from './perks.js';
+import { SKILLS, skillById, PERKS, MAX_SKILLS, iconOpts } from './perks.js';
+import * as Atlas from './atlas.js';
 import { heroKit, armourTierOf, weaponTierOf } from './sprites.js';
 import * as Audio from './audio.js';
 
@@ -30,11 +31,11 @@ const runes = [];
 
 export function init(state, handlers) {
   S = state; H = handlers;
-  for (const id of ['stageName', 'stageSub', 'waveText', 'waveBar', 'goldText', 'toast', 'banner',
+  for (const id of ['stageName', 'stageSub', 'waveText', 'waveBar', 'skullText', 'toast', 'banner',
                     'hpGlobe', 'hpText', 'xpGlobe', 'xpStrip', 'xpText', 'skills', 'gearList',
                     'statList', 'gearPanel', 'menuPanel', 'runStats', 'deathOverlay', 'reviveNum',
                     'overlay', 'ovBtn', 'btnGear', 'btnMenu', 'btnReset', 'deathText',
-                    'draftPanel', 'draftCards', 'draftClock', 'perkList',
+                    'draftPanel', 'draftCards', 'perkList',
                     'draftPurse', 'btnPause', 'pausedTag', 'volSlider', 'volValue', 'btnMute'])
     el[id] = $(id);
 
@@ -142,8 +143,8 @@ export function refreshPanels() {
     tier.textContent = g.key === 'armor' ? `  ·  Mark ${armourTierOf(n)}`
                      : g.key === 'weapon' ? `  ·  Mark ${weaponTierOf(n)}` : '';
     const b = g._row.querySelector('[data-buy]');
-    b.textContent = `◍ ${cost}`;
-    b.disabled = S.gold < cost;
+    b.textContent = `☠ ${cost}`;
+    b.disabled = S.skulls < cost;
   }
 
   el.statList.innerHTML = [
@@ -156,7 +157,7 @@ export function refreshPanels() {
     ['Life steal', `${(st.lifesteal * 100).toFixed(1)}%`],
     ['Damage taken', `−${Math.round((1 - st.mitigate) * 100)}%`],
     ['Cooldowns', `−${Math.round(st.cdr * 100)}%`],
-    ['Gold found', `+${Math.round((st.goldMul - 1) * 100)}%`],
+    ['Skulls found', `+${Math.round((st.skullMul - 1) * 100)}%`],
   ].map(([k, v]) => `<div><em>${k}</em><span>${v}</span></div>`).join('');
 
   const taken = PERKS.filter(p => S.perks[p.id]);
@@ -167,7 +168,7 @@ export function refreshPanels() {
   el.runStats.innerHTML = [
     ['Best stage', S.best],
     ['Kills', S.kills],
-    ['Gold earned', S.earned],
+    ['Skulls earned', S.earned],
     ['Deaths', S.deaths],
   ].map(([k, v]) => `<div><em>${k}</em><span>${v}</span></div>`).join('');
 }
@@ -179,10 +180,10 @@ export function frame(S, dt) {
 
   el.xpStrip.querySelector('i').style.width = `${Math.min(100, (S.hero.xp / S.hero.xpNext) * 100)}%`;
   el.xpText.textContent = `Level ${S.hero.level} · ${Math.floor(S.hero.xp)} / ${S.hero.xpNext}`;
-  el.goldText.textContent = S.gold.toLocaleString();
+  el.skullText.textContent = S.skulls.toLocaleString();
 
   const cheapest = Math.min(...GEAR.map(g => gearCost(S.gear, g.key)));
-  const afford = Math.min(1, S.gold / cheapest);
+  const afford = Math.min(1, S.skulls / cheapest);
   el.xpGlobe.querySelector('i').style.height = `${afford * 100}%`;
   el.xpGlobe.classList.toggle('ready', afford >= 1);
 
@@ -207,7 +208,7 @@ export function frame(S, dt) {
   } else if (S.phase === 'drop') {
     el.waveText.textContent = 'The Coffin Drop';
   } else if (S.phase === 'draft') {
-    el.waveText.textContent = 'The stall is open';
+    el.waveText.textContent = 'Spend the skulls';
   } else {
     const name = S.formation ? S.formation.name : 'Encounter';
     el.waveText.textContent = `Wave ${S.wave} / ${S.wavesInSection} · ${name}`;
@@ -248,39 +249,85 @@ export function showDeath(show, n, lost) {
   el.reviveNum.textContent = Math.ceil(n);
   if (lost !== undefined) {
     el.deathText.textContent = lost > 0
-      ? `The dark took ◍ ${lost} from your purse.`
+      ? `The dark took ☠ ${lost} from your purse.`
       : 'You had nothing left to lose.';
   }
 }
 
-export function showDraft(cards, gold) {
+const ICON_PX = 62;
+
+/**
+ * Swap a card's glyph for its painted icon.
+ *
+ * The art lives on a chroma-keyed sheet, which only exists as a canvas — there
+ * is no URL to hand to CSS — so the cell is drawn into a small canvas of its
+ * own. A sheet is a couple of megabytes and decodes a moment after the panel
+ * opens, so this retries on the next frame until it is ready and the glyph
+ * simply stands in until then. The panel outlives any single roll now, so a
+ * detached card has to be checked for, or a late frame paints into nothing.
+ */
+function paintIcon(host, card) {
+  if (!host || !host.isConnected) return;
+  const s = Atlas.sheet(card.art.src, 0, 0, iconOpts(card.art.src));
+  if (!s) { requestAnimationFrame(() => paintIcon(host, card)); return; }
+  const c = s.cells[card.art.cell];
+  if (!c) return;                                   // no such cell: keep the glyph
+
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const k = Math.min(ICON_PX / c.w, ICON_PX / c.h); // fit the box, keep the aspect
+  const w = Math.round(c.w * k), h = Math.round(c.h * k);
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  cv.style.width = `${w}px`; cv.style.height = `${h}px`;
+  cv.getContext('2d').drawImage(s.canvas, c.x, c.y, c.w, c.h, 0, 0, cv.width, cv.height);
+  host.textContent = '';
+  host.appendChild(cv);
+}
+
+/**
+ * The tier ladder under the cost: one rectangle per tier the card can reach.
+ *
+ * Tiers already bought are gold, so a card deep in its ladder reads as progress
+ * at a glance rather than as a number to decode. The tier this card would buy is
+ * marked separately — it is the one about to light up, not one you own.
+ *
+ * Abilities have no ladder: you either know Cleave or you don't. They get no
+ * row rather than a row of one, which would read as a broken ladder.
+ */
+function tierRow(c) {
+  if (!c.tiers) return '';
+  const pips = Array.from({ length: c.tiers }, (_, i) =>
+    `<i class="${i < c.held ? 'on' : i === c.held ? 'next' : ''}"></i>`).join('');
+  return `<span class="tierRow" style="--tiers:${c.tiers}">${pips}</span>`;
+}
+
+export function showDraft(cards, skulls, gained) {
   el.draftPanel.classList.toggle('hidden', !cards);
   if (!cards) return;
   el.draftCards.innerHTML = '';
   cards.forEach((c, i) => {
     const b = document.createElement('button');
-    const afford = gold >= c.cost;
+    const afford = skulls >= c.cost;
     b.className = `card ${c.kind}${afford ? '' : ' broke'}`;
     b.innerHTML = `
       <span class="cardKind">${c.type === 'skill' ? 'New ability' : c.kind}</span>
       <span class="cardIcon">${c.icon}</span>
-      <span class="cardName">${c.name}${c.rank > 1 ? ` <b>${c.rank}</b>` : ''}</span>
+      <span class="cardName">${c.name}${c.tier > 1 ? ` <b>${c.tier}</b>` : ''}</span>
       <span class="cardDesc">${c.desc}</span>
-      <span class="cardCost">◍ ${c.cost}</span>`;
+      <span class="cardCost">☠ ${c.cost}</span>
+      ${tierRow(c)}`;
     b.addEventListener('click', () => H.draftPick(i));
     el.draftCards.appendChild(b);
+    if (c.art) paintIcon(b.querySelector('.cardIcon'), c);
   });
   if (!el.draftSkip) {
     el.draftSkip = document.getElementById('draftSkip');
     el.draftSkip.addEventListener('click', () => H.draftSkip());
   }
-  el.draftPurse.textContent = `◍ ${gold.toLocaleString()} in purse`;
+  // Two figures, because they answer different questions: what the drop just
+  // brought up out of the shaft, and what there is to spend in total. The purse
+  // is the one being spent from, so it leads.
+  el.draftPurse.innerHTML = `<b>☠ ${skulls.toLocaleString()}</b> collected`
+    + (gained > 0 ? ` <em>· ☠ ${gained.toLocaleString()} from that drop</em>` : '');
 }
 
-export function draftClock(secs, cards, gold) {
-  if (secs <= 0) { el.draftClock.textContent = ''; return; }
-  const canBuy = cards && cards.some(c => c.cost <= gold);
-  el.draftClock.textContent = canBuy
-    ? `Buying the cheapest in ${Math.ceil(secs)}s`
-    : `Walking on in ${Math.ceil(secs)}s`;
-}

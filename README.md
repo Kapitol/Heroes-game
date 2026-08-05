@@ -1,8 +1,8 @@
 # Crypt Heroes
 
 An idle march that starts on a sunlit country road and ends somewhere much
-worse. The hero walks and fights on their own; you spend the cooldowns, snatch
-the gold, and choose what they become.
+worse. The hero walks and fights on their own; you spend the cooldowns, shake
+the skulls loose, and choose what they become.
 
 Vanilla JS + **Canvas 2D** — no WebGL, no 3D, no GPU path. "Isometric" here is
 a projection, not a renderer. Measured cost is **0.8 ms/frame** idle and
@@ -22,7 +22,7 @@ modules, which browsers refuse to load over `file://`.
 
 ## The loop
 
-**March → Encounter → Scramble → (every 3–4 waves) Boon stall → March.**
+**March → Encounter → The Coffin Drop → Cards → March.**
 
 1. **March.** The hero walks the road. You do nothing; this is the breath
    between fights.
@@ -41,10 +41,12 @@ modules, which browsers refuse to load over `file://`.
    So the two halves pull against each other: stone is the count, depth is the
    multiplier, and the lane you pick decides how much of each you get. Do
    nothing and it drops on its own after five seconds.
-4. **Boon stall.** Only at the end of a **section** — 3 or 4 waves — three
-   cards come up and each has a **price in gold**. Buy one or walk on and keep
-   the purse. Boons compete directly with the armoury for the same gold, which
-   is the actual decision. Every third section ends on a boss.
+4. **The cards.** After **every** drop, three cards come up — one per
+   classification, never two of a kind — each with a **price in skulls**. Buy
+   one or walk on and keep the purse. There is no clock on the choice. Prices
+   belong to the card and its tier, not to when you meet it, so a dear card can
+   be saved towards. Boons compete directly with the armoury for the same
+   skulls, which is the actual decision. Every third section ends on a boss.
 
 Die and you fall back to the start of the section rather than replaying the
 fight that killed you — a boss wave pays nothing on its own, so retrying it
@@ -56,8 +58,8 @@ gear, so each attempt is stronger than the last.
 | | |
 |---|---|
 | Skills | tap a rune, or `1`–`4` |
-| Gold | drag to aim the coffin, release to drop |
-| Boons | buy one of three cards at the end of a section |
+| The drop | drag to aim the coffin, release to drop |
+| Boons | buy one of three cards after every drop |
 | Armoury | the ⚒ globe, or `E` |
 | Pause | the ⏸ button, or `P` / `Space` |
 | Volume | slider in the menu (☰), remembered between sessions |
@@ -153,6 +155,8 @@ The first biome is drawn from generated assets in `art/`:
 | `shaft-parts.png` | stone, chute and slab, small and large / intact and smashed |
 | `coffin.png` | the coffin: upright, tumbling, burst open |
 | `skulls.png` | four skulls and four rubble chunks, for spills and debris |
+| `icons-01.png` | nine perk icons — Might through Focus |
+| `icons-02.png` | seven ability icons, plus Avarice |
 
 **Ground** is two repeating textures. Grass covers the screen; the road is the
 same trick clipped to the walkable band, so the two can never disagree about

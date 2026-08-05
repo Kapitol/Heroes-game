@@ -61,7 +61,7 @@ function blit(ctx, s, i, x, y, w, ayf, rot) {
 const GRAVITY = 780;
 const MAX_VY = 1500;
 const HOLD = 1.6;          // seconds to read the result before moving on
-const AIM_TIMEOUT = 5;     // an idle player still gets their gold
+const AIM_TIMEOUT = 5;     // an idle player still gets their skulls
 const R = 24;              // coffin radius, for collisions
 
 // One multiplier per row, straight down: the deeper it gets, the more each
@@ -517,7 +517,7 @@ export function draw(ctx, st, cw, ch, accent) {
   ctx.font = '26px "Iowan Old Style", Georgia, serif';
   if (st.landed) {
     ctx.fillStyle = accent;
-    ctx.fillText(`◍ ${payout(st).toLocaleString()}`, cw / 2, ch * 0.885);
+    ctx.fillText(`☠ ${payout(st).toLocaleString()}`, cw / 2, ch * 0.885);
     ctx.font = '13px "Iowan Old Style", Georgia, serif';
     ctx.fillStyle = 'rgba(216,201,168,.6)';
     ctx.fillText(`${st.skulls} skulls × ${st.landedOn}`, cw / 2, ch * 0.915);

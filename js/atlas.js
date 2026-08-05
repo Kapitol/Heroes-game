@@ -83,7 +83,18 @@ export function sheet(src, cols, rows, opts) {
   c.putImageData(id, 0, 0);
 
   // Trim each grid cell to its content.
-  const cells = opts && opts.auto ? sliceAuto(d, w, h) : sliceGrid(d, w, h, cols, rows);
+  let cells = opts && opts.auto ? sliceAuto(d, w, h) : sliceGrid(d, w, h, cols, rows);
+  // Some art throws debris — sparks, bone chips, a spray of grit — clear of the
+  // object it belongs to. The gutter finder can only see a gap, so it calls
+  // those separate cells, and every index after one shifts by one. `minCell`
+  // discards anything under that fraction of the median cell's area, which no
+  // real sprite on a sheet of like-sized objects ever is. Opt-in: sheets of
+  // deliberately mixed sizes must not use it.
+  if (opts && opts.minCell && cells.length > 2) {
+    const areas = cells.filter(Boolean).map(c => c.w * c.h).sort((a, b) => a - b);
+    const floor = areas[areas.length >> 1] * opts.minCell;
+    cells = cells.filter(c => c && c.w * c.h >= floor);
+  }
 
   s.canvas = cv;
   s.cells = cells;

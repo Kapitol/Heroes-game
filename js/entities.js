@@ -1,12 +1,12 @@
 // Actors, their stats, and the movement rules they share.
 
 export const MONSTERS = {
-  fallen:   { name: 'Fallen One', kind: 'fallen',   hp: 20, dmg: 4,  speed: 2.6, atk: 0.9, range: 0.9, scale: 0.85, gold: 4,  xp: 5 },
-  skeleton: { name: 'Skeleton',   kind: 'skeleton', hp: 34, dmg: 7,  speed: 2.1, atk: 1.2, range: 1.0, scale: 1.0,  gold: 7,  xp: 9 },
-  zombie:   { name: 'Rotting Dead', kind: 'zombie', hp: 62, dmg: 11, speed: 1.35, atk: 1.6, range: 1.0, scale: 1.05, gold: 11, xp: 14 },
-  imp:      { name: 'Hellspawn',  kind: 'imp',      hp: 30, dmg: 9,  speed: 3.4, atk: 0.8, range: 0.9, scale: 0.8,  gold: 12, xp: 15 },
-  wraith:   { name: 'Wraith',     kind: 'wraith',   hp: 48, dmg: 14, speed: 2.4, atk: 1.3, range: 1.1, scale: 1.0,  gold: 16, xp: 20 },
-  brute:    { name: 'The Butcher', kind: 'brute',   hp: 320, dmg: 26, speed: 1.7, atk: 1.7, range: 1.5, scale: 1.5, gold: 90, xp: 110, boss: true },
+  fallen:   { name: 'Fallen One', kind: 'fallen',   hp: 20, dmg: 4,  speed: 2.6, atk: 0.9, range: 0.9, scale: 0.85, skulls: 4,  xp: 5 },
+  skeleton: { name: 'Skeleton',   kind: 'skeleton', hp: 34, dmg: 7,  speed: 2.1, atk: 1.2, range: 1.0, scale: 1.0,  skulls: 7,  xp: 9 },
+  zombie:   { name: 'Rotting Dead', kind: 'zombie', hp: 62, dmg: 11, speed: 1.35, atk: 1.6, range: 1.0, scale: 1.05, skulls: 11, xp: 14 },
+  imp:      { name: 'Hellspawn',  kind: 'imp',      hp: 30, dmg: 9,  speed: 3.4, atk: 0.8, range: 0.9, scale: 0.8,  skulls: 12, xp: 15 },
+  wraith:   { name: 'Wraith',     kind: 'wraith',   hp: 48, dmg: 14, speed: 2.4, atk: 1.3, range: 1.1, scale: 1.0,  skulls: 16, xp: 20 },
+  brute:    { name: 'The Butcher', kind: 'brute',   hp: 320, dmg: 26, speed: 1.7, atk: 1.7, range: 1.5, scale: 1.5, skulls: 90, xp: 110, boss: true },
 };
 
 // Which monsters can show up, by depth.
@@ -35,7 +35,7 @@ export function makeMonster(key, depth, pos) {
     ...t, key, x: pos.x, y: pos.y,
     hp, maxHp: hp,
     dmg: Math.round(t.dmg * s.dmg),
-    gold: Math.round(t.gold * Math.pow(1.25, depth - 1)),
+    skulls: Math.round(t.skulls * Math.pow(1.25, depth - 1)),
     xp: Math.round(t.xp * Math.pow(1.18, depth - 1)),
     atkTimer: Math.random() * t.atk,
     fx: 1, walk: 0, swing: 0, hurt: 0, slow: 0, dead: false, foe: true,
@@ -80,7 +80,7 @@ export function heroStats(h, gear, perks) {
     // reach zero and break the pacing the whole game is tuned around.
     cdr: 1 - (1 - Math.min(0.5, gear.amulet * 0.03)) * Math.pow(0.91, n('focus')),
     mitigate: Math.pow(0.92, n('stoic')),
-    goldMul: 1 + n('greed') * 0.25,
+    skullMul: 1 + n('greed') * 0.25,
   };
 }
 

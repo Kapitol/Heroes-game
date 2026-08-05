@@ -565,22 +565,3 @@ export function drawProp(ctx, kind, sx, sy, t, seed, biome) {
   }
   ctx.restore();
 }
-
-// A tumbling coin for the scramble between fights.
-export function drawCoin(ctx, sx, sy, z, spin, big) {
-  const r = big ? 11 : 7;
-  drawShadow(ctx, sx, sy, r * 0.8, 0.3 * Math.max(0.2, 1 - z / 90));
-  const w = Math.abs(Math.cos(spin)) * r + 1.5;
-  const y = sy - z - r;
-  ctx.fillStyle = big ? '#f0cf6a' : '#e0b34e';
-  ctx.strokeStyle = '#8a6d2c';
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.ellipse(sx, y, w, r, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = 'rgba(255,246,214,.75)';
-  ctx.beginPath();
-  ctx.ellipse(sx - w * 0.25, y - r * 0.3, w * 0.32, r * 0.34, 0, 0, Math.PI * 2);
-  ctx.fill();
-}

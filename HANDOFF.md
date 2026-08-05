@@ -1,7 +1,24 @@
 # Handoff
 
-State of play as of the end of the second session. Everything below is on
-`main` at `Kapitol/Heroes-game`, working tree clean.
+State of play as of the end of the third session. Everything below is on
+`main` at `Kapitol/Heroes-game`.
+
+## Skulls are the only currency
+
+**There is no gold.** It is gone from the code, the UI and the copy — the purse,
+the armoury, the death tithe, the run stats and every card price are all skulls,
+written `☠`. The old vocabulary is not deprecated, it is deleted: `S.skulls`,
+`skullMul`, `dropSkulls`, monsters carry a `skulls:` value. If you find the word
+"gold" anywhere but the save-loader, it is a bug.
+
+The loop is: **the drop pays skulls into the purse, the card screen spends from
+it, and whatever is left stays there** for the next one. Nothing is consumed by
+the coffin — its load is still a flat `LOAD = 24` and the payout formula is
+untouched, so all the tuning below still holds.
+
+Saves written before the change carry a `gold` field; `load()` reads it as
+skulls 1:1, because the two were always the same numbers under different names.
+That fallback is the one intentional mention of the word left in the source.
 
 ## Run it
 
@@ -12,12 +29,13 @@ node serve.js 8124
 | URL | what it does |
 |---|---|
 | `/index.html` | the game |
-| `/index.html?drop=420` | jumps straight into the Coffin Drop and **loops it**, pot 420 |
+| `/index.html?drop=420` | jumps into the Coffin Drop with pot 420 and **loops drop → cards → drop** |
 | `/index.html?spawn=archer` | fills every wave with one monster key |
 
 Both dev hooks exist because the things they reach are otherwise slow to get
 to: a given monster may not roll for minutes, and the minigame is four fights
-away.
+away. The drop hook loops through the card screen as well, because the cards are
+now part of the same beat and picking one is what ends it.
 
 ## Where the Coffin Drop got to
 
@@ -35,7 +53,7 @@ shed nothing). Each slab needs a minimum speed to smash — `NEEDS = [0, 380,
 
 1. An earlier timing-tap version was beaten by blind spam-tapping — it scored
    ×10 without reading anything.
-2. A clean lane with no stones smashed all five slabs and paid **◍ 1**: zero
+2. A clean lane with no stones smashed all five slabs and paid **☠ 1**: zero
    skulls times anything is zero. Slab breaks now shed 1–2 skulls of their own,
    so depth is worth something without stone.
 3. Stone at −45% speed made hitting it — the thing the design wants you to do —
@@ -66,9 +84,50 @@ Three things worth knowing before changing it:
 - **Depth state reads off two sprites**, not a colour: floors already smashed
   through use the broken slab.
 
+## The cards, and how they are priced
+
+Three cards come up **after every drop** now, not once a section. `openDraft`
+takes where to go afterwards — `'wave'` mid-section, `'section'` at the end of
+one — and `closeDraft` routes there, so the same screen serves both. There is
+**no clock**: it waits as long as the choice takes, and only taking a card or
+walking on ends it. It used to count down and auto-buy the cheapest card, which
+spent the run's skulls unasked and made saving impossible.
+
+- **A price belongs to the card, not to when you meet it.** Cost falls out of
+  `(id, tier)` alone — Might 3 is 90 whenever it appears, this run or next. That
+  is why nothing about pricing is saved: it is re-derived identically every time.
+- **Five tiers, then a card is finished** (`MAX_TIER`) and stops being offered.
+  Each tier costs ×1.5 the last, so the ladder — not section inflation — is what
+  makes late cards dear.
+- **Every card offered is affordable.** The roll draws from what the purse
+  covers; a card you can't buy is a taunt, not an option. An empty-handed purse
+  gets no panel at all rather than a wall of three greyed cards.
+- **One card per classification.** Kinds are picked first, then a card inside
+  each, so three attack cards can never come up — that would be one choice
+  wearing three coats. An unowned ability takes a seat whenever the kit has room.
+- **`Last Rites`** is the one *remedy*: a one-shot full heal, no tier ladder,
+  offered only below 90% life. It exists because Vigour raises the maximum
+  without filling it, so drafting a bigger pool leaves you proportionally worse
+  off until something closes the gap. It leaves no trace on the sheet —
+  `applyCard` returns early and `takeCard` applies it, since only `game.js`
+  knows the hero's real maximum.
+
+The card icons come off `art/icons-01.png` and `icons-02.png`, keyed and
+auto-sliced like everything else, drawn into a small canvas per card because a
+chroma-keyed sheet has no URL to give CSS. The glyphs remain as the fallback
+until a sheet decodes. **`minCell` matters here:** the debris flying off the
+cracked-skull icon sliced as two cells of its own and shifted every index after
+it, so `atlas.js` now takes a minimum-area fraction and throws specks away.
+
 ## Next session
 
-1. **Reward selection** after the drop.
+1. **A Healing classification with more than one card in it.** Right now
+   `healing` holds only `Last Rites`, so that kind always offers the same thing.
+   Mend is an ability and the life-related perks (Vigour, Bloodthirst) sit under
+   defence — moving them would leave defence thin, so this wants new perks
+   rather than reshuffling.
+2. **A Mend icon of its own.** Mend and Last Rites currently share the green
+   vial, `icons-02` cell 1.
 
 ## Known caveats
 

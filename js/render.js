@@ -7,7 +7,7 @@
 
 import { TILE_W, TILE_H, toScreen, tilePath, hash2, clamp } from './iso.js';
 import { HALF, VERGE, propAt, decalAt, landmarkAt } from './world.js';
-import { drawActor, drawShadow, drawProp, drawCoin, drawTelegraph } from './sprites.js';
+import { drawActor, drawShadow, drawProp, drawTelegraph } from './sprites.js';
 import * as Atlas from './atlas.js';
 import * as Coffin from './coffin.js';
 
@@ -57,7 +57,7 @@ export function render(ctx, S, t, dt) {
   const camS = toScreen(cam.x, cam.y);
   const ox = cw / 2 - camS.x * cam.zoom + cam.shakeX;
   const oy = ch / 2 - camS.y * cam.zoom + cam.shakeY - ch * 0.06;
-  // Hit-testing (coins) needs the same transform the scene was drawn with.
+  // Hit-testing needs the same transform the scene was drawn with.
   S.view = { ox, oy, zoom: cam.zoom };
   lastOX = ox; lastOY = oy;
 
@@ -464,7 +464,6 @@ function drawDepthPass(ctx, S, t, painted) {
   }
   if (!S.hero.dead || S.hero.deathAnim < 1) items.push(S.hero);
   for (const m of S.monsters) if (!m.dead || m.fade > 0) items.push(m);
-  for (const p of S.pickups) items.push(p);
   for (const p of S.projectiles) items.push(p);
   items.sort((p, q) => (p.x + p.y) - (q.x + q.y));
 
@@ -473,7 +472,6 @@ function drawDepthPass(ctx, S, t, painted) {
     if (it.propSheet) { Atlas.drawSprite(ctx, it.propSheet, it.propCell, p.x, p.y, it.scale); continue; }
     if (it.prop) { drawProp(ctx, it.prop, p.x, p.y, t, it.seed, b); continue; }
     if (it.proj) { drawProjectile(ctx, p.x, p.y, it); continue; }
-    if (it.pickup) { drawCoin(ctx, p.x, p.y, 4 + Math.abs(Math.sin(t * 3 + it.seed)) * 4, t * 4 + it.seed, false); continue; }
     drawFighter(ctx, it, p, t);
   }
 }

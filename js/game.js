@@ -3,7 +3,7 @@
 // One road, walked forever. The hero marches, an encounter blocks the way, the
 // hero fights it on their own, the spoils scatter and you grab them, and then
 // three cards decide what the hero becomes. The player's hands are on the
-// skills, the coins and the cards — never on the walking.
+// skills, the drop and the cards — never on the walking.
 
 import { biomeFor, ROAD, onRoad, HALF, MARCH } from './world.js';
 import { toWorld, clamp, lerp } from './iso.js';
@@ -12,7 +12,7 @@ import {
   MONSTERS, makeMonster, makeBoss, rosterFor, formationFor, isBossStage, bossFor,
 } from './encounters.js';
 import { makeCamera, render, fitZoom } from './render.js';
-import { SKILLS, skillById, rollDraft, applyCard, priceCards, MAX_SKILLS } from './perks.js';
+import { SKILLS, skillById, rollDraft, applyCard, MAX_SKILLS } from './perks.js';
 import * as UI from './ui.js';
 import * as Audio from './audio.js';
 import * as Coffin from './coffin.js';
@@ -40,17 +40,18 @@ const S = {
   dpr: 1, cam: makeCamera(), view: null,
   biome: biomeFor(1),
   hero: makeHero(),
-  monsters: [], projectiles: [], effects: [], floats: [], pickups: [], stains: [],
+  monsters: [], projectiles: [], effects: [], floats: [], stains: [],
   drop: null,
-  gold: 0, gear: { weapon: 0, armor: 0, ring: 0, amulet: 0 },
+  skulls: 0, gear: { weapon: 0, armor: 0, ring: 0, amulet: 0 },
   perks: {}, loadout: ['cleave', 'mend'], cd: [0, 0, 0, 0],
   // `stage` is the global encounter count and drives every difficulty curve.
   // `section` and `wave` are how that gets presented and paced: a section is
-  // 3–4 waves, and the paid boon only comes up when one ends.
+  // 3–4 waves, and the end of one is where the road changes rather than where
+  // the cards are — those come up after every drop.
   stage: 1, section: 1, wave: 1, wavesInSection: 3,
   phase: 'march', phaseT: 0,
   queue: [], spawnTimer: 0, waveTotal: 0, formation: null,
-  marchTo: 0, draft: null, draftTimer: 0,
+  marchTo: 0, draft: null, draftAfter: null, lastDrop: 0,
   kills: 0, earned: 0, deaths: 0, best: 1,
   running: false, paused: false, reviveTimer: 0, time: 0,
 };
@@ -234,7 +235,7 @@ function killMonster(m) {
   // A bloater takes its neighbours with it whether or not it reached you.
   if (m.ai === 'exploder') detonate(m);
 
-  m.dropGold = Math.round(m.gold * (0.85 + Math.random() * 0.3));
+  m.dropSkulls = Math.round(m.skulls * (0.85 + Math.random() * 0.3));
   gainXp(m.xp);
   Audio.sfx[m.kind === 'skeleton' ? 'bones' : 'die']();
   if (m.boss) { S.cam.shake = 1.1; UI.banner('SLAIN'); }
@@ -288,8 +289,8 @@ function heroDies() {
   h.deathAnim = 0;
   h.fade = 1;
   S.deaths++;
-  const lost = Math.round(S.gold * 0.15);
-  S.gold -= lost;
+  const lost = Math.round(S.skulls * 0.15);
+  S.skulls -= lost;
   S.reviveTimer = 3;
   Audio.sfx.die();
   S.cam.shake = 1.2;
@@ -306,13 +307,13 @@ function revive() {
   h.target = null;
   // Fall back one stage rather than replaying the fight that just killed you.
   // A boss encounter contains nothing but the boss, so retrying it pays no
-  // gold and grants no card — the hero would be pinned against it forever.
+  // skulls and grants no card — the hero would be pinned against it forever.
   // Retreating puts a winnable, paying encounter in front of them instead.
   S.monsters.length = 0;
   S.projectiles.length = 0;
   S.queue.length = 0;
   // Fall back to the start of the section. Replaying the wave that killed you
-  // would be a dead end on a boss wave — it pays no gold on its own — and the
+  // would be a dead end on a boss wave — it pays no skulls on its own — and the
   // earlier waves of the section are what fund the gear to beat it.
   const fellAt = S.section;
   S.stage = Math.max(1, S.stage - (S.wave - 1) - 1);
@@ -409,8 +410,8 @@ function castSkill(slot) {
 
 function buyGear(key) {
   const cost = UI.gearCost(S.gear, key);
-  if (S.gold < cost) { Audio.sfx.deny(); UI.toast('Not enough gold'); return; }
-  S.gold -= cost;
+  if (S.skulls < cost) { Audio.sfx.deny(); UI.toast('Not enough skulls'); return; }
+  S.skulls -= cost;
   S.gear[key]++;
   if (key === 'armor') S.hero.hp = Math.min(stats().maxHp, S.hero.hp + 18);
   if (key === 'weapon' || key === 'armor') UI.toast(`${key === 'weapon' ? 'Blade' : 'Armour'} reforged`);
@@ -422,31 +423,36 @@ function buyGear(key) {
 function takeCard(i) {
   if (S.phase !== 'draft' || !S.draft) return;
   const card = S.draft[i];
-  if (S.gold < card.cost) {
+  if (S.skulls < card.cost) {
     Audio.sfx.deny();
-    UI.toast(`${card.name} costs ◍ ${card.cost}`);
+    UI.toast(`${card.name} costs ☠ ${card.cost}`);
     return;
   }
-  S.gold -= card.cost;
+  S.skulls -= card.cost;
   applyCard(S, card);
+  // A remedy acts now rather than changing the sheet, and the hero's maximum
+  // is only known here — it is built from gear and perks together.
+  if (card.type === 'remedy' && card.id === 'fullheal') S.hero.hp = stats().maxHp;
   Audio.sfx.levelUp();
-  UI.toast(card.type === 'skill' ? `${card.name} learned` : `${card.name} taken`);
+  UI.toast(card.type === 'skill' ? `${card.name} learned`
+         : card.type === 'remedy' ? `${card.name} — made whole`
+         : `${card.name} taken`);
   UI.rebuildRunes();
   UI.refreshPanels();
-  nextSection();
+  closeDraft();
 }
 
 // --- the payout game -------------------------------------------------------
 
 function startDrop(forcedPot) {
   S.phase = 'drop';
-  const mul = stats().goldMul;
+  const mul = stats().skullMul;
   let pot = forcedPot || 0;
-  if (!forcedPot) for (const m of S.monsters) pot += Math.round((m.dropGold || 0) * mul);
+  if (!forcedPot) for (const m of S.monsters) pot += Math.round((m.dropSkulls || 0) * mul);
   S.monsters.length = 0;
   S.floats.length = 0;      // stale damage numbers would bleed through the shaft
   S.effects.length = 0;
-  if (pot <= 0) { S.drop = null; afterDrop(); return; }
+  if (pot <= 0) { S.drop = null; S.lastDrop = 0; afterDrop(); return; }
   S.drop = Coffin.start(pot);
   Audio.sfx.descend();
 }
@@ -455,54 +461,68 @@ function updateDrop(dt) {
   const cw = cv.width / S.dpr, ch = cv.height / S.dpr;
   if (Coffin.update(S.drop, dt, cw, ch, Audio.sfx) === 'done') {
     const won = Coffin.payout(S.drop);
-    S.gold += won;
+    // Held for the card screen: what this drop brought in, as distinct from
+    // what is in the purse. Spending reads very differently when you can see
+    // which of the two you are spending.
+    S.lastDrop = won;
+    S.skulls += won;
     S.earned += won;
-    Audio.sfx.coin();
-    UI.toast(`◍ ${won.toLocaleString()} recovered`);
+    Audio.sfx.bank();
+    UI.toast(`☠ ${won.toLocaleString()} recovered`);
     S.drop = null;
-    if (DEV_DROP) startDrop(DEV_DROP);     // loop it while it's being tuned
-    else afterDrop();
+    afterDrop();
   }
 }
 
-// Mid-section: straight on to the next wave. End of section: the stall.
+// The cards come up after every drop, wherever the wave sits in the section.
+// What differs is only what happens once one is taken or waved off: mid-section
+// that is the next wave, at the end of one it is the next section.
 function afterDrop() {
-  if (S.wave < S.wavesInSection) {
-    S.wave++;
-    S.stage++;
-    enterStage(S.stage);
-    save();
-  } else {
-    openDraft();
-  }
+  openDraft(S.wave < S.wavesInSection ? 'wave' : 'section');
+}
+
+function nextWave() {
+  S.wave++;
+  S.stage++;
+  enterStage(S.stage);
+  save();
 }
 
 // --- the draft --------------------------------------------------------------
 
-function openDraft() {
+function openDraft(after) {
+  S.draftAfter = after;
+  // The remedy is only worth a seat when there is life missing to restore.
+  S.draft = rollDraft(S, S.skulls, S.hero.hp / stats().maxHp);
+  // A purse that cannot reach the cheapest tier of anything gets no panel at
+  // all. Three cards nobody can buy is a wall, not an offer.
+  if (!S.draft.length) { S.draft = null; closeDraft(); return; }
   S.phase = 'draft';
-  S.draft = priceCards(rollDraft(S), S.section);
-  S.draftTimer = 14;
-  UI.showDraft(S.draft, S.gold);
+  UI.showDraft(S.draft, S.skulls, S.lastDrop);
 }
 
-function updateDraft(dt) {
-  S.draftTimer -= dt;
-  UI.draftClock(S.draftTimer, S.draft, S.gold);
-  if (S.draftTimer > 0) return;
-  // An idle player still moves on: take the cheapest they can actually pay
-  // for, and walk past the stall if they can't pay for any of it.
-  let best = null;
-  for (const c of S.draft) if (c.cost <= S.gold && (!best || c.cost < best.cost)) best = c;
-  if (best) takeCard(S.draft.indexOf(best));
-  else skipDraft();
+// There is no clock on this screen and nothing that decides for you. The road
+// waits: the only two ways out are taking a card or walking on, both of them
+// the player's own hand. An earlier version counted down and bought the
+// cheapest card by itself, which spent the run's skulls without being asked and
+// made saving towards a dear card impossible.
+
+// Take the offer down and go wherever the drop was headed.
+function closeDraft() {
+  const after = S.draftAfter;
+  S.draft = null;
+  S.draftAfter = null;
+  UI.showDraft(null);
+  // The dev loop covers drop *and* cards, since the cards are now part of the
+  // same beat and picking one is what ends it.
+  if (DEV_DROP) { startDrop(DEV_DROP); return; }
+  if (after === 'section') nextSection();
+  else nextWave();
 }
 
 // Advance past the section boundary. Everything that resets per section —
 // the wave counter, its length, the biome — happens here and nowhere else.
 function nextSection() {
-  S.draft = null;
-  UI.showDraft(null);
   S.section++;
   S.wave = 1;
   S.wavesInSection = 3 + (Math.random() < 0.5 ? 1 : 0);
@@ -514,7 +534,7 @@ function nextSection() {
 function skipDraft() {
   if (S.phase !== 'draft') return;
   UI.toast('Walked on empty-handed');
-  nextSection();
+  closeDraft();
 }
 
 // --- update -----------------------------------------------------------------
@@ -544,8 +564,7 @@ function update(dt) {
     idleStep(dt, st);
     if (S.drop) updateDrop(dt);
   } else if (S.phase === 'draft') {
-    idleStep(dt, st);
-    updateDraft(dt);
+    idleStep(dt, st);   // the hero waits, for as long as the choice takes
   }
 
   if (S.phase === 'fight' && !h.dead) pumpSpawns(dt);
@@ -839,7 +858,7 @@ function updateProjectiles(dt) {
 function save() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      gold: S.gold, gear: S.gear, perks: S.perks, loadout: S.loadout,
+      skulls: S.skulls, gear: S.gear, perks: S.perks, loadout: S.loadout,
       stage: S.stage, section: S.section, wave: S.wave, wavesInSection: S.wavesInSection, best: S.best,
       level: S.hero.level, xp: S.hero.xp, xpNext: S.hero.xpNext,
       kills: S.kills, earned: S.earned, deaths: S.deaths,
@@ -851,7 +870,9 @@ function load() {
   let d;
   try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch { d = null; }
   if (!d) return;
-  S.gold = d.gold | 0;
+  // Saves written before skulls became the only currency carry `gold`; the two
+  // were the same numbers under different names, so an old purse converts 1:1.
+  S.skulls = (d.skulls ?? d.gold) | 0;
   Object.assign(S.gear, d.gear || {});
   S.perks = d.perks || {};
   if (Array.isArray(d.loadout) && d.loadout.length) S.loadout = d.loadout.slice(0, MAX_SKILLS);

@@ -92,7 +92,7 @@ export const sfx = {
   die()        { tone(180, { type: 'triangle', dur: 0.4, gain: 0.22, slide: -140 });
                  noise({ dur: 0.35, gain: 0.18, freq: 320, q: 0.9, delay: 0.03 }); },
   bones()      { for (let i = 0; i < 5; i++) noise({ dur: 0.05, gain: 0.1, freq: 2600 + Math.random() * 1800, q: 3, type: 'bandpass', delay: i * 0.045 }); },
-  coin()       { tone(1180, { dur: 0.09, gain: 0.16 }); tone(1760, { dur: 0.12, gain: 0.12, delay: 0.05 }); },
+  bank()       { tone(1180, { dur: 0.09, gain: 0.16 }); tone(1760, { dur: 0.12, gain: 0.12, delay: 0.05 }); },
   cleave()     { noise({ dur: 0.3, gain: 0.3, freq: 900, q: 0.5, type: 'bandpass' });
                  tone(90, { type: 'sawtooth', dur: 0.3, gain: 0.22, slide: -40 }); },
   fire()       { noise({ dur: 0.45, gain: 0.26, freq: 620, q: 0.4 });

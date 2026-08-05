@@ -26,7 +26,7 @@ html, body {
 #game { position:absolute; inset:0; width:100%; height:100%; display:block; cursor:crosshair; }
 
 /* ---------- shared plate look ---------- */
-.plate, .panel, #depthPlate, #waveWrap, .coin {
+.plate, .panel, #depthPlate, #waveWrap, .skullCount {
   background:linear-gradient(180deg,#221b16,#100c09);
   border:1px solid #3d3025;
   box-shadow:inset 0 1px 0 rgba(200,162,74,.18), 0 4px 14px rgba(0,0,0,.6);
@@ -55,7 +55,7 @@ html, body {
 }
 
 #purse { display:flex; align-items:center; gap:8px; }
-.coin { padding:6px 12px; border-radius:3px; font-size:15px; color:var(--gild); white-space:nowrap; }
+.skullCount { padding:6px 12px; border-radius:3px; font-size:15px; color:var(--gild); white-space:nowrap; }
 .plate { border-radius:3px; color:var(--parch); font:inherit; font-size:17px; padding:6px 11px; cursor:pointer; }
 .plate:active { transform:translateY(1px); }
 
@@ -260,7 +260,22 @@ h1.dead {
 }
 
 /* ---------- draft ---------- */
-#draftPanel { background:radial-gradient(ellipse at center, rgba(8,6,4,.9), rgba(2,2,1,.97)); backdrop-filter:blur(2px); }
+/*
+ * The boon screen stands in the crypt, not in front of a black sheet: the same
+ * masonry the shaft is built from, under a tint heavy enough to keep the cards
+ * legible against it.
+ *
+ * `cover` rather than `repeat` — the texture is a wall, not a seamless tile, and
+ * the canvas earns its mirror-tiling trick by animating. Here one stretched copy
+ * has no seams to hide at all, and the tint is doing most of the work anyway.
+ * Lighter in the middle and darker at the corners, so the eye lands on the cards.
+ */
+#draftPanel {
+  background:
+    radial-gradient(ellipse at center, rgba(30,22,14,.62), rgba(6,5,3,.93) 76%),
+    url("../art/shaft-wall.png") center / cover no-repeat;
+  background-color:#0a0806;      /* holds the tint's shape until the wall decodes */
+}
 .draftInner { width:min(760px,94vw); text-align:center; }
 .draftInner h2 {
   margin:0 0 18px; font-size:22px; font-weight:normal; letter-spacing:.16em;
@@ -268,29 +283,86 @@ h1.dead {
 }
 #draftCards { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
 .card {
+  position:relative;
   flex:1 1 200px; max-width:236px; min-height:200px;
   display:flex; flex-direction:column; align-items:center; gap:6px;
-  padding:18px 14px; cursor:pointer; font:inherit; text-align:center;
+  padding:18px 14px; cursor:pointer; text-align:center;
+  /* `font:inherit` carries the family and size but never the colour, and a
+     button's own default is black — which on this card is invisible. Both have
+     to be said out loud. */
+  font:inherit; color:var(--parch);
   border-radius:5px; border:1px solid #3d3025;
   background:linear-gradient(180deg,#332a20,#181209);
   box-shadow:inset 0 1px 0 rgba(200,162,74,.28), 0 8px 24px rgba(0,0,0,.75);
-  transition:transform .12s ease, border-color .12s ease;
+  transition:transform .12s ease, border-color .12s ease, box-shadow .18s ease;
+  --smoke:rgba(214,203,178,.4);
 }
-.card:hover { transform:translateY(-4px); border-color:var(--gild-dim); }
+.card:hover, .card:focus-visible {
+  transform:translateY(-4px); border-color:var(--gild-dim);
+  box-shadow:inset 0 1px 0 rgba(200,162,74,.45), 0 12px 30px rgba(0,0,0,.8);
+}
 .card:active { transform:translateY(-1px); }
+
+/*
+ * Smoke off a hovered card.
+ *
+ * Two plumes rather than one: a single rising blob reads as a blob, and two on
+ * different clocks — 2.6s and 3.4s, the second starting late — never line up,
+ * so the loop has no visible seam to count. Each plume carries three offset
+ * blobs in one layer, which is what makes it curl instead of float.
+ *
+ * They sit above the card's top edge, so they need no z-index and can never
+ * wash over the text. `--smoke` is tinted per kind further down, so an attack
+ * card smoulders warm and a defence card cold.
+ */
+.card::before, .card::after {
+  content:''; position:absolute; bottom:calc(100% - 20px);
+  width:34%; height:74px;
+  pointer-events:none; opacity:0;
+  background:
+    radial-gradient(circle at 42% 82%, var(--smoke), transparent 46%),
+    radial-gradient(circle at 58% 56%, var(--smoke), transparent 40%),
+    radial-gradient(circle at 46% 30%, var(--smoke), transparent 34%);
+  filter:blur(7px);
+}
+/* Set apart across the card's width, or the two plumes stack into one cloud. */
+.card::before { left:16%; }
+.card::after  { left:52%; }
+.card:hover::before, .card:focus-visible::before { animation:cardSmoke 2.6s linear infinite; }
+.card:hover::after,  .card:focus-visible::after  { animation:cardSmoke 3.4s linear infinite .9s; }
+
+/* Rises, widens, and leans as it goes — smoke slows and spreads as it cools,
+   so the scale keeps growing after the opacity has started to give out. */
+@keyframes cardSmoke {
+  0%   { opacity:0;  transform:translateY(10px) scaleX(.5) scaleY(.6) rotate(-5deg); }
+  25%  { opacity:.6; }
+  65%  { opacity:.32; }
+  100% { opacity:0;  transform:translateY(-58px) scaleX(1.5) scaleY(1.3) rotate(10deg); }
+}
+
+/* A card that can't be bought doesn't smoulder. */
+.card.broke:hover::before, .card.broke:hover::after { animation:none; }
+
+@media (prefers-reduced-motion:reduce) {
+  .card:hover::before, .card:hover::after,
+  .card:focus-visible::before, .card:focus-visible::after { animation:none; }
+}
 .cardKind {
   font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; opacity:.8;
 }
-.cardIcon { font-size:38px; line-height:1.1; }
+/* Holds either the fallback glyph or the painted icon, at one fixed height so
+   three cards side by side never disagree about where their names begin. */
+.cardIcon { font-size:38px; line-height:1.1; height:62px; display:grid; place-items:center; }
+.cardIcon canvas { display:block; filter:drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
 .cardName { font-size:17px; color:var(--parch); }
 .cardName b { color:var(--gild); font-weight:normal; }
 .cardDesc { font-size:12px; opacity:.85; line-height:1.5; }
-.card.attack  { border-color:#5d2a20; } .card.attack  .cardIcon { color:#e07a52; }
-.card.defense { border-color:#24405d; } .card.defense .cardIcon { color:#7fa8e0; }
-.card.utility { border-color:#4a4320; } .card.utility .cardIcon { color:#d8c264; }
-.card.ability { border-color:#5d4715; } .card.ability .cardIcon { color:#e8d18a; }
+.card.attack  { border-color:#5d2a20; --smoke:rgba(224,122,82,.34); } .card.attack  .cardIcon { color:#e07a52; }
+.card.defense { border-color:#24405d; --smoke:rgba(127,168,224,.30); } .card.defense .cardIcon { color:#7fa8e0; }
+.card.utility { border-color:#4a4320; --smoke:rgba(216,194,100,.32); } .card.utility .cardIcon { color:#d8c264; }
+.card.healing { border-color:#25503a; --smoke:rgba(127,214,160,.30); } .card.healing .cardIcon { color:#7fd6a0; }
+.card.ability { border-color:#5d4715; --smoke:rgba(232,209,138,.40); } .card.ability .cardIcon { color:#e8d18a; }
 .card.ability { background:linear-gradient(180deg,#40331a,#1a1309); }
-#draftClock { margin:16px 0 0; font-size:11px; letter-spacing:.14em; opacity:.45; }
 
 /* ---------- drafted perks ---------- */
 #perkList { display:flex; flex-wrap:wrap; gap:6px; }
@@ -311,10 +383,39 @@ h1.dead {
   margin:-8px 0 16px; font-size:12px; letter-spacing:.12em;
   text-transform:uppercase; color:var(--gild); opacity:.8;
 }
+/* The total you are spending from, given the weight of a number. */
+#draftPurse b { font-size:17px; font-weight:normal; letter-spacing:.06em; }
+/* What the drop just paid in — context, not the headline. */
+#draftPurse em { font-style:normal; opacity:.6; }
 .cardCost {
   margin-top:auto; padding:5px 12px; border-radius:3px; font-size:13px;
   color:#1c1206; background:linear-gradient(180deg,#d8b45c,#9c7826);
   border:1px solid #5d4715;
+}
+
+/*
+ * The tier ladder, under the cost. A grid of equal columns rather than a flex
+ * row, so the rectangles stay evenly spaced across the card whatever the tier
+ * count — five today, and still even if a card ever runs to three or seven.
+ */
+.tierRow {
+  display:grid; grid-template-columns:repeat(var(--tiers,5),1fr);
+  gap:5px; width:100%; margin-top:10px;
+}
+.tierRow i {
+  height:6px; border-radius:1px;
+  background:#241d16; border:1px solid #3d3025;
+}
+/* Tiers already bought. */
+.tierRow i.on {
+  background:linear-gradient(180deg,#e2bd63,#9c7826);
+  border-color:#5d4715;
+  box-shadow:0 0 6px rgba(200,162,74,.45);
+}
+/* The one this card would buy: lit from within, but not yet yours. */
+.tierRow i.next {
+  background:#2c2318; border-color:var(--gild-dim);
+  box-shadow:inset 0 0 5px rgba(200,162,74,.4);
 }
 .card.broke { opacity:.5; cursor:not-allowed; }
 .card.broke:hover { transform:none; border-color:#3d3025; }
