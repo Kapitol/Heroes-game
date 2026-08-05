@@ -193,6 +193,13 @@ function drawTexturedGround(ctx, S, cw, ch) {
   const grass = Atlas.patternFor(ctx, a.grass);
   if (grass) fillScaled(ctx, grass, a.groundScale, l, tp, w, h);
 
+  // Edge tiles go down *before* the road, not after. Their stone half is tan
+  // flagstone and the road is grey cobble — laid on top they read as a stripe
+  // of a different material running alongside the road. Underneath, the road
+  // overpaints that half and only their grass fringe survives, which is the
+  // part actually doing the blending.
+  const laidEdges = drawRoadEdges(ctx, S);
+
   const road = Atlas.patternFor(ctx, a.road);
   if (road) {
     ctx.save();
@@ -202,13 +209,110 @@ function drawTexturedGround(ctx, S, cw, ch) {
     ctx.restore();
   }
 
-  // A little dirt worn into the verge either side of the flagstones.
-  ctx.save();
-  bandPath(ctx, S, 0.45);
-  ctx.strokeStyle = 'rgba(0,0,0,.22)';
-  ctx.lineWidth = 5;
-  ctx.stroke();
-  ctx.restore();
+  if (!laidEdges) {
+    // No edge art loaded yet: fall back to a worn line so the boundary still
+    // reads as something rather than a hard cut.
+    ctx.save();
+    bandPath(ctx, S, 0.45);
+    ctx.strokeStyle = 'rgba(0,0,0,.22)';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// Edge tiles are drawn a hundred-odd times a frame, and rescaling a 657px
+// source down to 64 each time is what turns a 60fps frame into a 40fps one.
+// Each one gets baked to a small canvas once instead.
+const bakedTiles = new Map();
+function bakedTile(sh, idx, w, h) {
+  const key = `${idx}:${w}x${h}`;
+  let cv = bakedTiles.get(key);
+  if (cv) return cv;
+  const c = sh.cells[idx];
+  cv = document.createElement('canvas');
+  cv.width = Math.ceil(w * 2);          // 2x, so the camera zoom has headroom
+  cv.height = Math.ceil(h * 2);
+  cv.getContext('2d').drawImage(sh.canvas, c.x, c.y, c.w, c.h, 0, 0, cv.width, cv.height);
+  bakedTiles.set(key, cv);
+  return cv;
+}
+
+/**
+ * Lay painted transition diamonds along both edges of the road.
+ *
+ * The clip gives a clean boundary but a hard one — stone stops and grass
+ * starts on the same pixel. These tiles carry the blend inside them, so they
+ * straddle the edge line rather than butting up against it.
+ *
+ * They are baked into long ribbon chunks rather than blitted one at a time. A
+ * single alpha blit onto the presented canvas costs about 0.2ms here, so the
+ * ~130 tiles a screen needs would eat 25ms — more than the whole rest of the
+ * frame. Chunked, it is three or four blits, and a chunk is only built when
+ * the march reaches new ground.
+ */
+// Small on purpose. A chunk's canvas is the bounding box of a diagonal band,
+// so most of it is empty; the shorter the run, the tighter the box hugs the
+// ribbon and the less transparent area gets blended every frame.
+const CHUNK = 6;
+const ribbons = new Map();
+
+function ribbonChunk(sh, cfg, side, ci) {
+  const key = `${side}:${ci}`;
+  let r = ribbons.get(key);
+  if (r) return r;
+
+  const idx = side < 0 ? cfg.minus : cfg.plus;
+  const cell = sh.cells[idx];
+  const scale = TILE_W / cell.w;
+  const drawnH = cell.h * scale;
+  const overhang = Math.max(0, drawnH - TILE_H);   // lip below the flat face
+  const y0 = drawnH / 2 - overhang / 2 + cfg.lift * TILE_H;
+
+  const x0 = ci * CHUNK, x1 = x0 + CHUNK;
+  let l = Infinity, t = Infinity, rt = -Infinity, b = -Infinity;
+  for (let x = x0; x <= x1; x += 0.5) {
+    const p = toScreen(x, side * roadEdge(x, side));
+    if (p.x < l) l = p.x;
+    if (p.x > rt) rt = p.x;
+    if (p.y < t) t = p.y;
+    if (p.y > b) b = p.y;
+  }
+  l -= TILE_W; rt += TILE_W; t -= drawnH * 2; b += drawnH * 2;
+
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(rt - l);
+  cv.height = Math.ceil(b - t);
+  const c = cv.getContext('2d');
+  const baked = bakedTile(sh, idx, TILE_W, drawnH);
+  for (let x = x0; x <= x1; x += 0.5) {
+    const p = toScreen(x, side * roadEdge(x, side));
+    c.drawImage(baked, p.x - l - TILE_W / 2, p.y - t + y0 - drawnH, TILE_W, drawnH);
+  }
+
+  r = { cv, l, t };
+  ribbons.set(key, r);
+  if (ribbons.size > 12) ribbons.delete(ribbons.keys().next().value);
+  return r;
+}
+
+function drawRoadEdges(ctx, S) {
+  const cfg = S.biome.art && S.biome.art.edges;
+  if (!cfg) return false;
+  const sh = Atlas.sheet(cfg.src, cfg.cols, cfg.rows);
+  if (!sh) return false;
+
+  const reach = Math.ceil(11 / S.cam.zoom) + 10;
+  const c0 = Math.floor((S.cam.x - reach) / CHUNK);
+  const c1 = Math.floor((S.cam.x + reach) / CHUNK);
+  for (const side of [-1, 1]) {
+    if (!sh.cells[side < 0 ? cfg.minus : cfg.plus]) continue;
+    for (let ci = c0; ci <= c1; ci++) {
+      const r = ribbonChunk(sh, cfg, side, ci);
+      ctx.drawImage(r.cv, r.l, r.t);
+    }
+  }
+  return true;
 }
 
 function fillScaled(ctx, pattern, scale, l, t, w, h) {
@@ -253,8 +357,13 @@ export const roadEdge = (x, side) => HALF + edgeNoise(x, side > 0 ? 11 : 907) * 
  * biggest tell that a road was clipped rather than laid.
  */
 function bandPath(ctx, S, grow = 0) {
-  const x0 = S.cam.x - 60, x1 = S.cam.x + 60;
-  const step = 0.5;
+  // Only as far as the view reaches, and one point per tile. This path is used
+  // as a clip, and a clip's cost scales with its point count — spanning ±60
+  // tiles at half-tile steps built a 480-point path every frame and cost more
+  // than everything else in the renderer put together.
+  const reach = Math.ceil(11 / S.cam.zoom) + 12;
+  const x0 = Math.floor(S.cam.x - reach), x1 = Math.ceil(S.cam.x + reach);
+  const step = 1;
   ctx.beginPath();
   for (let x = x0; x <= x1; x += step) {
     const p = toScreen(x, -(roadEdge(x, -1) + grow));

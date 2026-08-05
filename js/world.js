@@ -44,6 +44,11 @@ export const BIOMES = [
         // event, so they stay rare.
         pool: [11, 11, 11, 4, 4, 5, 5, 6, 6, 2, 2, 3, 3, 8, 8, 0, 9, 10, 1, 7],
       },
+      // Transition diamonds straddling the road's edge. Measured off the
+      // sheet: cell 1 carries its grass on the -y side and cell 2 on the +y
+      // side, which are exactly this road's two edges. (Cells 0 and 3 face
+      // -x and +x — they'd serve a road running the other way.)
+      edges: { src: 'art/road-edges.png', cols: 2, rows: 2, minus: 1, plus: 2, lift: 0 },
       // Rare and large. Repetition reads worst when everything is the same
       // size, so a handful of big pieces does more than a dozen small ones.
       landmarks: [
