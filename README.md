@@ -30,11 +30,17 @@ modules, which browsers refuse to load over `file://`.
    of the road. The hero holds their mark and fights automatically. Your only
    input is *when* to spend each cooldown.
 3. **The Coffin Drop.** Survive and the spoils go in a coffin, and the coffin
-   goes down a crypt shaft. Drag to choose a lane, let go to drop it. Buttress
-   stones bleed its speed, chutes pile speed on, and each slab needs a minimum
-   speed to smash through — so how deep it gets, and what multiplier you are
-   paid, comes down to one read of the board before you commit. Do nothing and
-   it drops on its own after seven seconds and banks whatever it reaches.
+   goes down a crypt shaft. Drag to choose a lane, let go to drop it.
+
+   The reward is the **skulls it sheds on the way down**: every buttress stone
+   it clips knocks a few loose, so you *want* to hit stone — but stone also robs
+   its speed, and each slab below needs more speed than the last to smash
+   through. Chutes give the speed back and shake nothing loose. Rows are worth
+   ×1 to ×5 by depth, and the payout is **skulls × the row it stops on**.
+
+   So the two halves pull against each other: stone is the count, depth is the
+   multiplier, and the lane you pick decides how much of each you get. Do
+   nothing and it drops on its own after five seconds.
 4. **Boon stall.** Only at the end of a **section** — 3 or 4 waves — three
    cards come up and each has a **price in gold**. Buy one or walk on and keep
    the purse. Boons compete directly with the armoury for the same gold, which

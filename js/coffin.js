@@ -6,26 +6,36 @@
 // and what you are paid.
 //
 // You choose the lane and nothing else: slide the coffin along the lip of the
-// shaft, let go, and it falls. What happens after that is the field — buttress
-// stones bleed its speed, chutes pile speed on — and speed is the whole game,
-// because each slab needs a minimum to smash through. Land on stone and that
-// slab's multiplier is what you are paid.
+// shaft, let go, and it falls.
 //
-// So the decision is a single read of the board before you drop: which lane
-// gathers enough momentum to punch deep, and which one stalls out on the first
-// slab. Doing nothing is always safe and always pays — after a few seconds the
-// coffin drops on its own and banks whatever it reaches.
+// The reward is the skulls it sheds on the way down. Every buttress stone it
+// clips knocks a few loose — so you *want* to hit stones — but stone also robs
+// its speed, and each slab below needs more speed than the last to smash
+// through. Chutes give the speed back and shake nothing loose.
+//
+// So the two halves of the payout pull against each other: skulls are the
+// count, the depth reached is the multiplier, and the lane you pick decides how
+// much of each you get. Doing nothing is still safe and still pays — after a
+// few seconds the coffin drops on its own.
 
-const GRAVITY = 620;
+const GRAVITY = 780;
 const MAX_VY = 1500;
 const HOLD = 1.6;          // seconds to read the result before moving on
-const AIM_TIMEOUT = 7;     // an idle player still gets their gold
+const AIM_TIMEOUT = 5;     // an idle player still gets their gold
 const R = 24;              // coffin radius, for collisions
 
-const MULTS = [1, 2, 3, 5, 10];
+// One multiplier per row, straight down: the deeper it gets, the more each
+// skull is worth.
+const MULTS = [1, 2, 3, 4, 5];
 // Speed needed to smash each slab. The first is free — you always bank
-// something — and the last is only reachable off a good run of chutes.
-const NEEDS = [0, 430, 620, 830, 1080];
+// something — and every line after it asks for meaningfully more, so the last
+// is only reachable off a clean run of chutes.
+const NEEDS = [0, 380, 600, 860, 1150];
+
+const LOAD = 24;           // skulls in the coffin to begin with
+// Tuned so an unaimed drop returns roughly the pot: the minigame should be a
+// multiplier on the fight, not a replacement for it.
+const SKULL_PAR = 24;
 
 export function start(pot) {
   return {
@@ -35,6 +45,7 @@ export function start(pot) {
     phase: 'aim',            // aim -> fall -> landed
     aimT: 0,
     idx: 0,
+    skulls: 0, load: LOAD, spills: [],
     landed: false, landedOn: 0,
     shards: [], flash: 0, shake: 0,
     t: 0, hold: 0,
@@ -98,6 +109,12 @@ export function update(st, dt, cw, ch, sfx) {
     s.x += s.vx * dt; s.y += s.vy * dt; s.rot += s.spin * dt;
     if ((s.life -= dt) <= 0) st.shards.splice(i, 1);
   }
+  for (let i = st.spills.length - 1; i >= 0; i--) {
+    const k = st.spills[i];
+    k.vy += GRAVITY * 1.2 * dt;
+    k.x += k.vx * dt; k.y += k.vy * dt; k.rot += k.spin * dt;
+    if (k.y > ch + 40 || (k.life -= dt) <= 0) st.spills.splice(i, 1);
+  }
 
   if (st.phase === 'aim') {
     st.aimT += dt;
@@ -129,16 +146,24 @@ export function update(st, dt, cw, ch, sfx) {
     if (p.hit && st.t - p.hit < 0.25) continue;
     p.hit = st.t;
     if (p.boost) {
-      st.vy = Math.min(MAX_VY, st.vy * 1.16 + 210);
+      st.vy = Math.min(MAX_VY, st.vy * 1.2 + 260);
       st.flash = Math.max(st.flash, 0.5);
       if (sfx) sfx.buff();
+      burst(st, 8, true);
     } else {
-      st.vy *= 0.52;
+      // Stone is where the reward comes from: it shakes skulls out of the
+      // coffin, and takes speed in exchange.
+      // Costly, but not ruinous: clipping stone has to stay worth doing, or
+      // the reward half of the game is a trap.
+      st.vy *= 0.74;
       st.vx += (dx >= 0 ? 1 : -1) * (90 + Math.random() * 70);
       st.shake = Math.max(st.shake, 0.35);
-      if (sfx) sfx.hit();
+      const spill = Math.min(st.load, 2 + Math.floor(Math.random() * 3));
+      st.load -= spill;
+      st.skulls += spill;
+      for (let k = 0; k < spill; k++) spillSkull(st);
+      if (sfx) sfx[spill ? 'bones' : 'hit']();
     }
-    burst(st, p.boost ? 8 : 5, p.boost);
   }
 
   // Slabs: enough speed and it goes through, otherwise this is the floor.
@@ -150,6 +175,13 @@ export function update(st, dt, cw, ch, sfx) {
       st.flash = 0.8;
       st.shake = Math.max(st.shake, 0.5);
       burst(st, 16);
+      // Smashing through shakes the box as well, or a clean run down an empty
+      // lane would reach the bottom carrying nothing and pay nothing — depth
+      // has to be worth something on its own.
+      const jolt = Math.min(st.load, 1 + Math.floor(Math.random() * 2));
+      st.load -= jolt;
+      st.skulls += jolt;
+      for (let k = 0; k < jolt; k++) spillSkull(st);
       if (sfx) sfx.crit();
       if (st.idx >= st.floors.length) {
         st.phase = 'landed';
@@ -189,6 +221,18 @@ export function nudge(st, dir) {
   aim(st, st.x + dir * 34);
 }
 
+function spillSkull(st) {
+  st.spills.push({
+    x: st.x + (Math.random() - 0.5) * 26,
+    y: st.y + (Math.random() - 0.5) * 16,
+    vx: (Math.random() - 0.5) * 300,
+    vy: -120 - Math.random() * 160,
+    r: 7 + Math.random() * 3,
+    rot: (Math.random() - 0.5) * 1.2, spin: (Math.random() - 0.5) * 6,
+    life: 2.2,
+  });
+}
+
 function burst(st, n, warm) {
   for (let i = 0; i < n; i++) {
     st.shards.push({
@@ -203,7 +247,10 @@ function burst(st, n, warm) {
   }
 }
 
-export const payout = (st) => Math.round(st.pot * (st.landed ? st.landedOn : 1));
+// Skulls are the count, depth is the multiplier. A par spill at ×1 pays back
+// roughly the pot, so the minigame reads as a multiplier on the fight itself.
+export const payout = (st) =>
+  Math.max(1, Math.round(st.pot * (st.skulls / SKULL_PAR) * (st.landed ? st.landedOn : 1)));
 
 // --- drawing ----------------------------------------------------------------
 
@@ -323,7 +370,25 @@ export function draw(ctx, st, cw, ch, accent) {
   }
   ctx.globalAlpha = 1;
 
+  for (const k of st.spills) {
+    ctx.save();
+    ctx.translate(k.x, k.y);
+    ctx.rotate(k.rot);
+    ctx.globalAlpha = Math.min(1, k.life);
+    drawSkull(ctx, k.r);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+
   drawCoffin(ctx, st.x, st.y, st.vx, st.landed);
+
+  // Running tally rides with the coffin: the reward is visibly coming out of
+  // it, which is the whole reason to steer into stone.
+  if (st.phase !== 'aim' && st.skulls > 0) {
+    ctx.font = '15px "Iowan Old Style", Georgia, serif';
+    ctx.fillStyle = '#e8e0c8';
+    ctx.fillText(`${st.skulls} ☠`, st.x, st.y - 62);
+  }
 
   if (st.flash > 0) {
     ctx.fillStyle = `rgba(255,232,170,${st.flash * 0.2})`;
@@ -339,7 +404,7 @@ export function draw(ctx, st, cw, ch, accent) {
   ctx.fillStyle = 'rgba(216,201,168,.55)';
   ctx.fillText(
     st.phase === 'aim' ? 'Drag to choose the lane — let go to drop'
-      : st.phase === 'fall' ? 'Stone slows it · chutes speed it up' : '',
+      : st.phase === 'fall' ? 'Stone shakes skulls loose · chutes buy depth' : '',
     cw / 2, ch * 0.085);
 
   ctx.font = '26px "Iowan Old Style", Georgia, serif';
@@ -348,11 +413,28 @@ export function draw(ctx, st, cw, ch, accent) {
     ctx.fillText(`◍ ${payout(st).toLocaleString()}`, cw / 2, ch * 0.885);
     ctx.font = '13px "Iowan Old Style", Georgia, serif';
     ctx.fillStyle = 'rgba(216,201,168,.6)';
-    ctx.fillText(`${st.pot.toLocaleString()} × ${st.landedOn}`, cw / 2, ch * 0.915);
+    ctx.fillText(`${st.skulls} skulls × ${st.landedOn}`, cw / 2, ch * 0.915);
   } else {
     ctx.fillStyle = 'rgba(216,201,168,.8)';
-    ctx.fillText(`◍ ${st.pot.toLocaleString()}`, cw / 2, ch * 0.885);
+    ctx.fillText(`${st.skulls} ☠`, cw / 2, ch * 0.885);
+    ctx.font = '12px "Iowan Old Style", Georgia, serif';
+    ctx.fillStyle = 'rgba(216,201,168,.45)';
+    ctx.fillText(`${st.load} still in the box`, cw / 2, ch * 0.915);
   }
+}
+
+function drawSkull(ctx, r) {
+  ctx.fillStyle = '#e6e1cd';
+  ctx.beginPath();
+  ctx.arc(0, -r * 0.15, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(-r * 0.55, r * 0.5, r * 1.1, r * 0.55);
+  ctx.fillStyle = '#2a2620';
+  ctx.beginPath();
+  ctx.arc(-r * 0.36, -r * 0.2, r * 0.27, 0, Math.PI * 2);
+  ctx.arc(r * 0.36, -r * 0.2, r * 0.27, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(-r * 0.1, r * 0.15, r * 0.2, r * 0.28);
 }
 
 function drawCoffin(ctx, x, y, vx, landed) {
