@@ -46,19 +46,40 @@ pot: measured 0.88× / 1.13× / 1.38× over three autopilot drops. A player who
 reads the board should reach 2–4×. If the economy feels off later, that
 constant is the dial.
 
+## The minigame is painted now
+
+Four sheets arrived and are wired: `shaft-wall.png` (masonry), `shaft-parts.png`
+(stone and chute in two sizes, slab intact and smashed), `coffin.png` (upright,
+tumbling, burst open) and `skulls.png` (four skulls, four rubble chunks). All
+auto-sliced, in reading order, indexed by the constants at the top of
+`js/coffin.js`. Every painted path still falls back to the vector one if a sheet
+has not decoded, so the first second of a drop is never blank.
+
+Three things worth knowing before changing it:
+
+- **The coffin's anchor changes on landing.** Falling, it is centred on the
+  point collisions are measured from; stopped, it sits on the slab. A single
+  anchor cannot do both — it either floats or sinks halfway into stone.
+- **Slabs are stretched, not scaled.** A slab at its own aspect would be 133px
+  tall against floors 118px apart. Stone courses take horizontal stretching;
+  the state colour lives on the lip rather than tinting the art.
+- **Depth state reads off two sprites**, not a colour: floors already smashed
+  through use the broken slab.
+
 ## Next session
 
-1. **Art for the minigame.** Everything in it is drawn procedurally right now —
-   coffin, slabs, stones, chutes, skulls. A magenta-background sheet in the
-   established format would drop in: coffin (idle + tumbling), a buttress
-   stone, a chute, a skull, and a slab tile.
-2. **Reward selection** after the drop.
+1. **Reward selection** after the drop.
 
 ## Known caveats
 
-- Baseline is ~42fps in the preview pane with the road edges off, 34 with them
-  on. The two full-screen pattern fills (grass + road) are the likely bulk and
-  have not been chased.
+- The road is ~34-42fps in the preview pane; the two full-screen pattern fills
+  (grass + road) are the likely bulk and still have not been chased.
+- **The drop itself now runs at a locked 60.** It used to render the entire
+  road underneath a backdrop that buried it — a full world render, ground,
+  decals, lighting and all, for something 5% visible. `render.js` returns early
+  during the drop, and the shaft backdrop is opaque because it is now the only
+  thing clearing the canvas. Measured over 5s samples: 27fps before the art,
+  18.6 with it, 60 once the road behind it went.
 - `art/road-edges.png` cells 0 and 3 are unused: they face ±x and would serve a
   road running the other way.
 - The hero is still vector-drawn against painted enemies — the most visible

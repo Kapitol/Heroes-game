@@ -37,6 +37,17 @@ export function render(ctx, S, t, dt) {
   } else { cam.shakeX = cam.shakeY = 0; }
 
   ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+
+  // The payout game takes the whole screen; it is a scene of its own, and it
+  // covers the road completely. Drawing the road underneath it was a full
+  // world render — ground, decals, depth pass, lighting — for something the
+  // backdrop then buried, and it was most of the frame. The shaft is painted
+  // now and costs real fill of its own, so the road behind it goes.
+  if (S.phase === 'drop' && S.drop) {
+    Coffin.draw(ctx, S.drop, cw, ch, b.accent);
+    return;
+  }
+
   // A biome with an `art` block is drawn from textures and a prop sheet
   // instead of generated ground and vector scenery.
   const painted = !!(b.art && Atlas.texture(b.art.grass));
@@ -72,8 +83,6 @@ export function render(ctx, S, t, dt) {
   drawOverheads(ctx, S, t);
   ctx.restore();
 
-  // The payout game takes the whole screen; it is a scene of its own.
-  if (S.phase === 'drop' && S.drop) Coffin.draw(ctx, S.drop, cw, ch, b.accent);
 }
 
 // --- backdrop ---------------------------------------------------------------

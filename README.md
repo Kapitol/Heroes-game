@@ -149,6 +149,10 @@ The first biome is drawn from generated assets in `art/`:
 | `skeletons.png` | 3×2 creature poses (idle / attack) |
 | `archer-anim.png` | walk cycle, collapse, and arrow |
 | `road-edges.png` | road/grass transition diamonds (not yet wired) |
+| `shaft-wall.png` | repeating masonry for the Coffin Drop shaft |
+| `shaft-parts.png` | stone, chute and slab, small and large / intact and smashed |
+| `coffin.png` | the coffin: upright, tumbling, burst open |
+| `skulls.png` | four skulls and four rubble chunks, for spills and debris |
 
 **Ground** is two repeating textures. Grass covers the screen; the road is the
 same trick clipped to the walkable band, so the two can never disagree about
@@ -178,6 +182,16 @@ the walkable band stays straight.
 
 That separation — tiling ground, engine-placed props — is the whole reason
 this works where a single painted scene could not.
+
+**The shaft** uses the same pieces a second way. Its wall is a wall, not a
+seamless tile, so it is mirror-tiled: every other row and column is flipped and
+each edge then butts against its own reflection. The whole shaft — masonry,
+the darkening that pushes it behind the pieces, the shading into depth — is
+baked into one canvas when the layout is built, because doing it live was four
+downscales of a 1024×1536 source and two full-height gradients every frame.
+Stones, chutes, skulls and rubble are drawn far smaller than they were
+generated, so they come off reduced copies (`Atlas.scaled`) rather than being
+resampled from a 490px cell on every draw.
 
 ### Looking at one creature
 

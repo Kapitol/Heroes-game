@@ -18,6 +18,46 @@
 // much of each you get. Doing nothing is still safe and still pays — after a
 // few seconds the coffin drops on its own.
 
+import * as Atlas from './atlas.js';
+
+// The painted set. Every sheet here is auto-sliced: these came back on uneven
+// rows like the rest, and the cells below are the reading order the slicer
+// produces.
+const ART = {
+  coffin: 'art/coffin.png',      // 0 upright · 1 tumbling · 2 burst open
+  parts: 'art/shaft-parts.png',  // 0/1 stone small·large · 2/3 chute · 4 slab · 5 slab smashed
+  skulls: 'art/skulls.png',      // 0-3 skulls · 4-7 rubble
+  wall: 'art/shaft-wall.png',
+};
+const COFFIN_UP = 0, COFFIN_TUMBLE = 1, COFFIN_BURST = 2;
+const STONE = 0, CHUTE = 2, SLAB = 4, SLAB_BROKEN = 5;
+
+const art = (src) => Atlas.sheet(src, 0, 0, { auto: true });
+
+/**
+ * Draw one cell `w` wide, keeping its aspect, with (x, y) landing `ayf` of the
+ * way down it.
+ *
+ * `drawSprite` anchors to the bottom centre, which is right for a prop standing
+ * on a tile and wrong for everything in here: a stone is centred on the point
+ * it deflects from, and a chute hangs its flame *below* the ring that does the
+ * deflecting. The anchor has to be a parameter.
+ */
+function blit(ctx, s, i, x, y, w, ayf, rot) {
+  const c = s.cells[i];
+  if (!c) return;
+  const h = (c.h / c.w) * w;
+  if (rot) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.drawImage(s.canvas, c.x, c.y, c.w, c.h, -w / 2, -h * ayf, w, h);
+    ctx.restore();
+    return;
+  }
+  ctx.drawImage(s.canvas, c.x, c.y, c.w, c.h, x - w / 2, y - h * ayf, w, h);
+}
+
 const GRAVITY = 780;
 const MAX_VY = 1500;
 const HOLD = 1.6;          // seconds to read the result before moving on
@@ -84,7 +124,14 @@ function layout(st, cw, ch) {
       for (let l = 0; l < lanes; l++) {
         if (Math.random() < 0.42) continue;                 // leave lanes open
         const x = left + (half * 2) * ((l + 0.5) / lanes) + (Math.random() - 0.5) * 22;
-        pegs.push({ x, y, r: 15 + Math.random() * 6, boost: Math.random() < 0.42 });
+        // `big` only picks which of the two painted sizes gets drawn; the
+        // collision radius is still `r`, so the art can vary without the board
+        // playing differently from how it reads.
+        pegs.push({
+          x, y, r: 15 + Math.random() * 6,
+          boost: Math.random() < 0.42,
+          big: Math.random() < 0.5,
+        });
       }
     }
   }
@@ -229,6 +276,7 @@ function spillSkull(st) {
     vy: -120 - Math.random() * 160,
     r: 7 + Math.random() * 3,
     rot: (Math.random() - 0.5) * 1.2, spin: (Math.random() - 0.5) * 6,
+    cell: Math.floor(Math.random() * 4),      // which of the four painted skulls
     life: 2.2,
   });
 }
@@ -242,6 +290,7 @@ function burst(st, n, warm) {
       vy: -Math.random() * 240,
       r: 3 + Math.random() * 7,
       rot: Math.random() * 6.28, spin: (Math.random() - 0.5) * 12,
+      cell: 4 + Math.floor(Math.random() * 4),   // rubble; the warm burst stays a spark
       life: 0.4 + Math.random() * 0.5,
     });
   }
@@ -261,16 +310,21 @@ export function draw(ctx, st, cw, ch, accent) {
   const sy = st.shake ? (Math.random() - 0.5) * st.shake * 6 : 0;
 
   ctx.save();
-  ctx.fillStyle = 'rgba(6,5,4,.95)';
+  // Opaque: this is the only thing clearing the canvas now. The old 5% of
+  // transparency used to let a hint of the road through; with the road no
+  // longer drawn it would smear the previous frame instead.
+  ctx.fillStyle = '#060504';
   ctx.fillRect(0, 0, cw, ch);
   ctx.translate(sx, sy);
 
-  const g = ctx.createLinearGradient(L.left, 0, L.right, 0);
-  g.addColorStop(0, '#241d17');
-  g.addColorStop(0.5, '#120e0b');
-  g.addColorStop(1, '#241d17');
-  ctx.fillStyle = g;
-  ctx.fillRect(L.left, 0, L.right - L.left, ch);
+  if (!drawWall(ctx, L, ch)) {
+    const g = ctx.createLinearGradient(L.left, 0, L.right, 0);
+    g.addColorStop(0, '#241d17');
+    g.addColorStop(0.5, '#120e0b');
+    g.addColorStop(1, '#241d17');
+    ctx.fillStyle = g;
+    ctx.fillRect(L.left, 0, L.right - L.left, ch);
+  }
   ctx.fillStyle = 'rgba(0,0,0,.55)';
   ctx.fillRect(L.left - 12, 0, 12, ch);
   ctx.fillRect(L.right, 0, 12, ch);
@@ -290,7 +344,26 @@ export function draw(ctx, st, cw, ch, accent) {
 
   // Blockers are dead stone; chutes glow and point the way down. The two have
   // to be legible at a glance or the aim is a guess.
+  const parts = art(ART.parts);
+  // Stones and chutes are drawn small, so they come off the reduced copy; the
+  // slabs below stretch nearly the full width of the shaft and stay on the
+  // full-resolution one.
+  const small = parts && Atlas.scaled(parts, 0.34);
   for (const p of st.pegs) {
+    if (parts) {
+      if (p.boost) {
+        // The ring is what the coffin clips; the flame pours out below it, so
+        // the sprite hangs from its top rather than sitting on its middle.
+        const w = p.r * (p.big ? 4.6 : 3.8);
+        ctx.save();
+        ctx.globalAlpha = 0.85 + Math.sin(st.t * 6 + p.x) * 0.15;
+        blit(ctx, small, CHUTE + (p.big ? 1 : 0), p.x, p.y - p.r * 0.8, w, 0);
+        ctx.restore();
+      } else {
+        blit(ctx, small, STONE + (p.big ? 1 : 0), p.x, p.y, p.r * (p.big ? 3.4 : 3.0), 0.5);
+      }
+      continue;
+    }
     if (p.boost) {
       ctx.fillStyle = 'rgba(120,200,140,.16)';
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.5, 0, Math.PI * 2); ctx.fill();
@@ -327,16 +400,34 @@ export function draw(ctx, st, cw, ch, accent) {
     // rule is legible without ever reading a number.
     const willBreak = next && st.phase === 'fall' && st.vy >= f.need;
 
-    ctx.fillStyle = passed ? '#2e2a22' : willBreak ? '#5d7a52' : (next ? '#6a6154' : '#4c463a');
-    ctx.fillRect(L.left, f.y, L.right - L.left, 15);
-    ctx.fillStyle = passed ? '#3a352b' : willBreak ? '#7fa06e' : (next ? '#837a68' : '#5c5648');
-    ctx.fillRect(L.left, f.y, L.right - L.left, 4);
-    if (passed) {
-      ctx.strokeStyle = 'rgba(0,0,0,.5)';
-      ctx.lineWidth = 2;
-      for (let k = 0; k < 5; k++) {
-        const x = L.left + ((L.right - L.left) * (k + 0.5)) / 5;
-        ctx.beginPath(); ctx.moveTo(x - 12, f.y + 8); ctx.lineTo(x + 12, f.y + 8); ctx.stroke();
+    if (parts) {
+      // Stretched across the shaft: the slab is a course of stone, and stone
+      // courses take horizontal stretching without reading as distorted.
+      const c = parts.cells[passed ? SLAB_BROKEN : SLAB];
+      const sw = L.right - L.left, sh = 34;
+      ctx.save();
+      if (passed) ctx.globalAlpha = 0.75;
+      ctx.drawImage(parts.canvas, c.x, c.y, c.w, c.h, L.left, f.y - 9, sw, sh);
+      ctx.restore();
+      // State stays on the lip, where the coffin meets it: green the moment it
+      // is carrying enough speed to go through. Painting the whole slab would
+      // have meant tinting the art, and the lip is what you actually watch.
+      if (!passed) {
+        ctx.fillStyle = willBreak ? 'rgba(143,224,168,.85)' : (next ? 'rgba(200,162,74,.5)' : 'rgba(0,0,0,0)');
+        ctx.fillRect(L.left, f.y - 3, sw, 3);
+      }
+    } else {
+      ctx.fillStyle = passed ? '#2e2a22' : willBreak ? '#5d7a52' : (next ? '#6a6154' : '#4c463a');
+      ctx.fillRect(L.left, f.y, L.right - L.left, 15);
+      ctx.fillStyle = passed ? '#3a352b' : willBreak ? '#7fa06e' : (next ? '#837a68' : '#5c5648');
+      ctx.fillRect(L.left, f.y, L.right - L.left, 4);
+      if (passed) {
+        ctx.strokeStyle = 'rgba(0,0,0,.5)';
+        ctx.lineWidth = 2;
+        for (let k = 0; k < 5; k++) {
+          const x = L.left + ((L.right - L.left) * (k + 0.5)) / 5;
+          ctx.beginPath(); ctx.moveTo(x - 12, f.y + 8); ctx.lineTo(x + 12, f.y + 8); ctx.stroke();
+        }
       }
     }
 
@@ -355,39 +446,55 @@ export function draw(ctx, st, cw, ch, accent) {
     const f = st.floors[st.idx];
     ctx.font = '13px "Iowan Old Style", Georgia, serif';
     ctx.fillStyle = f && st.vy >= f.need ? '#8fe0a8' : '#d8c9a8';
-    ctx.fillText(`${Math.round(st.vy)}`, st.x, st.y - 44);
+    ctx.fillText(`${Math.round(st.vy)}`, st.x, st.y - COFFIN_H * 0.62);
     ctx.font = '15px "Iowan Old Style", Georgia, serif';
   }
 
+  // Skulls and rubble are the smallest things on screen and the most numerous —
+  // a spill can be two dozen at once — so they come off the reduced copy too.
+  const full = art(ART.skulls);
+  const skullSheet = full && Atlas.scaled(full, 0.2);
   for (const s of st.shards) {
     ctx.save();
-    ctx.translate(s.x, s.y);
-    ctx.rotate(s.rot);
     ctx.globalAlpha = Math.min(1, s.life * 2);
-    ctx.fillStyle = s.warm ? '#8fe0a8' : '#6d6555';
-    ctx.fillRect(-s.r / 2, -s.r / 2, s.r, s.r);
+    // A chute throws sparks and stone throws stone, so only the cold burst
+    // gets the painted rubble.
+    if (skullSheet && !s.warm) {
+      blit(ctx, skullSheet, s.cell, s.x, s.y, s.r * 2.4, 0.5, s.rot);
+    } else {
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.rot);
+      ctx.fillStyle = s.warm ? '#8fe0a8' : '#6d6555';
+      ctx.fillRect(-s.r / 2, -s.r / 2, s.r, s.r);
+    }
     ctx.restore();
   }
   ctx.globalAlpha = 1;
 
   for (const k of st.spills) {
     ctx.save();
-    ctx.translate(k.x, k.y);
-    ctx.rotate(k.rot);
     ctx.globalAlpha = Math.min(1, k.life);
-    drawSkull(ctx, k.r);
+    if (skullSheet) {
+      blit(ctx, skullSheet, k.cell, k.x, k.y, k.r * 2.6, 0.5, k.rot);
+    } else {
+      ctx.translate(k.x, k.y);
+      ctx.rotate(k.rot);
+      drawSkull(ctx, k.r);
+    }
     ctx.restore();
   }
   ctx.globalAlpha = 1;
 
-  drawCoffin(ctx, st.x, st.y, st.vx, st.landed);
+  if (!drawPaintedCoffin(ctx, st)) drawCoffin(ctx, st.x, st.y, st.vx, st.landed);
 
   // Running tally rides with the coffin: the reward is visibly coming out of
   // it, which is the whole reason to steer into stone.
   if (st.phase !== 'aim' && st.skulls > 0) {
     ctx.font = '15px "Iowan Old Style", Georgia, serif';
     ctx.fillStyle = '#e8e0c8';
-    ctx.fillText(`${st.skulls} ☠`, st.x, st.y - 62);
+    // Above the speed readout, and both clear of the sprite — the box got
+    // taller when it got painted.
+    ctx.fillText(`${st.skulls} ☠`, st.x, st.y - COFFIN_H * 0.62 - 20);
   }
 
   if (st.flash > 0) {
@@ -423,6 +530,71 @@ export function draw(ctx, st, cw, ch, accent) {
   }
 }
 
+const WALL_TILE = 300;
+let wall = null;      // the baked shaft, rebuilt only when the shaft resizes
+
+/**
+ * The shaft masonry, mirror-tiled and baked.
+ *
+ * The texture is a wall, not a seamless tile — laid end to end its edges don't
+ * meet. Flipping every other row and column makes each edge butt against its
+ * own reflection, which always matches, and the repetition that trick usually
+ * gives away is invisible in rubble masonry this dark.
+ *
+ * All of it — the tiling, the overall darkening that pushes it behind the
+ * pieces, and the shading that sends the shaft into the distance — is baked
+ * into one canvas at the size it will be drawn. Done live it was four
+ * downscales of a 1024×1536 source plus two full-height gradients every frame,
+ * which cost more than everything else in the minigame put together.
+ */
+function bakeWall(t, w, h) {
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.ceil(w));
+  cv.height = Math.max(1, Math.ceil(h));
+  const c = cv.getContext('2d');
+
+  const tw = WALL_TILE, th = tw * (t.img.naturalHeight / t.img.naturalWidth);
+  for (let ty = 0, r = 0; ty < h; ty += th, r++) {
+    for (let tx = 0, col = 0; tx < w; tx += tw, col++) {
+      const fx = col % 2 === 1, fy = r % 2 === 1;
+      c.save();
+      c.translate(tx + (fx ? tw : 0), ty + (fy ? th : 0));
+      c.scale(fx ? -1 : 1, fy ? -1 : 1);
+      c.drawImage(t.img, 0, 0, tw, th);
+      c.restore();
+    }
+  }
+
+  const d = c.createLinearGradient(0, 0, 0, h);
+  d.addColorStop(0, 'rgba(8,7,6,.55)');
+  d.addColorStop(0.45, 'rgba(8,7,6,.62)');
+  d.addColorStop(1, 'rgba(4,3,3,.85)');
+  c.fillStyle = d;
+  c.fillRect(0, 0, w, h);
+
+  // Walls fall away into shadow at the edges; the middle of the shaft is where
+  // the light is, and where the coffin is.
+  const s = c.createLinearGradient(0, 0, w, 0);
+  s.addColorStop(0, 'rgba(0,0,0,.75)');
+  s.addColorStop(0.22, 'rgba(0,0,0,0)');
+  s.addColorStop(0.78, 'rgba(0,0,0,0)');
+  s.addColorStop(1, 'rgba(0,0,0,.75)');
+  c.fillStyle = s;
+  c.fillRect(0, 0, w, h);
+  return cv;
+}
+
+function drawWall(ctx, L, ch) {
+  const t = Atlas.texture(ART.wall);
+  if (!t) return false;
+  const w = L.right - L.left;
+  if (!wall || wall.width !== Math.ceil(w) || wall.height !== Math.ceil(ch)) {
+    wall = bakeWall(t, w, ch);
+  }
+  ctx.drawImage(wall, L.left, 0);
+  return true;
+}
+
 function drawSkull(ctx, r) {
   ctx.fillStyle = '#e6e1cd';
   ctx.beginPath();
@@ -435,6 +607,45 @@ function drawSkull(ctx, r) {
   ctx.arc(r * 0.36, -r * 0.2, r * 0.27, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillRect(-r * 0.1, r * 0.15, r * 0.2, r * 0.28);
+}
+
+const COFFIN_H = 92;
+
+/**
+ * The painted coffin. Three poses do the whole job: it hangs square while it is
+ * being aimed, tumbles once it is being thrown around by stone, and bursts open
+ * where it stops — which is also the frame the payout is read off, so the box
+ * splitting and the number arriving are the same beat.
+ *
+ * Returns false until the sheet has decoded; the vector coffin covers that.
+ */
+function drawPaintedCoffin(ctx, st) {
+  const sh = art(ART.coffin);
+  if (!sh) return false;
+  const tilted = !st.landed && Math.abs(st.vx) > 60;
+  const i = st.landed ? COFFIN_BURST : tilted ? COFFIN_TUMBLE : COFFIN_UP;
+  const c = sh.cells[i];
+  if (!c) return false;
+
+  const w = COFFIN_H * (c.w / c.h);
+  // Falling, the sprite is centred on the point collisions are measured from.
+  // Stopped, it has to sit *on* the slab instead — that contact is the whole
+  // read of the frame, and a coffin sunk halfway into stone loses it.
+  const ayf = st.landed ? 0.94 : 0.5;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,.4)';
+  ctx.beginPath();
+  ctx.ellipse(st.x, st.y + COFFIN_H * (1 - ayf) * 0.9, w * 0.5, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // The tumbling pose is already drawn at an angle, so it only needs the
+  // remainder of the lean; the upright one takes the full amount.
+  const lean = Math.max(-0.5, Math.min(0.5, st.vx / 700));
+  blit(ctx, sh, i, st.x, st.y, w, ayf,
+    st.landed ? 0.05 : tilted ? lean * 0.45 : lean);
+  return true;
 }
 
 function drawCoffin(ctx, x, y, vx, landed) {

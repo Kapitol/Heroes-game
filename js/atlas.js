@@ -203,6 +203,35 @@ export const spriteSize = (s, i) => (s.cells[i] ? s.cells[i] : { w: 0, h: 0 });
  * it. Baking one red copy of the sheet up front costs a single canvas and
  * makes the flash a straight swap of source image.
  */
+/**
+ * A reduced-resolution copy of a sheet, cells and all.
+ *
+ * Generated art arrives far larger than it is ever drawn — a 490px cell on
+ * screen at 90px. Canvas resamples that every single draw, and a screenful of
+ * them costs real frames. Shrinking the sheet once, to something near the size
+ * it is actually used at, moves that work to load time.
+ *
+ * Only worth it for sheets drawn small. A sprite stretched *up* from the mip
+ * would just look soft, so the caller picks which source it wants.
+ */
+export function scaled(s, k) {
+  if (s.mip && s.mip.k === k) return s.mip;
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(s.canvas.width * k));
+  cv.height = Math.max(1, Math.round(s.canvas.height * k));
+  const c = cv.getContext('2d');
+  c.imageSmoothingQuality = 'high';
+  c.drawImage(s.canvas, 0, 0, cv.width, cv.height);
+  s.mip = {
+    k, canvas: cv,
+    cells: s.cells.map((cell) => cell && {
+      x: cell.x * k, y: cell.y * k, w: cell.w * k, h: cell.h * k,
+      ax: cell.ax * k, ay: cell.ay * k,
+    }),
+  };
+  return s.mip;
+}
+
 export function tinted(s, colour) {
   if (s.tint) return s.tint;
   const cv = document.createElement('canvas');
