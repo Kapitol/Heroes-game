@@ -219,15 +219,51 @@ function fillScaled(ctx, pattern, scale, l, t, w, h) {
   ctx.restore();
 }
 
-// The walkable band as a path, stretched well past the view on both sides.
+/**
+ * Smooth 1-D value noise along the road, in two octaves.
+ *
+ * Deterministic on the tile coordinate like everything else here, so the same
+ * stretch of verge always has the same shape however many times you walk it.
+ */
+function edgeNoise(x, seed) {
+  let v = 0, amp = 1, freq = 0.34, total = 0;
+  for (let o = 0; o < 2; o++) {
+    const p = x * freq;
+    const i = Math.floor(p), f = p - i;
+    const a = hash2(i, seed + o * 37), b = hash2(i + 1, seed + o * 37);
+    const t = f * f * (3 - 2 * f);          // smoothstep between lattice points
+    v += (a + (b - a) * t) * amp;
+    total += amp;
+    amp *= 0.45; freq *= 2.7;
+  }
+  return v / total - 0.5;                    // -0.5 .. 0.5
+}
+
+// How far the painted edge strays from the walkable edge. Purely cosmetic —
+// the hero's road is still the straight band, and nothing gameplay-facing
+// reads this.
+const EDGE_WOBBLE = 0.85;
+
+export const roadEdge = (x, side) => HALF + edgeNoise(x, side > 0 ? 11 : 907) * EDGE_WOBBLE;
+
+/**
+ * The road as a path, stretched well past the view on both sides.
+ *
+ * The edges wander rather than ruling a straight line, which is the single
+ * biggest tell that a road was clipped rather than laid.
+ */
 function bandPath(ctx, S, grow = 0) {
   const x0 = S.cam.x - 60, x1 = S.cam.x + 60;
-  const e = HALF + grow;
-  const a = toScreen(x0, -e), b = toScreen(x1, -e);
-  const c = toScreen(x1, e), d = toScreen(x0, e);
+  const step = 0.5;
   ctx.beginPath();
-  ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-  ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y);
+  for (let x = x0; x <= x1; x += step) {
+    const p = toScreen(x, -(roadEdge(x, -1) + grow));
+    if (x === x0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+  }
+  for (let x = x1; x >= x0; x -= step) {
+    const p = toScreen(x, roadEdge(x, 1) + grow);
+    ctx.lineTo(p.x, p.y);
+  }
   ctx.closePath();
 }
 

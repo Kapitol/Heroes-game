@@ -136,6 +136,10 @@ The first biome is drawn from generated assets in `art/`:
 | `grass.png` | repeating verge texture |
 | `pavement.png` | repeating road texture |
 | `props-graveyard.png` | 4×3 sheet of props on magenta |
+| `decals.png` | 4×3 sheet of flat road markings |
+| `landmarks.png`, `landmarks-2.png` | large rare structures |
+| `skeletons.png` | 3×2 creature poses (idle / attack) |
+| `archer-anim.png` | walk cycle, collapse, and arrow |
 | `road-edges.png` | road/grass transition diamonds (not yet wired) |
 
 **Ground** is two repeating textures. Grass covers the screen; the road is the
@@ -153,8 +157,28 @@ the tile hash, choosing between the sheet's variants and jittering position and
 scale, so the verge never reads as a grid and the road can run forever without
 a visible repeat.
 
+**Sheets are auto-sliced.** Generated art rarely lands on an even lattice —
+rows come back different heights and columns drift — and a uniform grid then
+cuts sprites in half. `sliceAuto` finds the empty gutters instead, so any
+spacing works, and as a side effect it skips baked-in row labels because those
+sit in the gutters between content.
+
+**The road edge wanders.** A clipped band gives a ruler-straight boundary,
+which is the single biggest tell that a road was masked rather than laid, so
+the painted edge is offset by two octaves of value noise. Only the paint moves;
+the walkable band stays straight.
+
 That separation — tiling ground, engine-placed props — is the whole reason
 this works where a single painted scene could not.
+
+### Looking at one creature
+
+Waves are rolled from a weighted roster, so a given monster may not appear for
+minutes. `?spawn=archer` fills every wave with one key:
+
+    http://localhost:8124/index.html?spawn=archer
+
+Any key from `MONSTERS` in `js/encounters.js` works; anything else is ignored.
 
 ## How it's drawn
 

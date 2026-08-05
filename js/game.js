@@ -17,6 +17,12 @@ import * as UI from './ui.js';
 import * as Audio from './audio.js';
 
 const SAVE_KEY = 'cryptheroes.v3';
+
+// Dev hook: ?spawn=archer fills every wave with one monster key, which is the
+// only practical way to look at a specific creature's art on demand — waves
+// are rolled from a weighted roster and a given type may not show for minutes.
+// Ignored unless the key names a real monster.
+const DEV_SPAWN = new URLSearchParams(location.search).get('spawn');
 const LEASH = 1.9;          // how far the hero will step off their mark
 
 const cv = document.getElementById('game');
@@ -130,7 +136,7 @@ function beginEncounter() {
   const f = formationFor(S.stage);
   S.formation = f;
   const roster = rosterFor(S.stage);
-  const pool = f.pick(roster);
+  const pool = DEV_SPAWN && MONSTERS[DEV_SPAWN] ? [DEV_SPAWN] : f.pick(roster);
   const base = 3 + Math.floor(S.stage * 0.45);
   const n = Math.max(2, Math.round(base * f.count));
 
