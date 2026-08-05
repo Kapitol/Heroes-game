@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0806">
+<title>Crypt Heroes</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+
+  <!-- Top bar -->
+  <div id="top">
+    <div id="depthPlate">
+      <div id="stageName">The Green Road</div>
+      <div id="stageSub">Stage 1</div>
+    </div>
+    <div id="waveWrap">
+      <div id="waveText">Marching…</div>
+      <div id="waveBar"><i></i></div>
+    </div>
+    <div id="purse">
+      <div class="coin">◍ <span id="goldText">0</span></div>
+      <button id="btnPause" class="plate" title="Pause (P or Space)">⏸</button>
+      <button id="btnMenu" class="plate">☰</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="lootBar" class="hidden"><span>Grab the gold!</span><i id="lootFill"></i></div>
+  <div id="bannerWrap"><div id="banner"></div></div>
+  <div id="pausedTag" class="hidden">PAUSED</div>
+
+  <!-- Bottom belt: Diablo-style globes + skills -->
+  <div id="belt">
+    <div class="globe" id="hpGlobe">
+      <div class="fluid hp"><i></i></div>
+      <span class="globeText" id="hpText">100/100</span>
+    </div>
+
+    <div id="beltMid">
+      <div id="xpStrip"><i></i><span id="xpText">Level 1</span></div>
+      <div id="skills"></div>
+    </div>
+
+    <div class="globe" id="xpGlobe">
+      <div class="fluid rage"><i></i></div>
+      <button class="globeBtn" id="btnGear">⚒</button>
+    </div>
+  </div>
+
+  <!-- Gear / upgrades -->
+  <div id="gearPanel" class="panel hidden">
+    <div class="panelHead"><h2>Armoury</h2><button class="x" data-close>✕</button></div>
+    <p class="panelSub">Gold reforges the blade and the plate — and you can see it on them.</p>
+    <div id="gearList"></div>
+    <div class="secHead"><h3>Drafted</h3></div>
+    <div id="perkList"></div>
+    <div class="secHead"><h3>Hero</h3></div>
+    <div id="statList"></div>
+  </div>
+
+  <!-- Menu -->
+  <div id="menuPanel" class="panel hidden">
+    <div class="panelHead"><h2>Crypt Heroes</h2><button class="x" data-close>✕</button></div>
+    <div class="menuBody">
+      <p class="help">
+        Your hero walks the road and fights on their own. You choose when to
+        spend a cooldown, how much gold you snatch, and what boon they take
+        afterwards — nothing else.<br><br>
+        <b>Skills</b> tap a rune, or press <b>1</b>–<b>4</b><br>
+        <b>Gold</b> tap the coins during the scramble after a fight<br>
+        <b>Boons</b> pick one of three cards between stages<br>
+        <b>Armoury</b> the ⚒ globe, or press <b>E</b>
+      </p>
+      <div class="secHead"><h3>Sound</h3></div>
+      <div class="volRow">
+        <button id="btnMute" class="plate" title="Mute">🔊</button>
+        <input id="volSlider" type="range" min="0" max="100" value="50" aria-label="Volume">
+        <span id="volValue">50</span>
+      </div>
+      <div class="runStats" id="runStats"></div>
+      <button class="wide ghost" id="btnReset">Abandon Run</button>
+    </div>
+  </div>
+
+  <!-- Draft: pick one of three after every encounter -->
+  <div id="draftPanel" class="overlay hidden">
+    <div class="draftInner">
+      <h2>Choose your boon</h2>
+      <p id="draftPurse"></p>
+      <div id="draftCards"></div>
+      <button id="draftSkip">Walk on — keep the gold</button>
+      <p id="draftClock"></p>
+    </div>
+  </div>
+
+  <!-- Death -->
+  <div id="deathOverlay" class="overlay hidden">
+    <div class="overlayInner">
+      <h1 class="dead">YOU HAVE DIED</h1>
+      <p id="deathText">The dark keeps a tithe of your gold.</p>
+      <div id="reviveRing"><span id="reviveNum">3</span></div>
+    </div>
+  </div>
+
+  <!-- Title -->
+  <div id="overlay" class="overlay">
+    <div class="overlayInner">
+      <h1 id="ovTitle">CRYPT&nbsp;HEROES</h1>
+      <p class="tag">A road that starts in daylight and does not stay there</p>
+      <p id="ovText">Your hero walks and fights without being told. You spend the
+      cooldowns, you grab the gold before it fades, and you choose what they become
+      at the end of every fight.</p>
+      <button class="wide" id="ovBtn">Begin</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="js/game.js"></script>
+</body>
+</html>
