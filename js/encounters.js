@@ -122,7 +122,12 @@ export function formationFor(stage) {
 export const stageScale = (stage) => ({
   hp: Math.pow(1.20, stage - 1),
   dmg: Math.pow(1.13, stage - 1),
-  skulls: Math.pow(1.24, stage - 1),
+  // Skulls scale far flatter than anything else on this list, because they are
+  // spent against a *fixed* ladder — cards top out at 800 and stay there — while
+  // hp and damage climb forever. At 1.24 a stage the purse outran the ladder
+  // within a section and every card was pocket change by stage 20; six figures
+  // was a couple of hours' play rather than the far end of a long run.
+  skulls: Math.pow(1.05, stage - 1),
   xp: Math.pow(1.17, stage - 1),
 });
 

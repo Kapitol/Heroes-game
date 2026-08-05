@@ -406,16 +406,34 @@ h1.dead {
   height:6px; border-radius:1px;
   background:#241d16; border:1px solid #3d3025;
 }
-/* Tiers already bought. */
+/* The five bands. `--band` is the colour a tier becomes once it is yours; it
+   also tints the outline of the one you are being offered. */
+.tierRow i.gray   { --band:#9a9184; }
+.tierRow i.green  { --band:#5fa860; }
+.tierRow i.blue   { --band:#4f86c6; }
+.tierRow i.purple { --band:#9a5fc0; }
+.tierRow i.gold   { --band:#d8b45c; }
+
+/* Tiers already bought, lit in their own colour. */
 .tierRow i.on {
-  background:linear-gradient(180deg,#e2bd63,#9c7826);
-  border-color:#5d4715;
-  box-shadow:0 0 6px rgba(200,162,74,.45);
+  background:var(--band); border-color:var(--band);
+  box-shadow:0 0 6px color-mix(in srgb, var(--band) 55%, transparent);
 }
-/* The one this card would buy: lit from within, but not yet yours. */
+/* The one this card would buy: outlined in what it will become, not yet lit. */
 .tierRow i.next {
-  background:#2c2318; border-color:var(--gild-dim);
-  box-shadow:inset 0 0 5px rgba(200,162,74,.4);
+  background:#2c2318;
+  border-color:color-mix(in srgb, var(--band) 70%, #3d3025);
+  box-shadow:inset 0 0 5px color-mix(in srgb, var(--band) 45%, transparent);
+}
+
+/* The price pill takes the band of the tier being bought, so rarity and cost
+   are the same piece of information rather than two. */
+.card.green  .cardCost { background:linear-gradient(180deg,#7cc47d,#3f7a40); border-color:#2c5c2e; color:#0b1a0b; }
+.card.blue   .cardCost { background:linear-gradient(180deg,#74a6da,#2f5f96); border-color:#254c78; color:#07121e; }
+.card.purple .cardCost { background:linear-gradient(180deg,#b884d8,#6b3894); border-color:#522a72; color:#150620; }
+.card.gray   .cardCost {
+  background:none; border-color:#4a4238; color:#9a9184;
+  letter-spacing:.16em; text-transform:uppercase; font-size:11px;
 }
 .card.broke { opacity:.5; cursor:not-allowed; }
 .card.broke:hover { transform:none; border-color:#3d3025; }

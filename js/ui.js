@@ -1,7 +1,7 @@
 // DOM layer: globes, the rune belt, the armoury, the draft cards.
 
 import { heroStats } from './entities.js';
-import { SKILLS, skillById, PERKS, MAX_SKILLS, iconOpts } from './perks.js';
+import { SKILLS, skillById, PERKS, MAX_SKILLS, iconOpts, TIER_BANDS } from './perks.js';
 import * as Atlas from './atlas.js';
 import { heroKit, armourTierOf, weaponTierOf } from './sprites.js';
 import * as Audio from './audio.js';
@@ -296,8 +296,12 @@ function paintIcon(host, card) {
  */
 function tierRow(c) {
   if (!c.tiers) return '';
-  const pips = Array.from({ length: c.tiers }, (_, i) =>
-    `<i class="${i < c.held ? 'on' : i === c.held ? 'next' : ''}"></i>`).join('');
+  // Each rectangle is painted in its own band's colour — gray, green, blue,
+  // purple, gold — so the ladder reads as a rarity track and not just a count.
+  // Tiers held are lit; the one this card would buy is outlined in the colour
+  // it will become; the rest stay dark.
+  const pips = TIER_BANDS.slice(0, c.tiers).map((b, i) =>
+    `<i class="${b.key}${i < c.held ? ' on' : i === c.held ? ' next' : ''}"></i>`).join('');
   return `<span class="tierRow" style="--tiers:${c.tiers}">${pips}</span>`;
 }
 
@@ -308,13 +312,13 @@ export function showDraft(cards, skulls, gained) {
   cards.forEach((c, i) => {
     const b = document.createElement('button');
     const afford = skulls >= c.cost;
-    b.className = `card ${c.kind}${afford ? '' : ' broke'}`;
+    b.className = `card ${c.kind} ${c.band || 'gray'}${afford ? '' : ' broke'}`;
     b.innerHTML = `
       <span class="cardKind">${c.type === 'skill' ? 'New ability' : c.kind}</span>
       <span class="cardIcon">${c.icon}</span>
       <span class="cardName">${c.name}${c.tier > 1 ? ` <b>${c.tier}</b>` : ''}</span>
       <span class="cardDesc">${c.desc}</span>
-      <span class="cardCost">☠ ${c.cost}</span>
+      <span class="cardCost">${c.cost > 0 ? `☠ ${c.cost}` : 'Free'}</span>
       ${tierRow(c)}`;
     b.addEventListener('click', () => H.draftPick(i));
     el.draftCards.appendChild(b);

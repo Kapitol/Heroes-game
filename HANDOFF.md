@@ -16,6 +16,24 @@ it, and whatever is left stays there** for the next one. Nothing is consumed by
 the coffin — its load is still a flat `LOAD = 24` and the payout formula is
 untouched, so all the tuning below still holds.
 
+**Skulls scale at 1.05 a stage, not 1.24.** That one exponent is the whole
+economy. Cards are priced against a *fixed* ladder — Gold is 800 and stays 800 —
+while hp and damage climb forever, so an earnings curve that keeps pace with
+difficulty outruns the ladder within a section and makes every card pocket
+change. At 1.24 a wave paid five figures by stage 30 and six figures was an
+afternoon. At 1.05:
+
+| stage | a wave pays | run total so far |
+|---|---|---|
+| 1 | 27 | 27 |
+| 10 | 247 | 1,212 |
+| 20 | 807 | 6,462 |
+| 30 | 1,753 | 19,075 |
+| 45 | 5,240 | 68,779 |
+
+Maxing every perk to Gold costs 13,535 all in. So 100,000 is reachable at the
+far end of a long run and most players will never see it, which is the intent.
+
 Saves written before the change carry a `gold` field; `load()` reads it as
 skulls 1:1, because the two were always the same numbers under different names.
 That fallback is the one intentional mention of the word left in the source.
@@ -94,11 +112,28 @@ walking on ends it. It used to count down and auto-buy the cheapest card, which
 spent the run's skulls unasked and made saving impossible.
 
 - **A price belongs to the card, not to when you meet it.** Cost falls out of
-  `(id, tier)` alone — Might 3 is 90 whenever it appears, this run or next. That
-  is why nothing about pricing is saved: it is re-derived identically every time.
-- **Five tiers, then a card is finished** (`MAX_TIER`) and stops being offered.
-  Each tier costs ×1.5 the last, so the ladder — not section inflation — is what
-  makes late cards dear.
+  `(id, tier)` alone — Might 3 is 250 whenever it appears, this run or next.
+  That is why nothing about pricing is saved: it re-derives identically.
+- **Five tiers as named bands**, each with a price *ceiling*:
+
+  | tier | band | ceiling |
+  |---|---|---|
+  | 1 | Gray | **free** |
+  | 2 | Green | 100 |
+  | 3 | Blue | 250 |
+  | 4 | Purple | 450 |
+  | 5 | Gold | 800 |
+
+  The ceiling is not the price. Each card carries a `power` weight of 0…1 and
+  lands under it in proportion to what it gives, so Gold is 800 for Might and
+  520 for Plating — the number tells you how deep the ladder is *and* what that
+  particular perk is worth. Abilities and remedies have no ladder, so they sit
+  flat *on* a band: Volley is the Gold one at 800, being five bolts at 90% —
+  450% of damage in a single press, the most any skill puts out.
+
+  **Gray being free is load-bearing.** It is what lets the roll filter by
+  affordability without ever dealing a dead hand: a player with nothing is still
+  shown three cards they can take.
 - **Every card offered is affordable.** The roll draws from what the purse
   covers; a card you can't buy is a taunt, not an option. An empty-handed purse
   gets no panel at all rather than a wall of three greyed cards.
