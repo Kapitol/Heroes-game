@@ -554,47 +554,135 @@ body.minigame #toast { opacity:0; pointer-events:none; }
     url("../art/shaft-wall.png") center / cover no-repeat;
   background-color:#0a0806;
 }
-.mapInner { width:min(560px,94vw); max-height:88vh; overflow-y:auto; text-align:center; }
+.mapInner { width:min(960px,96vw); max-height:94vh; overflow-y:auto; text-align:center; padding-bottom:8px; }
 .mapInner h2 {
-  margin:0 0 2px; font-size:22px; font-weight:normal; letter-spacing:.16em;
+  margin:0 0 2px; font-size:19px; font-weight:normal; letter-spacing:.16em;
   color:var(--gild); text-transform:uppercase;
 }
-#mapSub { margin:0 0 16px; font-size:11px; letter-spacing:.14em; text-transform:uppercase; opacity:.5; }
+#mapSub { margin:0 0 10px; font-size:11px; letter-spacing:.14em; text-transform:uppercase; opacity:.5; }
 
-#mapTrack { display:flex; flex-direction:column; gap:3px; text-align:left; }
-.mapStop {
-  display:grid; grid-template-columns:20px 26px 1fr; align-items:center; gap:6px;
-  padding:5px 10px; border-radius:3px; font-size:13px;
-  border:1px solid transparent;
-}
-.mapMark { text-align:center; }
-.mapNo { font-size:10px; letter-spacing:.1em; opacity:.4; }
-/* Walked: struck through and faded. The line is the record of the run. */
-.mapStop.done { opacity:.45; }
-.mapStop.done .mapName { text-decoration:line-through; }
-.mapStop.done .mapMark { color:#5fa860; }
-/* Where the boss just fell. */
-.mapStop.here {
-  background:linear-gradient(180deg,#332a20,#181209);
-  border-color:var(--gild-dim); color:var(--gild);
-}
-.mapStop.ahead { opacity:.3; font-style:italic; }
 
-#mapChoices { display:flex; flex-direction:column; gap:8px; }
+/* The cards straddle the map's bottom edge and hang mostly below it: enough
+   overlap to read as attached to the map, little enough that no card is parked
+   over a place you might be choosing. */
+#mapChoices {
+  position:absolute; left:10px; right:10px; bottom:-64px;
+  display:grid; grid-template-columns:repeat(3,1fr); gap:10px;
+}
+@media (max-width:620px) {
+  #mapChoices { position:static; grid-template-columns:1fr; margin-top:10px; }
+  #mapImage { margin-bottom:0; }
+}
+/* Stacked, not a grid: these sit in a third of the map's width each, and any
+   two-column arrangement folds the labels into vertical stacks of letters. */
 .mapChoice {
-  display:grid; grid-template-columns:1fr auto; grid-template-areas:"tag meta" "name name" "note note";
-  gap:2px 10px; width:100%; text-align:left; cursor:pointer; font:inherit; color:var(--parch);
-  padding:11px 14px; border-radius:4px; border:1px solid #3d3025;
-  background:linear-gradient(180deg,#2a221a,#141009);
+  display:flex; flex-direction:column; gap:1px;
+  width:100%; text-align:left; cursor:pointer; font:inherit; color:var(--parch);
+  padding:9px 12px; border-radius:4px; border:1px solid #3d3025;
+  background:linear-gradient(180deg,rgba(42,34,26,.97),rgba(15,11,8,.97));
+  box-shadow:0 12px 28px rgba(0,0,0,.85);
   transition:transform .12s ease, border-color .12s ease;
 }
-.mapChoice:hover { transform:translateY(-2px); border-color:var(--gild-dim); }
-.mcTag  { grid-area:tag; font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; opacity:.6; }
-.mcMeta { grid-area:meta; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; opacity:.45; }
-.mcName { grid-area:name; font-size:17px; color:var(--gild); }
-.mcNote { grid-area:note; font-size:11.5px; opacity:.7; line-height:1.5; }
+.mapChoice:hover { transform:translateY(-4px); border-color:var(--gild-dim); }
+.mcTag  { font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; opacity:.6; }
+.mcMeta { font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; opacity:.45; }
+.mcName { font-size:15px; color:var(--gild); line-height:1.2; }
+.mcNote {
+  font-size:10.5px; opacity:.62; line-height:1.45;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
 /* The deep road is the dangerous one and says so. */
 .mapChoice.deep { border-color:#5d2a20; }
 .mapChoice.deep .mcName { color:#e0a06a; }
 .mapChoice.hold { border-color:#24405d; }
 .mapChoice.hold .mcName { color:#9fc0e6; }
+
+/* ---------- the map: pins on the overworld ---------- */
+/* The image sets the box's shape and the pins are placed inside it by
+   percentage, so the whole thing scales without a pin drifting off its town. */
+/* The map is the screen and stays whole — the roads sit under it rather than
+   over it, so no card is ever parked on top of a place you might be choosing. */
+/* Shrink-wrapped to the image: the pins are placed by percentage of this
+   box, so any gap between box and picture would slide every pin off its
+   town. Capping the height keeps the road cards on screen on a short
+   window without ever letting the two drift apart. */
+#mapImage { position:relative; display:inline-block; max-width:100%; margin:0 0 78px; border:1px solid #3d3025; border-radius:4px; overflow:hidden; }
+#mapArt { display:block; max-width:100%; max-height:56vh; width:auto; height:auto; }
+#mapPins { position:absolute; inset:0; }
+
+.pin {
+  position:absolute; transform:translate(-50%,-50%);
+  display:flex; align-items:center; gap:5px;
+  padding:0; background:none; border:0; font:inherit; color:var(--parch);
+  white-space:nowrap; pointer-events:none;
+}
+.pinDot {
+  width:17px; height:17px; flex:none; border-radius:50%;
+  display:grid; place-items:center; font-size:9px; line-height:1;
+  background:rgba(10,8,6,.85); border:1px solid #6b5c3e; color:#0a0806;
+  box-shadow:0 1px 4px rgba(0,0,0,.8);
+}
+/* Every place is named, even the ones not reached yet — a map with unlabelled
+   dots is a puzzle, not a map. Unvisited names sit faint and the eye passes
+   over them; the current one is lit. */
+.pinName {
+  font-size:10.5px; letter-spacing:.04em; opacity:.42;
+  text-shadow:0 1px 3px #000, 0 0 8px #000, 0 0 3px #000; transition:opacity .15s;
+}
+
+/* Walked. Quiet, but present — the record of the run is the point. */
+.pin.done .pinDot { background:#3f7a52; border-color:#8fe0a8; color:#0a1a10; }
+.pin.done .pinName { opacity:.62; }
+
+/* Where the boss just fell. */
+.pin.here .pinDot {
+  background:var(--gild); border-color:#f0d89a; color:#1c1206;
+  animation:pinHere 1.6s ease-in-out infinite;
+}
+.pin.here .pinName { opacity:1; color:var(--gild); }
+@keyframes pinHere {
+  0%,100% { box-shadow:0 0 0 0 rgba(200,162,74,.6); }
+  50%     { box-shadow:0 0 0 7px rgba(200,162,74,0); }
+}
+
+/* A road you can take — the only pins that are buttons. */
+.pin.choice { pointer-events:auto; cursor:pointer; }
+.pin.choice .pinDot { background:#241d17; border-color:var(--gild); }
+.pin.choice .pinName { opacity:.85; }
+.pin.choice:hover .pinDot { background:var(--gild); }
+.pin.choice:hover .pinName { opacity:1; color:var(--gild); }
+
+@media (prefers-reduced-motion:reduce) { .pin.here .pinDot { animation:none; } }
+
+/* ---------- the corner minimap ---------- */
+#topLeft { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
+#minimap {
+  width:62px; height:62px; border-radius:50%; padding:0; cursor:pointer;
+  border:2px solid #3d3025; background-image:url("../art/overview-map.png");
+  background-repeat:no-repeat; background-color:#0a0806;
+  box-shadow:inset 0 0 14px rgba(0,0,0,.85), 0 3px 10px rgba(0,0,0,.6);
+  position:relative; overflow:hidden;
+}
+#minimap:hover { border-color:var(--gild-dim); }
+/* A soft vignette so the crop reads as a lens rather than a cut-out square. */
+#minimap::after {
+  content:""; position:absolute; inset:0; border-radius:50%; pointer-events:none;
+  background:radial-gradient(circle at 50% 50%, transparent 42%, rgba(6,5,4,.72) 100%);
+}
+/* The hero is always dead centre — the map moves under the pin, not the pin
+   over the map. */
+#minimapPin {
+  position:absolute; left:50%; top:50%; width:9px; height:9px; margin:-4.5px 0 0 -4.5px;
+  border-radius:50%; background:var(--gild); border:1px solid #1c1206; z-index:2;
+  box-shadow:0 0 0 2px rgba(10,8,6,.7);
+  animation:pinHere 1.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion:reduce) { #minimapPin { animation:none; } }
+
+#mapClose {
+  margin:14px auto 0; padding:9px 22px; display:block; cursor:pointer;
+  font:inherit; font-size:13px; letter-spacing:.08em; color:var(--parch);
+  background:linear-gradient(180deg,#241d17,#120e0b);
+  border:1px solid #3d3025; border-radius:3px;
+}
+#mapClose:hover { border-color:var(--gild-dim); }

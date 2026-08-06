@@ -1,7 +1,7 @@
 // DOM layer: globes, the rune belt, the armoury, the draft cards.
 
 import { heroStats } from './entities.js';
-import { levelFor, LEVELS } from './world.js';
+import { levelFor, levelAt, LEVELS } from './world.js';
 import { SKILLS, skillById, PERKS, MAX_SKILLS, iconOpts, TIER_BANDS } from './perks.js';
 import * as Atlas from './atlas.js';
 import { heroKit, armourTierOf, weaponTierOf, drawActor } from './sprites.js';
@@ -40,7 +40,8 @@ export function init(state, handlers) {
                     'draftPanel', 'draftCards', 'perkList',
                     'draftPurse', 'btnPause', 'pausedTag', 'volSlider', 'volValue', 'btnMute',
                     'slotsLeft', 'slotsRight', 'dollCanvas', 'dollLevel', 'bagList', 'bagCount',
-                    'mapPanel', 'mapTrack', 'mapChoices', 'mapSub'])
+                    'mapPanel', 'mapPins', 'mapChoices', 'mapSub', 'mapNextHead', 'mapClose',
+                    'minimap', 'topLeft'])
     el[id] = $(id);
 
   el.btnGear.addEventListener('click', (e) => { e.stopPropagation(); togglePanel('gearPanel'); });
@@ -51,6 +52,8 @@ export function init(state, handlers) {
     b.addEventListener('click', () => b.closest('.panel').classList.add('hidden'));
 
   el.btnPause.addEventListener('click', (e) => { e.stopPropagation(); H.pause(); });
+  el.minimap.addEventListener('click', (e) => { e.stopPropagation(); H.worldMap(); });
+  el.mapClose.addEventListener('click', () => H.worldMapClose());
 
   // Volume survives reloads; nobody wants to re-mute a game every session.
   // Test for the key, not the number: Number(null) is 0, which would start
@@ -146,6 +149,25 @@ function buildGearRows() {
  * the only thing announcing a boss's pile is the bag itself. It keeps flashing
  * until the panel is opened, rather than pulsing once and being missed.
  */
+/**
+ * The corner minimap. It is the same overworld image, scaled up and shifted so
+ * the level the hero is in sits under the pin in the middle — which is why the
+ * offsets are computed in pixels rather than set as a background percentage:
+ * percentage positioning aligns like points on image and box, and cannot put an
+ * arbitrary point of the image in the centre of a circle.
+ */
+const MINIMAP_ZOOM = 5.2;
+
+export function updateMinimap() {
+  const box = el.minimap.clientWidth || 62;
+  const lv = levelAt(S.section);
+  const w = box * MINIMAP_ZOOM;
+  // The art is 4:3; keeping that ratio here stops the crop from stretching.
+  const h = w * (1086 / 1448);
+  el.minimap.style.backgroundSize = `${w}px ${h}px`;
+  el.minimap.style.backgroundPosition = `${box / 2 - lv.at[0] * w}px ${box / 2 - lv.at[1] * h}px`;
+}
+
 export function flashBag() {
   el.btnGear.classList.add('newLoot');
 }
@@ -293,6 +315,7 @@ export function frame(S, dt) {
 
   // The level is the named place; the biome underneath it is the paint, and
   // changes far more slowly.
+  updateMinimap();
   el.stageName.textContent = levelFor(S.section);
   el.stageSub.textContent = `Level ${S.section}`;
 
@@ -411,23 +434,32 @@ function tierRow(c) {
 export function showMap(choices, section) {
   el.mapPanel.classList.toggle('hidden', !choices);
   if (!choices) return;
+  // Opened from the minimap there is nothing to decide — the same map, read
+  // rather than acted on.
+  const browse = choices.length === 0;
+  el.mapNextHead.classList.toggle('hidden', browse);
+  el.mapClose.classList.toggle('hidden', !browse);
 
   el.mapSub.textContent = `${section} ${section === 1 ? 'level' : 'levels'} behind you`;
-  el.mapTrack.innerHTML = '';
-  // A window around where the hero is: everything done, plus a glimpse of what
-  // is still unnamed ahead. The whole list would be a wall by level 20.
-  const from = Math.max(1, section - 5);
-  const to = Math.min(LEVELS.length, section + 2);
-  for (let i = from; i <= to; i++) {
-    const done = i < section, here = i === section;
-    const row = document.createElement('div');
-    row.className = `mapStop${done ? ' done' : here ? ' here' : ' ahead'}`;
-    row.innerHTML = `
-      <span class="mapMark">${done ? '✓' : here ? '◆' : '·'}</span>
-      <span class="mapNo">${i}</span>
-      <span class="mapName">${levelFor(i)}</span>`;
-    el.mapTrack.appendChild(row);
-  }
+
+  // Where each road would take you, so a pin can show itself as an option.
+  const dests = new Map(choices.map((c, i) => [c.section, i]));
+
+  el.mapPins.innerHTML = '';
+  LEVELS.forEach((lv, idx) => {
+    const n = idx + 1;
+    const done = n < section, here = n === section;
+    const choice = dests.has(n) && !here;
+    const pin = document.createElement(choice ? 'button' : 'div');
+    pin.className = `pin${done ? ' done' : ''}${here ? ' here' : ''}${choice ? ' choice' : ''}`;
+    // Placed by fraction of the image, so the pin holds its spot at any size.
+    pin.style.left = `${lv.at[0] * 100}%`;
+    pin.style.top = `${lv.at[1] * 100}%`;
+    pin.title = lv.name;
+    pin.innerHTML = `<span class="pinDot">${done ? '✓' : here ? '◆' : ''}</span><span class="pinName">${lv.name}</span>`;
+    if (choice) pin.addEventListener('click', () => H.mapPick(dests.get(n)));
+    el.mapPins.appendChild(pin);
+  });
 
   el.mapChoices.innerHTML = '';
   choices.forEach((c, i) => {

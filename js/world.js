@@ -108,20 +108,33 @@ export const biomeFor = (stage) => BIOMES[Math.min(BIOMES.length - 1, Math.floor
  * reached. The number keeps climbing regardless — "Level 23 · The Inferno" is
  * still a true statement about how far down the hero is.
  */
+/**
+ * Each level is a place on `art/overview-map.png`, and `at` is where it sits on
+ * that image as a fraction of its width and height. Fractions rather than
+ * pixels so the map can be drawn at any size — it is shown scaled to fit a
+ * panel, and a pin measured in pixels would slide off it.
+ *
+ * The order is a journey with a shape: it starts in farmland in the east,
+ * works west and south through the swamps and the desert, and ends in the
+ * volcano in the north-west. Read down the list and you are reading the run.
+ */
 export const LEVELS = [
-  'Outside of a Town',
-  'The Open Road',
-  'The Killing Fields',
-  'Dangerous Cave',
-  'The Elder Wood',
-  'The Broken Gate',
-  'The Sunken Chapel',
-  'The Crypt',
-  'The Bone Halls',
-  'The Inferno',
+  { name: 'Outside of a Town', at: [0.775, 0.385] },   // the village and its windmill
+  { name: 'The Open Road',     at: [0.505, 0.610] },   // the crossroads south of the castle
+  { name: 'The Killing Fields', at: [0.490, 0.760] },  // the drowned battlefield
+  { name: 'Dangerous Cave',    at: [0.055, 0.920] },   // the cave mouth in the badlands
+  { name: 'The Elder Wood',    at: [0.480, 0.095] },   // the deep forest in the north
+  { name: 'The Broken Gate',   at: [0.170, 0.240] },   // the gatehouse under the volcano
+  { name: 'The Sunken Chapel', at: [0.172, 0.470] },   // the house out in the lake
+  { name: 'The Crypt',         at: [0.180, 0.780] },   // the desert tomb
+  { name: 'The Bone Halls',    at: [0.800, 0.600] },   // the ring of standing stones
+  { name: 'The Inferno',       at: [0.150, 0.100] },   // the crater itself
 ];
 
-export const levelFor = (section) => LEVELS[Math.min(LEVELS.length - 1, Math.max(0, section - 1))];
+export const levelAt = (section) =>
+  LEVELS[Math.min(LEVELS.length - 1, Math.max(0, section - 1))];
+
+export const levelFor = (section) => levelAt(section).name;
 
 // The road is a straight band; only its width constrains anything.
 export const walkable = (x, y) => y >= -HALF && y <= HALF;

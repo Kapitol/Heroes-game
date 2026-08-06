@@ -84,7 +84,7 @@ const S = {
   queue: [], spawnTimer: 0, waveTotal: 0, formation: null,
   marchTo: 0, draft: null, draftAfter: null, lastDrop: 0,
   wavesSinceDraft: 0, wavesSinceBoss: 0, wavesSinceDrop: 0, pot: 0,
-  roads: null, pendingMap: false,
+  roads: null, pendingMap: false, mapPaused: false,
   openingPicks: 0, openingDone: false,
   kills: 0, earned: 0, deaths: 0, best: 1,
   running: false, paused: false, reviveTimer: 0, time: 0,
@@ -116,6 +116,23 @@ UI.init(S, {
   draftReroll: rerollDraft,
   equip: equipItem,
   mapPick: chooseRoad,
+  // The minimap is a door as well as a readout: the same map, opened to be
+  // read rather than acted on, and it never touches the run.
+  //
+  // Reading it stops the clock. The road is walked without input, so a player
+  // studying the map would otherwise come back to a fight they never saw start.
+  // Whether we were the ones who paused is remembered, so closing the map
+  // cannot resume a game the player had deliberately paused first.
+  worldMap() {
+    S.mapPaused = !S.paused;
+    if (S.mapPaused) togglePause(true);
+    UI.showMap([], S.section);
+  },
+  worldMapClose() {
+    UI.showMap(S.roads || null, S.section);
+    if (S.mapPaused) togglePause(false);
+    S.mapPaused = false;
+  },
   unequip: unequipItem,
   pause: togglePause,
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },

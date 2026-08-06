@@ -13,9 +13,12 @@
 
   <!-- Top bar -->
   <div id="top">
-    <div id="depthPlate">
-      <div id="stageName">The Green Road</div>
-      <div id="stageSub">Stage 1</div>
+    <div id="topLeft">
+      <button id="minimap" title="The world map"><span id="minimapPin"></span></button>
+      <div id="depthPlate">
+        <div id="stageName">The Green Road</div>
+        <div id="stageSub">Stage 1</div>
+      </div>
     </div>
     <div id="waveWrap">
       <div id="waveText">Marching…</div>
@@ -116,9 +119,13 @@
     <div class="mapInner">
       <h2>The Road So Far</h2>
       <p id="mapSub"></p>
-      <div id="mapTrack"></div>
-      <div class="secHead"><h3>Where next</h3></div>
-      <div id="mapChoices"></div>
+      <div id="mapImage">
+        <img id="mapArt" src="art/overview-map.png" alt="">
+        <div id="mapPins"></div>
+        <div id="mapChoices"></div>
+      </div>
+      <span id="mapNextHead"></span>
+      <button id="mapClose" class="hidden">Back to the road</button>
     </div>
   </div>
 
