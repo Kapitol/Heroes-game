@@ -62,6 +62,44 @@ used to farm the real save — which is exactly how the first one reached six
 figures. It starts at 800 (enough for a Gold card) or at `&purse=` if given, and
 the saved purse is left at whatever it was before the tab opened.
 
+## Pacing: what happens every how many waves
+
+Four counters, all in waves, all constants at the top of `js/game.js`. None of
+them hang off the section boundary any more — sections roll 3 or 4 waves, so
+anything pinned to them drifted by a third.
+
+| constant | value | what it does |
+|---|---|---|
+| `WAVES_PER_DROP` | 3 | waves whose spoils fill one coffin |
+| `WAVES_PER_DRAFT` | 5 | waves between one set of cards and the next |
+| `WAVES_PER_BOSS` | 12 | a boss stands in the road on the 13th encounter |
+| `OPENING_PICKS` | 2 | free cards before the first march of a run |
+
+**The drop banks.** Waves one and two of a cycle pay their skulls into `S.pot`
+and say so; the third sends the coffin down carrying all of it. The player loses
+nothing — it is the same skulls arriving three times heavier — and the drop goes
+back to being an event rather than a thing that happens after every fight.
+
+**`WAVES_PER_DRAFT` is the difficulty dial.** As the enemies get harder the hero
+needs cards more often, so this comes down. It is the one number to reach for
+when the run feels starved.
+
+**The opening hand** deals two free cards before the first fight, because a run
+starts with nothing bought and nothing learned — the hardest the game ever is
+relative to the hero. Tier 1 is Gray and Gray is free, so it costs nothing and
+the purse still starts empty. `openingDone` is saved; runs from before it existed
+are treated as having had theirs.
+
+## Levels
+
+A **Level** is the named place the hero is walking through, one per section, from
+`LEVELS` in `js/world.js` — Outside of a Town, The Open Road, The Killing Fields,
+Dangerous Cave, and on down. It is a *label* layer: the biome underneath it
+(art, palette, props) still changes every six sections, because a repaint is
+expensive and a name is free. Rewrite or reorder the list without touching a
+texture. The road is endless and the list is not, so the last name holds while
+the number keeps climbing.
+
 ## Where the Coffin Drop got to
 
 Implemented in `js/coffin.js`, self-contained: `start / update / aim / release /

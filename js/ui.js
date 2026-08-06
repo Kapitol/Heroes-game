@@ -1,6 +1,7 @@
 // DOM layer: globes, the rune belt, the armoury, the draft cards.
 
 import { heroStats } from './entities.js';
+import { levelFor } from './world.js';
 import { SKILLS, skillById, PERKS, MAX_SKILLS, iconOpts, TIER_BANDS } from './perks.js';
 import * as Atlas from './atlas.js';
 import { heroKit, armourTierOf, weaponTierOf } from './sprites.js';
@@ -198,8 +199,10 @@ export function frame(S, dt) {
   // The minigame is its own screen: the road HUD would only compete with it.
   document.body.classList.toggle('minigame', S.phase === 'drop');
 
-  el.stageName.textContent = S.biome.name;
-  el.stageSub.textContent = `Section ${S.section}`;
+  // The level is the named place; the biome underneath it is the paint, and
+  // changes far more slowly.
+  el.stageName.textContent = levelFor(S.section);
+  el.stageSub.textContent = `Level ${S.section}`;
 
   const left = S.monsters.filter(m => !m.dead).length + S.queue.length;
   if (S.phase === 'march') {

@@ -5,7 +5,7 @@
 // three cards decide what the hero becomes. The player's hands are on the
 // skills, the drop and the cards — never on the walking.
 
-import { biomeFor, ROAD, onRoad, HALF, MARCH } from './world.js';
+import { biomeFor, levelFor, ROAD, onRoad, HALF, MARCH } from './world.js';
 import { toWorld, clamp, lerp } from './iso.js';
 import { makeHero, heroStats, moveToward, faceTo, separate, nearestFoe } from './entities.js';
 import {
@@ -33,6 +33,32 @@ const DEV_DROP = new URLSearchParams(location.search).has('drop')
   : null;
 const LEASH = 1.9;          // how far the hero will step off their mark
 
+// How many waves the hero clears between one set of cards and the next. A card
+// after every single drop made every wave the same shape and left nothing to
+// walk towards; five means a card is an event you can see coming. This is the
+// pacing dial — when the enemies get harder later on, they will need cards more
+// often and this comes down.
+const WAVES_PER_DRAFT = 5;
+
+// Waves between bosses. The old rule was "the last wave of every third
+// section", which drifted with the 3–4 wave sections and could land anywhere
+// from nine waves to twelve. Counting waves directly puts the boss on the
+// thirteenth encounter, every time.
+const WAVES_PER_BOSS = 12;
+
+// Waves that fill the coffin before it goes down the shaft. The drop after
+// every single wave made it routine — the whole point of it is that it is an
+// event. Three waves' spoils go into one coffin instead, which costs the player
+// nothing overall (the pot is the same skulls, just banked) and makes the drop
+// worth three times as much when it comes.
+const WAVES_PER_DROP = 3;
+
+// The opening hand. A run starts with nothing bought and nothing learned, which
+// is the hardest the game ever is relative to the hero — so it opens on the card
+// screen instead of a fight. Everything at tier 1 is Gray, and Gray is free, so
+// these cost nothing and the purse still starts empty.
+const OPENING_PICKS = 2;
+
 const cv = document.getElementById('game');
 const ctx = cv.getContext('2d');
 
@@ -46,12 +72,15 @@ const S = {
   perks: {}, loadout: ['cleave', 'mend'], cd: [0, 0, 0, 0],
   // `stage` is the global encounter count and drives every difficulty curve.
   // `section` and `wave` are how that gets presented and paced: a section is
-  // 3–4 waves, and the end of one is where the road changes rather than where
-  // the cards are — those come up after every drop.
+  // 3–4 waves and is one named Level. Cards and bosses are counted in waves
+  // instead — see WAVES_PER_DRAFT and WAVES_PER_BOSS — so neither drifts with
+  // the 3-or-4 roll.
   stage: 1, section: 1, wave: 1, wavesInSection: 3,
   phase: 'march', phaseT: 0,
   queue: [], spawnTimer: 0, waveTotal: 0, formation: null,
   marchTo: 0, draft: null, draftAfter: null, lastDrop: 0,
+  wavesSinceDraft: 0, wavesSinceBoss: 0, wavesSinceDrop: 0, pot: 0,
+  openingPicks: 0, openingDone: false,
   kills: 0, earned: 0, deaths: 0, best: 1,
   running: false, paused: false, reviveTimer: 0, time: 0,
 };
@@ -68,7 +97,13 @@ window.addEventListener('resize', resize);
 resize();
 
 UI.init(S, {
-  start() { Audio.init(); Audio.resume(); S.running = true; UI.banner(S.biome.name); },
+  start() {
+    Audio.init(); Audio.resume();
+    S.running = true;
+    UI.banner(levelFor(S.section));
+    // A fresh run opens on the cards rather than a fight.
+    if (!S.openingDone) { S.openingPicks = OPENING_PICKS; openDraft('opening'); }
+  },
   skill: castSkill,
   buy: buyGear,
   draftPick: takeCard,
@@ -133,11 +168,13 @@ function enterStage(stage, silent) {
   S.projectiles.length = 0;
   S.queue.length = 0;
   if (S.stains.length > 14) S.stains.splice(0, S.stains.length - 14);
-  if (!silent && S.biome !== prevBiome) UI.banner(S.biome.name);
+  if (!silent && S.biome !== prevBiome) UI.toast(S.biome.name, 2.4);
 }
 
-// The section closes on a boss every third time round.
-const isBossWave = () => S.wave === S.wavesInSection && S.section % 3 === 0;
+// A boss stands in the road once this many waves have gone by, wherever that
+// falls in a section. Tying it to the section boundary let the 3-or-4 wave
+// roll shift it around by a third.
+const isBossWave = () => S.wavesSinceBoss >= WAVES_PER_BOSS;
 
 function beginEncounter() {
   S.phase = 'fight';
@@ -447,15 +484,39 @@ function takeCard(i) {
 
 function startDrop(forcedPot) {
   S.phase = 'drop';
-  const mul = stats().skullMul;
-  let pot = forcedPot || 0;
-  if (!forcedPot) for (const m of S.monsters) pot += Math.round((m.dropSkulls || 0) * mul);
+  const pot = forcedPot || S.pot;
+  S.pot = 0;
+  clearBattlefield();
+  if (pot <= 0) { S.drop = null; S.lastDrop = 0; afterWave(); return; }
+  S.drop = Coffin.start(pot);
+  Audio.sfx.descend();
+}
+
+function clearBattlefield() {
   S.monsters.length = 0;
   S.floats.length = 0;      // stale damage numbers would bleed through the shaft
   S.effects.length = 0;
-  if (pot <= 0) { S.drop = null; S.lastDrop = 0; afterDrop(); return; }
-  S.drop = Coffin.start(pot);
-  Audio.sfx.descend();
+}
+
+/**
+ * A wave is won. Bank its spoils, and send the coffin down only on the third.
+ *
+ * The skulls are not lost on the two waves in between — they go into the pot
+ * the coffin is eventually loaded with, so the income curve is untouched and
+ * the drop simply arrives three times heavier.
+ */
+function endWave() {
+  const mul = stats().skullMul;
+  for (const m of S.monsters) S.pot += Math.round((m.dropSkulls || 0) * mul);
+
+  if (++S.wavesSinceDrop >= WAVES_PER_DROP) {
+    S.wavesSinceDrop = 0;
+    startDrop();
+    return;
+  }
+  clearBattlefield();
+  UI.toast(`☠ ${S.pot.toLocaleString()} into the coffin`);
+  afterWave();
 }
 
 function updateDrop(dt) {
@@ -471,15 +532,34 @@ function updateDrop(dt) {
     Audio.sfx.bank();
     UI.toast(`☠ ${won.toLocaleString()} recovered`);
     S.drop = null;
-    afterDrop();
+    afterWave();
   }
 }
 
-// The cards come up after every drop, wherever the wave sits in the section.
-// What differs is only what happens once one is taken or waved off: mid-section
-// that is the next wave, at the end of one it is the next section.
-function afterDrop() {
-  openDraft(S.wave < S.wavesInSection ? 'wave' : 'section');
+// Runs at the end of every wave, whether or not a coffin went down the shaft.
+// This is where the two counters that pace the game are kept — the one towards
+// the next set of cards and the one towards the next boss — and where the road
+// is told to move on. What differs is only where it moves to: mid-section that
+// is the next wave, at the end of one it is the next section.
+function afterWave() {
+  const after = S.wave < S.wavesInSection ? 'wave' : 'section';
+  // A boss resets the count towards the next one; every other wave adds to it.
+  if (S.formation && S.formation.id === 'boss') S.wavesSinceBoss = 0;
+  else S.wavesSinceBoss++;
+
+  if (++S.wavesSinceDraft >= WAVES_PER_DRAFT) {
+    S.wavesSinceDraft = 0;
+    openDraft(after);
+    return;
+  }
+  advance(after);
+}
+
+// Where the road goes once the cards are done with — or straight away, on the
+// four waves out of five that have no cards at all.
+function advance(after) {
+  if (after === 'section') nextSection();
+  else nextWave();
 }
 
 function nextWave() {
@@ -541,17 +621,29 @@ function closeDraft() {
   S.draft = null;
   S.draftAfter = null;
   UI.showDraft(null);
+
+  // The opening hand deals itself again until the picks are used up, then hands
+  // the hero to the road. It never advances a wave — the first fight has not
+  // happened yet.
+  if (after === 'opening') {
+    if (--S.openingPicks > 0) { openDraft('opening'); return; }
+    S.openingDone = true;
+    S.phase = 'march';
+    save();
+    return;
+  }
+
   // The dev loop covers drop *and* cards, since the cards are now part of the
   // same beat and picking one is what ends it.
   if (DEV_DROP) { startDrop(DEV_DROP); return; }
-  if (after === 'section') nextSection();
-  else nextWave();
+  advance(after);
 }
 
 // Advance past the section boundary. Everything that resets per section —
 // the wave counter, its length, the biome — happens here and nowhere else.
 function nextSection() {
   S.section++;
+  UI.banner(levelFor(S.section));   // a new Level is the thing worth announcing
   S.wave = 1;
   S.wavesInSection = 3 + (Math.random() < 0.5 ? 1 : 0);
   S.stage++;
@@ -650,7 +742,7 @@ function fightStep(dt, st) {
         float(h.x, h.y, `+${Math.round(back)}`, '#7fd6a0');
         Audio.sfx.heal();
       }
-      startDrop();          // everything is down: the spoils go in the box
+      endWave();            // everything is down: bank it, and maybe drop it
       return;
     }
     idleStep(dt, st);
@@ -907,6 +999,8 @@ function save() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       skulls: S.skulls, gear: S.gear, perks: S.perks, loadout: S.loadout,
       stage: S.stage, section: S.section, wave: S.wave, wavesInSection: S.wavesInSection, best: S.best,
+      wavesSinceDraft: S.wavesSinceDraft, wavesSinceBoss: S.wavesSinceBoss,
+      wavesSinceDrop: S.wavesSinceDrop, pot: S.pot, openingDone: S.openingDone,
       level: S.hero.level, xp: S.hero.xp, xpNext: S.hero.xpNext,
       kills: S.kills, earned: S.earned, deaths: S.deaths,
     }));
@@ -927,6 +1021,12 @@ function load() {
   S.section = Math.max(1, d.section | 0 || 1);
   S.wave = Math.max(1, d.wave | 0 || 1);
   S.wavesInSection = Math.max(3, Math.min(4, d.wavesInSection | 0 || 3));
+  S.wavesSinceDraft = Math.max(0, d.wavesSinceDraft | 0);
+  S.wavesSinceBoss = Math.max(0, d.wavesSinceBoss | 0);
+  S.wavesSinceDrop = Math.max(0, d.wavesSinceDrop | 0);
+  S.pot = Math.max(0, d.pot | 0);
+  // Saves from before the opening hand existed have already played past it.
+  S.openingDone = d.openingDone !== undefined ? !!d.openingDone : true;
   S.best = Math.max(1, d.best | 0 || 1);
   S.kills = d.kills | 0; S.earned = d.earned | 0; S.deaths = d.deaths | 0;
   S.hero.level = Math.max(1, d.level | 0 || 1);

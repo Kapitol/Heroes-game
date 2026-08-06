@@ -94,6 +94,35 @@ export const BIOMES = [
 
 export const biomeFor = (stage) => BIOMES[Math.min(BIOMES.length - 1, Math.floor((stage - 1) / 6))];
 
+/**
+ * Levels: the named place the hero is walking through right now.
+ *
+ * One per section, so a level lasts three or four waves and the names come
+ * round often enough to mark progress. This is a *label* layer, sitting on top
+ * of the biomes — the art and palette still change every six sections, far more
+ * slowly, because a repaint is expensive and a name is free. That separation is
+ * the point: names can be rewritten or reordered here without touching a single
+ * texture.
+ *
+ * The road is endless and this list is not, so the last name holds once it is
+ * reached. The number keeps climbing regardless — "Level 23 · The Inferno" is
+ * still a true statement about how far down the hero is.
+ */
+export const LEVELS = [
+  'Outside of a Town',
+  'The Open Road',
+  'The Killing Fields',
+  'Dangerous Cave',
+  'The Elder Wood',
+  'The Broken Gate',
+  'The Sunken Chapel',
+  'The Crypt',
+  'The Bone Halls',
+  'The Inferno',
+];
+
+export const levelFor = (section) => LEVELS[Math.min(LEVELS.length - 1, Math.max(0, section - 1))];
+
 // The road is a straight band; only its width constrains anything.
 export const walkable = (x, y) => y >= -HALF && y <= HALF;
 

@@ -22,15 +22,16 @@ modules, which browsers refuse to load over `file://`.
 
 ## The loop
 
-**March → Encounter → The Coffin Drop → Cards → March.**
+**March → Encounter → (every 3rd wave) The Coffin Drop → (every 5th) Cards → March.**
 
 1. **March.** The hero walks the road. You do nothing; this is the breath
    between fights.
 2. **Encounter.** A formation blocks the way and streams in through the gates
    of the road. The hero holds their mark and fights automatically. Your only
    input is *when* to spend each cooldown.
-3. **The Coffin Drop.** Survive and the spoils go in a coffin, and the coffin
-   goes down a crypt shaft. Drag to choose a lane, let go to drop it.
+3. **The Coffin Drop.** Every third wave. The spoils of all three go in one
+   coffin, and the coffin goes down a crypt shaft. Drag to choose a lane, let go
+   to drop it.
 
    The reward is the **skulls it sheds on the way down**: every buttress stone
    it clips knocks a few loose, so you *want* to hit stone — but stone also robs
@@ -41,7 +42,7 @@ modules, which browsers refuse to load over `file://`.
    So the two halves pull against each other: stone is the count, depth is the
    multiplier, and the lane you pick decides how much of each you get. Do
    nothing and it drops on its own after five seconds.
-4. **The cards.** After **every** drop, three cards come up — one per
+4. **The cards.** Every fifth wave, three cards come up — one per
    classification, never two of a kind — each with a **price in skulls**. Buy
    one, pay ☠ 50 to crack open another coffin for three fresh ones, or walk on
    and keep the purse. There is no clock on the choice. Prices
