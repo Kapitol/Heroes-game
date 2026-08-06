@@ -48,12 +48,19 @@ node serve.js 8124
 |---|---|
 | `/index.html` | the game |
 | `/index.html?drop=420` | jumps into the Coffin Drop with pot 420 and **loops drop → cards → drop** |
+| `…?drop=420&purse=0` | the same, starting the throwaway purse at 0 instead of 800 |
 | `/index.html?spawn=archer` | fills every wave with one monster key |
 
 Both dev hooks exist because the things they reach are otherwise slow to get
 to: a given monster may not roll for minutes, and the minigame is four fights
 away. The drop hook loops through the card screen as well, because the cards are
 now part of the same beat and picking one is what ends it.
+
+**The drop hook runs on a throwaway purse and `save()` refuses to write while it
+is on.** It loops as fast as it can and every pass pays out, so a tuning session
+used to farm the real save — which is exactly how the first one reached six
+figures. It starts at 800 (enough for a Gold card) or at `&purse=` if given, and
+the saved purse is left at whatever it was before the tab opened.
 
 ## Where the Coffin Drop got to
 

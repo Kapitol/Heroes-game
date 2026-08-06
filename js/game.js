@@ -856,6 +856,11 @@ function updateProjectiles(dt) {
 // --- persistence ------------------------------------------------------------
 
 function save() {
+  // The drop hook runs on a throwaway purse and must never reach the disk. It
+  // loops the drop as fast as it can and every pass pays out, so a tuning
+  // session would otherwise farm the real save into six figures — which is
+  // exactly how the first one got there.
+  if (DEV_DROP) return;
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       skulls: S.skulls, gear: S.gear, perks: S.perks, loadout: S.loadout,
@@ -899,6 +904,15 @@ if (DEV_DROP) {
   Audio.init();
   S.running = true;
   document.getElementById('overlay').classList.add('hidden');
+  // A purse of its own, loaded from the URL — `?drop=420&purse=0` to see what a
+  // broke player is offered, or leave it and start on enough for a Gold card.
+  // The real one has already been read by `load()`; this throws it away for the
+  // session, and `save()` refuses to write while the hook is on, so the saved
+  // purse is whatever it was before the tab opened.
+  const p = Number(new URLSearchParams(location.search).get('purse'));
+  S.skulls = Number.isFinite(p) && new URLSearchParams(location.search).has('purse') ? Math.max(0, p) : 800;
+  S.earned = 0;
+  UI.refreshPanels();
   startDrop(DEV_DROP);
 }
 
