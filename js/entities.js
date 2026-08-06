@@ -1,5 +1,7 @@
 // Actors, their stats, and the movement rules they share.
 
+import { equippedBonuses } from './items.js';
+
 export const MONSTERS = {
   fallen:   { name: 'Fallen One', kind: 'fallen',   hp: 20, dmg: 4,  speed: 2.6, atk: 0.9, range: 0.9, scale: 0.85, skulls: 4,  xp: 5 },
   skeleton: { name: 'Skeleton',   kind: 'skeleton', hp: 34, dmg: 7,  speed: 2.1, atk: 1.2, range: 1.0, scale: 1.0,  skulls: 7,  xp: 9 },
@@ -59,28 +61,34 @@ export function makeHero() {
 
 // Derived hero stats. Gear levels and drafted perks both fold in here, so the
 // panel, the cards and the combat code can never disagree about the numbers.
-export function heroStats(h, gear, perks) {
+export function heroStats(h, gear, perks, equipped) {
   const p = perks || {};
   const n = (k) => p[k] || 0;
+  // Looted bonuses land in the same lines as everything else, so nothing
+  // downstream has to care that a stat came from a boss rather than a shop.
+  const it = equippedBonuses(equipped);
+  const i = (k) => it[k] || 0;
 
-  const dmg = Math.round((h.baseDmg + gear.weapon * 5)
-    * (1 + h.level * 0.13) * (1 + n('might') * 0.15));
-  const maxHp = Math.round((100 + gear.armor * 18)
-    * (1 + (h.level - 1) * 0.15) * (1 + n('vigor') * 0.15));
+  const dmg = Math.round(((h.baseDmg + gear.weapon * 5) * (1 + h.level * 0.13)
+    * (1 + n('might') * 0.15)) + i('dmg'));
+  const maxHp = Math.round(((100 + gear.armor * 18) * (1 + (h.level - 1) * 0.15)
+    * (1 + n('vigor') * 0.15)) + i('life'));
 
   return {
     dmg,
     maxHp,
-    armor: gear.armor * 3 + n('plate') * 6,
-    crit: Math.min(0.65, h.critChance + gear.ring * 0.025 + n('keen') * 0.04),
-    critMult: h.critMult + gear.ring * 0.06 + n('brutal') * 0.3,
-    lifesteal: gear.amulet * 0.012 + n('leech') * 0.015,
-    atkSpeed: h.atk / (1 + gear.weapon * 0.02 + n('swift') * 0.12),
+    // Rounded, not raw: an item rolls a fractional armour value and this number
+    // is read by the damage maths as well as the panel.
+    armor: Math.round(gear.armor * 3 + n('plate') * 6 + i('armor')),
+    crit: Math.min(0.65, h.critChance + gear.ring * 0.025 + n('keen') * 0.04 + i('crit')),
+    critMult: h.critMult + gear.ring * 0.06 + n('brutal') * 0.3 + i('critMult'),
+    lifesteal: gear.amulet * 0.012 + n('leech') * 0.015 + i('lifesteal'),
+    atkSpeed: h.atk / (1 + gear.weapon * 0.02 + n('swift') * 0.12 + i('atkSpeed')),
     // Cooldown and mitigation stack multiplicatively; additive stacking would
     // reach zero and break the pacing the whole game is tuned around.
-    cdr: 1 - (1 - Math.min(0.5, gear.amulet * 0.03)) * Math.pow(0.91, n('focus')),
+    cdr: 1 - (1 - Math.min(0.5, gear.amulet * 0.03 + i('cdr'))) * Math.pow(0.91, n('focus')),
     mitigate: Math.pow(0.92, n('stoic')),
-    skullMul: 1 + n('greed') * 0.25,
+    skullMul: 1 + n('greed') * 0.25 + i('skullMul'),
     // Both are fractions of the *maximum*, so they keep their worth as the pool
     // grows — a flat number of points would quietly become nothing by the time
     // Vigour has done its work.

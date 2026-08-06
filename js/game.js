@@ -16,6 +16,7 @@ import { SKILLS, skillById, rollDraft, applyCard, MAX_SKILLS } from './perks.js'
 import * as UI from './ui.js';
 import * as Audio from './audio.js';
 import * as Coffin from './coffin.js';
+import { rollBossLoot, bossSkullBonus } from './items.js';
 
 const SAVE_KEY = 'cryptheroes.v3';
 
@@ -69,6 +70,9 @@ const S = {
   monsters: [], projectiles: [], effects: [], floats: [], stains: [],
   drop: null,
   skulls: 0, gear: { weapon: 0, armor: 0, ring: 0, amulet: 0 },
+  // Looted kit. `equipped` is slot -> item; `bag` is everything else that has
+  // been picked up and not yet worn or thrown away.
+  equipped: {}, bag: [], newLoot: 0,
   perks: {}, loadout: ['cleave', 'mend'], cd: [0, 0, 0, 0],
   // `stage` is the global encounter count and drives every difficulty curve.
   // `section` and `wave` are how that gets presented and paced: a section is
@@ -109,6 +113,8 @@ UI.init(S, {
   draftPick: takeCard,
   draftSkip: skipDraft,
   draftReroll: rerollDraft,
+  equip: equipItem,
+  unequip: unequipItem,
   pause: togglePause,
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },
 });
@@ -242,7 +248,7 @@ function effect(type, x, y, r, dur, a) {
   S.effects.push({ type, x, y, r: r || 1, life: dur, max: dur, a: a || 0 });
 }
 
-const stats = () => heroStats(S.hero, S.gear, S.perks);
+const stats = () => heroStats(S.hero, S.gear, S.perks, S.equipped);
 
 function hurtMonster(m, amount, crit) {
   if (m.dead) return;
@@ -480,6 +486,36 @@ function takeCard(i) {
   closeDraft();
 }
 
+// --- loot -------------------------------------------------------------------
+
+/**
+ * Wear something out of the bag. Whatever was in that slot goes back into the
+ * bag rather than being destroyed — a swap you regret has to be undoable, or
+ * every equip becomes a decision the player is afraid of.
+ */
+function equipItem(id) {
+  const i = S.bag.findIndex(x => x.id === id);
+  if (i < 0) return;
+  const item = S.bag.splice(i, 1)[0];
+  const displaced = S.equipped[item.slot];
+  S.equipped[item.slot] = item;
+  if (displaced) S.bag.push(displaced);
+  Audio.sfx.buy();
+  UI.toast(`${item.name} equipped`);
+  UI.refreshPanels();
+  save();
+}
+
+function unequipItem(slotKey) {
+  const item = S.equipped[slotKey];
+  if (!item) return;
+  S.equipped[slotKey] = null;
+  S.bag.push(item);
+  Audio.sfx.deny();
+  UI.refreshPanels();
+  save();
+}
+
 // --- the payout game -------------------------------------------------------
 
 function startDrop(forcedPot) {
@@ -508,6 +544,20 @@ function clearBattlefield() {
 function endWave() {
   const mul = stats().skullMul;
   for (const m of S.monsters) S.pot += Math.round((m.dropSkulls || 0) * mul);
+
+  // A boss leaves a body and a pile. The loot is collected for you — there is
+  // nothing to pick up off the floor in a game with no movement control — and
+  // the bag flashes to say so.
+  if (S.formation && S.formation.id === 'boss') {
+    const level = S.section;
+    const bonus = Math.round(bossSkullBonus(level) * mul);
+    S.pot += bonus;
+    const loot = rollBossLoot(level);
+    S.bag.push(...loot);
+    S.newLoot += loot.length;
+    UI.flashBag();
+    UI.toast(`${loot.length} pieces taken from the body · ☠ ${bonus} more`, 3);
+  }
 
   if (++S.wavesSinceDrop >= WAVES_PER_DROP) {
     S.wavesSinceDrop = 0;
@@ -998,6 +1048,7 @@ function save() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       skulls: S.skulls, gear: S.gear, perks: S.perks, loadout: S.loadout,
+      equipped: S.equipped, bag: S.bag, newLoot: S.newLoot,
       stage: S.stage, section: S.section, wave: S.wave, wavesInSection: S.wavesInSection, best: S.best,
       wavesSinceDraft: S.wavesSinceDraft, wavesSinceBoss: S.wavesSinceBoss,
       wavesSinceDrop: S.wavesSinceDrop, pot: S.pot, openingDone: S.openingDone,
@@ -1016,6 +1067,9 @@ function load() {
   S.skulls = (d.skulls ?? d.gold) | 0;
   Object.assign(S.gear, d.gear || {});
   S.perks = d.perks || {};
+  S.equipped = d.equipped || {};
+  S.bag = Array.isArray(d.bag) ? d.bag : [];
+  S.newLoot = Math.max(0, d.newLoot | 0);
   if (Array.isArray(d.loadout) && d.loadout.length) S.loadout = d.loadout.slice(0, MAX_SKILLS);
   S.stage = Math.max(1, d.stage | 0 || 1);
   S.section = Math.max(1, d.section | 0 || 1);

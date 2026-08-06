@@ -53,12 +53,27 @@
   <!-- Gear / upgrades -->
   <div id="gearPanel" class="panel hidden">
     <div class="panelHead"><h2>Armoury</h2><button class="x" data-close>✕</button></div>
+    <div id="paperdoll">
+      <div class="slotCol" id="slotsLeft"></div>
+      <div id="dollFigure">
+        <canvas id="dollCanvas" width="150" height="230"></canvas>
+        <div id="dollLevel"></div>
+      </div>
+      <div class="slotCol" id="slotsRight"></div>
+    </div>
+
+    <div class="secHead"><h3>Attributes</h3></div>
+    <div id="statList"></div>
+
+    <div class="secHead"><h3>The Bag</h3><span id="bagCount"></span></div>
+    <div id="bagList"></div>
+
+    <div class="secHead"><h3>Forge</h3></div>
     <p class="panelSub">Skulls reforge the blade and the plate — and you can see it on them.</p>
     <div id="gearList"></div>
+
     <div class="secHead"><h3>Drafted</h3></div>
     <div id="perkList"></div>
-    <div class="secHead"><h3>Hero</h3></div>
-    <div id="statList"></div>
   </div>
 
   <!-- Menu -->

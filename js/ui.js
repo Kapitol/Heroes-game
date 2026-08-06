@@ -4,7 +4,8 @@ import { heroStats } from './entities.js';
 import { levelFor } from './world.js';
 import { SKILLS, skillById, PERKS, MAX_SKILLS, iconOpts, TIER_BANDS } from './perks.js';
 import * as Atlas from './atlas.js';
-import { heroKit, armourTierOf, weaponTierOf } from './sprites.js';
+import { heroKit, armourTierOf, weaponTierOf, drawActor } from './sprites.js';
+import { SLOTS, slotByKey, attrText, bandName, itemScore } from './items.js';
 import * as Audio from './audio.js';
 
 export const GEAR = [
@@ -37,7 +38,8 @@ export function init(state, handlers) {
                     'statList', 'gearPanel', 'menuPanel', 'runStats', 'deathOverlay', 'reviveNum',
                     'overlay', 'ovBtn', 'btnGear', 'btnMenu', 'btnReset', 'deathText',
                     'draftPanel', 'draftCards', 'perkList',
-                    'draftPurse', 'btnPause', 'pausedTag', 'volSlider', 'volValue', 'btnMute'])
+                    'draftPurse', 'btnPause', 'pausedTag', 'volSlider', 'volValue', 'btnMute',
+                    'slotsLeft', 'slotsRight', 'dollCanvas', 'dollLevel', 'bagList', 'bagCount'])
     el[id] = $(id);
 
   el.btnGear.addEventListener('click', (e) => { e.stopPropagation(); togglePanel('gearPanel'); });
@@ -111,7 +113,11 @@ export function togglePanel(id) {
   const wasHidden = p.classList.contains('hidden');
   el.gearPanel.classList.add('hidden');
   el.menuPanel.classList.add('hidden');
-  if (wasHidden) { p.classList.remove('hidden'); refreshPanels(); }
+  if (wasHidden) {
+    p.classList.remove('hidden');
+    if (id === 'gearPanel') { el.btnGear.classList.remove('newLoot'); S.newLoot = 0; }
+    refreshPanels();
+  }
 }
 
 function buildGearRows() {
@@ -132,8 +138,93 @@ function buildGearRows() {
   }
 }
 
+/**
+ * The globe asks to be opened.
+ *
+ * Loot is collected for you — there is nothing to walk over and pick up — so
+ * the only thing announcing a boss's pile is the bag itself. It keeps flashing
+ * until the panel is opened, rather than pulsing once and being missed.
+ */
+export function flashBag() {
+  el.btnGear.classList.add('newLoot');
+}
+
+// Four armour slots down the left, the weapon down the right, mirroring the
+// shape of the screen this is modelled on.
+const LEFT_SLOTS = ['head', 'chest', 'hands', 'feet'];
+const RIGHT_SLOTS = ['weapon'];
+
+function slotCell(key) {
+  const slot = slotByKey(key);
+  const it = S.equipped[key];
+  const b = document.createElement('button');
+  b.className = `slot ${it ? it.band : 'empty'}`;
+  b.title = it ? `${it.name} — click to take off` : `${slot.name}: empty`;
+  b.innerHTML = it
+    ? `<span class="slotIcon">${slot.icon}</span><span class="slotName">${it.name}</span>`
+    : `<span class="slotIcon dim">${slot.icon}</span><span class="slotName dim">${slot.name}</span>`;
+  if (it) b.addEventListener('click', () => H.unequip(key));
+  return b;
+}
+
+// The hero, drawn from the same routine the road uses, so the figure in the
+// panel is the figure you are watching fight.
+function paintDoll() {
+  const cv = el.dollCanvas;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const hero = { ...S.hero, kit: heroKitFor(S.gear), scale: 2.5, walk: 0, swing: 0, hurt: 0, fx: 1 };
+  ctx.save();
+  ctx.translate(0, 26);
+  drawActor(ctx, hero, cv.width / 2, cv.height - 26, 0);
+  ctx.restore();
+}
+
+// A rough "how geared am I" number, in the spirit of the item level on the
+// screen this borrows from: the average level of what is actually worn.
+function itemLevel() {
+  const worn = Object.values(S.equipped).filter(Boolean);
+  if (!worn.length) return 0;
+  return Math.round(worn.reduce((t, i) => t + i.level, 0) / worn.length * 10);
+}
+
+function buildBag() {
+  el.bagList.innerHTML = '';
+  el.bagCount.textContent = S.bag.length ? `${S.bag.length} carried` : '';
+  if (!S.bag.length) {
+    el.bagList.innerHTML = '<span class="perkChip none">Nothing carried — bosses leave the loot</span>';
+    return;
+  }
+  // Best first: a bag is read top-down and the thing worth wearing should be
+  // the thing you see.
+  [...S.bag].sort((a, b) => itemScore(b) - itemScore(a)).forEach((it) => {
+    const slot = slotByKey(it.slot);
+    const worn = S.equipped[it.slot];
+    const better = !worn || itemScore(it) > itemScore(worn);
+    const row = document.createElement('div');
+    row.className = `bagRow ${it.band}`;
+    row.innerHTML = `
+      <div class="bagIcon">${slot.icon}</div>
+      <div class="bagInfo">
+        <div class="bagName">${it.name} <em>${bandName(it.band)} · ${slot.name}</em></div>
+        <div class="bagAttrs">${it.attrs.map(attrText).join(' · ')}</div>
+      </div>
+      <button class="buy${better ? ' up' : ''}">${better ? 'Equip' : 'Swap'}</button>`;
+    row.querySelector('button').addEventListener('click', () => H.equip(it.id));
+    el.bagList.appendChild(row);
+  });
+}
+
 export function refreshPanels() {
-  const st = heroStats(S.hero, S.gear, S.perks);
+  const st = heroStats(S.hero, S.gear, S.perks, S.equipped);
+
+  el.slotsLeft.innerHTML = '';
+  el.slotsRight.innerHTML = '';
+  for (const k of LEFT_SLOTS) el.slotsLeft.appendChild(slotCell(k));
+  for (const k of RIGHT_SLOTS) el.slotsRight.appendChild(slotCell(k));
+  el.dollLevel.innerHTML = `<b>${itemLevel()}</b><span>Item Level</span>`;
+  paintDoll();
+  buildBag();
   for (const g of GEAR) {
     const n = S.gear[g.key];
     const cost = gearCost(S.gear, g.key);
@@ -175,7 +266,7 @@ export function refreshPanels() {
 }
 
 export function frame(S, dt) {
-  const st = heroStats(S.hero, S.gear, S.perks);
+  const st = heroStats(S.hero, S.gear, S.perks, S.equipped);
   el.hpGlobe.querySelector('i').style.height = `${Math.max(0, S.hero.hp / st.maxHp) * 100}%`;
   el.hpText.textContent = `${Math.max(0, Math.round(S.hero.hp))}/${st.maxHp}`;
 
