@@ -11,9 +11,25 @@
   --blood-lit:#d6352a;
   --mana:#2b4d8e;
   --rage:#b8801e;
+  /* The five rarity bands. DESIGN.md has declared these since the system was
+     written and the stylesheet never defined them, so every `var(--band)` in
+     the tier ladder resolved to nothing: the lit pips had no colour, the next
+     pip had no outline, and the ladder that is supposed to read gray-to-gold
+     was five identical dashes on every card in the game. */
+  --band-gray:#9a9184;
+  --band-green:#5fa860;
+  --band-blue:#4f86c6;
+  --band-purple:#9a5fc0;
+  --band-gold:#d8b45c;
 }
 
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+/* One serif, no exceptions. Buttons and inputs do not inherit type by default,
+   so seven controls — the runes, the minimap, both panel closes, the gear
+   globe, the volume slider — were rendering in Arial against a design rule
+   that says there is never a sans anywhere. */
+button, input, select, textarea { font:inherit; color:inherit; }
 
 html, body {
   margin:0; padding:0; height:100%; overflow:hidden;
@@ -35,9 +51,19 @@ html, body {
 /* ---------- top bar ---------- */
 #top {
   position:absolute; top:0; left:0; right:0;
-  display:flex; align-items:flex-start; gap:8px;
+  display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap;
   padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 0;
   pointer-events:none;
+}
+/* The bar needed 407px and would not wrap, so on a phone the purse and the ☰
+   were clipped past the right edge — and `pointer-events:none` on the bar
+   meant the lost strip had no fallback hit area at all. The wave readout takes
+   its own row below the two ends instead of squeezing them out of the frame. */
+@media (max-width:620px) {
+  #waveWrap { order:3; flex:1 0 100%; max-width:none; margin-top:6px; padding:4px 10px 6px; }
+  #waveText { font-size:10px; }
+  #depthPlate { min-width:0; }
+  #purse { margin-left:auto; }
 }
 #top > * { pointer-events:auto; }
 
@@ -56,7 +82,13 @@ html, body {
 
 #purse { display:flex; align-items:center; gap:8px; }
 .skullCount { padding:6px 12px; border-radius:3px; font-size:15px; color:var(--gild); white-space:nowrap; }
-.plate { border-radius:3px; color:var(--parch); font:inherit; font-size:17px; padding:6px 11px; cursor:pointer; }
+.plate {
+  border-radius:3px; color:var(--parch); font:inherit; font-size:17px;
+  padding:6px 11px; cursor:pointer;
+  /* Thumb-sized. These two were 35x38 and 39x38 — under the 44px floor, and
+     they are the first controls a confused player reaches for. */
+  min-width:44px; min-height:44px;
+}
 .plate:active { transform:translateY(1px); }
 
 /* ---------- toast + banner ---------- */
@@ -115,8 +147,8 @@ html, body {
 }
 .globeBtn {
   position:absolute; inset:0; z-index:2; background:none; border:0;
-  color:#1c1206; font-size:clamp(24px,6vw,32px); cursor:pointer;
-  text-shadow:0 1px 0 rgba(255,255,255,.25);
+  color:#120c04; font-size:clamp(24px,6vw,32px); cursor:pointer;
+  text-shadow:0 1px 0 rgba(255,255,255,.35);
 }
 .globeBtn:active { transform:translateY(1px); }
 #xpGlobe.ready { animation:pulseGild 1.4s ease-in-out infinite; }
@@ -138,7 +170,9 @@ html, body {
 #xpText {
   position:absolute; inset:0; display:grid; place-items:center;
   font-size:10px; letter-spacing:.14em; text-transform:uppercase;
-  text-shadow:0 1px 2px #000;
+  /* The strip fills with a light blue behind this text; parchment on that
+     measured 1.37:1. The plate behind the glyphs travels with them. */
+  text-shadow:0 1px 2px #000, 0 0 6px rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.9);
 }
 
 #skills { display:flex; gap:clamp(6px,2vw,12px); }
@@ -156,11 +190,11 @@ html, body {
   background:rgba(4,3,2,.82); transition:height .1s linear; pointer-events:none;
 }
 .rune .key {
-  position:absolute; top:2px; left:4px; font-size:9px; opacity:.45;
-  color:var(--parch); text-shadow:none;
+  position:absolute; top:2px; left:4px; font-size:9px; opacity:.75;
+  color:var(--parch); text-shadow:0 1px 2px #000;
 }
 .rune.ready { border-color:var(--gild-dim); }
-.rune.cooling { color:#6b5c3e; text-shadow:none; }
+.rune.cooling { color:#8f7c56; text-shadow:none; }   /* was 2.4:1 on its own plate */
 .rune:active { transform:translateY(1px); }
 .rune.fire { animation:runeFire .35s ease; }
 @keyframes runeFire { 0%{ box-shadow:0 0 0 0 rgba(200,162,74,.7);} 100%{ box-shadow:0 0 0 16px rgba(200,162,74,0);} }
@@ -176,7 +210,10 @@ html, body {
 .panel.hidden, .hidden { display:none !important; }
 .panelHead { display:flex; align-items:center; justify-content:space-between; }
 .panelHead h2 { margin:0; font-size:20px; letter-spacing:.1em; color:var(--gild); font-weight:normal; }
-.x { background:none; border:0; color:var(--parch); font-size:18px; cursor:pointer; opacity:.6; padding:4px 6px; }
+.x {
+  background:none; border:0; color:var(--parch); font:inherit; font-size:18px;
+  cursor:pointer; opacity:.6; padding:4px 6px; min-width:44px; min-height:44px;
+}
 .panelSub { margin:4px 0 12px; font-size:12px; opacity:.55; font-style:italic; }
 .secHead { display:flex; align-items:center; justify-content:space-between; margin:16px 0 8px; border-top:1px solid #2b2219; padding-top:10px; }
 .secHead h3 { margin:0; font-size:12px; letter-spacing:.16em; text-transform:uppercase; opacity:.6; font-weight:normal; }
@@ -206,7 +243,10 @@ html, body {
 
 #statList { display:grid; grid-template-columns:1fr 1fr; gap:5px 14px; font-size:12.5px; }
 #statList div { display:flex; justify-content:space-between; border-bottom:1px dotted #2b2219; padding-bottom:3px; }
-#statList span { color:var(--gild); }
+/* Read-outs, not actions. Gold on a stat table put nineteen inert elements in
+   the colour reserved for things you can act on, and left the runes and the
+   card costs competing with them. Hierarchy comes from tracking and weight. */
+#statList span { color:var(--parch); }
 
 .menuBody { padding-top:8px; }
 .help { font-size:13px; line-height:1.65; opacity:.8; }
@@ -241,6 +281,10 @@ h1.dead {
   color:var(--blood-lit); text-shadow:0 0 26px rgba(214,53,42,.5);
 }
 #deathText { font-size:13px; opacity:.7; margin-bottom:22px; }
+#reviveLabel {
+  margin:14px 0 0; font-size:10.5px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--parch); opacity:.6;
+}
 #reviveRing {
   width:88px; height:88px; margin:0 auto; border-radius:50%;
   border:2px solid var(--blood); display:grid; place-items:center;
@@ -371,12 +415,12 @@ h1.dead {
   font-size:11.5px; padding:4px 9px; border-radius:20px;
   border:1px solid #3d3025; background:#171210;
 }
-.perkChip b { color:var(--gild); font-weight:normal; }
+.perkChip b { color:var(--parch); font-weight:normal; opacity:.8; }
 .perkChip.attack  { border-color:#5d2a20; }
 .perkChip.defense { border-color:#24405d; }
 .perkChip.utility { border-color:#4a4320; }
 .perkChip.healing { border-color:#25503a; }
-.perkChip.none { opacity:.4; border-style:dashed; }
+.perkChip.none { opacity:.62; border-style:dashed; }
 
 .gearName i { font-style:normal; font-size:11px; opacity:.5; }
 
@@ -404,25 +448,31 @@ h1.dead {
   display:grid; grid-template-columns:repeat(var(--tiers,5),1fr);
   gap:5px; width:100%; margin-top:10px;
 }
-.tierRow i {
-  height:6px; border-radius:1px;
-  background:#241d16; border:1px solid #3d3025;
-}
-/* The five bands. `--band` is the colour a tier becomes once it is yours; it
-   also tints the outline of the one you are being offered. */
-.tierRow i.gray   { --band:#9a9184; }
-.tierRow i.green  { --band:#5fa860; }
-.tierRow i.blue   { --band:#4f86c6; }
-.tierRow i.purple { --band:#9a5fc0; }
-.tierRow i.gold   { --band:#d8b45c; }
+/* Each pip carries its own band, which is what `--band` below reads. */
+.tierRow i.gray   { --band:var(--band-gray); }
+.tierRow i.green  { --band:var(--band-green); }
+.tierRow i.blue   { --band:var(--band-blue); }
+.tierRow i.purple { --band:var(--band-purple); }
+.tierRow i.gold   { --band:var(--band-gold); }
 
-/* Tiers already bought, lit in their own colour. */
+.tierRow i {
+  flex:1; height:6px; border-radius:1px;
+  /* Unlit pips used to be one grey for all five bands, so a fresh card showed
+     five identical dashes carrying nothing — while DESIGN claims the ladder is
+     painted in its band colour. A faint wash of the band it will become lets
+     the ladder read gray-to-gold before a single tier is owned. */
+  background:color-mix(in srgb, var(--band) 14%, #241d16);
+  border:1px solid #3d3025;
+}
 .tierRow i.on {
   background:var(--band); border-color:var(--band);
   box-shadow:0 0 6px color-mix(in srgb, var(--band) 55%, transparent);
 }
 /* The one this card would buy: outlined in what it will become, not yet lit. */
 .tierRow i.next {
+  /* Non-colour carrier: the next tier is the tall one. Colour alone was the
+     only thing marking it, on a 37x6px bar. */
+  height:10px; margin-top:-2px;
   background:#2c2318;
   border-color:color-mix(in srgb, var(--band) 70%, #3d3025);
   box-shadow:inset 0 0 5px color-mix(in srgb, var(--band) 45%, transparent);
@@ -467,6 +517,32 @@ h1.dead {
   border:1px solid #3d3025; border-radius:3px;
 }
 #draftSkip:hover, #draftReroll:hover:not(:disabled) { border-color:var(--gild-dim); }
+
+/* Three tall cards plus a reroll and a walk-on came to 939px on an 812px
+   phone: the third card was cut by the viewport edge, which reads as the
+   bottom of the screen rather than as a fold, and two of the five controls
+   were unreachable. Below the fold-width the card turns on its side — the same
+   information, laid out along the axis the phone actually has. */
+@media (max-width:700px) {
+  .card {
+    display:grid; min-height:0; padding:10px 12px; text-align:left;
+    grid-template-columns:44px minmax(0,1fr) auto;
+    grid-template-areas:
+      "icon kind  cost"
+      "icon name  cost"
+      "icon desc  short"
+      "tier tier  tier";
+    align-items:center; gap:1px 10px;
+  }
+  .card .cardIcon { grid-area:icon; width:44px; height:44px; margin:0; font-size:26px; align-self:center; }
+  .card .cardKind { grid-area:kind; text-align:left; }
+  .card .cardName { grid-area:name; margin:0; }
+  .card .cardDesc { grid-area:desc; margin:0; }
+  .card .cardCost { grid-area:cost; margin:0; align-self:center; }
+  .card .cardShort { grid-area:short; margin:0; text-align:right; align-self:center; }
+  .card .tierRow { grid-area:tier; margin-top:7px; }
+}
+}
 /* The reroll leads — it is the one that costs something — so it sits directly
    under the cards and carries its price on its face. */
 #draftReroll { margin-top:22px; border-color:#4a3a22; }
@@ -538,8 +614,8 @@ body.camp #belt { opacity:0; pointer-events:none; }
   border:1px solid #3d3025; border-radius:4px;
 }
 #dollLevel { margin-top:6px; text-align:center; line-height:1.1; }
-#dollLevel b { display:block; font-size:22px; font-weight:normal; color:var(--gild); }
-#dollLevel span { font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; opacity:.5; }
+#dollLevel b { display:block; font-size:22px; font-weight:normal; color:var(--parch); }
+#dollLevel span { font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; opacity:.7; }
 
 /* ---------- armoury: the bag ---------- */
 #bagList { display:flex; flex-direction:column; gap:6px; }
@@ -721,9 +797,15 @@ body.camp #belt { opacity:0; pointer-events:none; }
 
 @media (max-width:620px) {
   #campScene { aspect-ratio:1/1; max-height:56vh; }
-  .csPlate b { font-size:11px; }
-  .csPlate i { font-size:8px; letter-spacing:.06em; }
-  .campSlot.locked .csPlate i { display:none; }   /* "?" carries it at this size */
+  /* Four names across a phone collided: each slot is ~45px wide and the plates
+     were 65px, so "Warrior / Level 2" printed across "Paladin / Not this run".
+     They shrink and wrap inside their own slot instead. */
+  .csPlate { max-width:100%; }
+  .csPlate b { font-size:9.5px; letter-spacing:.02em; }
+  .csPlate i { font-size:7.5px; letter-spacing:.04em; line-height:1.25; }
+  .csPlate b, .csPlate i { white-space:normal; overflow-wrap:anywhere; }
+  /* The status line stays. Hiding it left colour as the only thing saying a
+     class is locked, which is the one carrier the design rules forbid. */
   #campName { font-size:18px; }
   #campSub { font-size:9.5px; letter-spacing:.08em; }
 }
@@ -799,6 +881,18 @@ body.camp #belt { opacity:0; pointer-events:none; }
 .pin.choice:hover .pinName { opacity:1; color:var(--gild); }
 
 @media (prefers-reduced-motion:reduce) { .pin.here .pinDot { animation:none; } }
+
+/* The rest of the motion. Four blocks already covered the card smoke, the loot
+   pulse and the two map pins; these were not covered, and one of them —
+   the gold "you can afford something" pulse — runs for ever. */
+@media (prefers-reduced-motion:reduce) {
+  #banner.show { animation:none; opacity:1; transform:none; }
+  #xpGlobe.ready { animation:none; }
+  .rune.fire { animation:none; }
+  .card, #waveBar i, #xpStrip i, .fluid i, #toast, .pinName, .mapChoice, .campSlot .csPlate b {
+    transition:none;
+  }
+}
 
 /* ---------- the corner minimap ---------- */
 #topLeft { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }

@@ -23,6 +23,8 @@ let S, H, toastTimer = 0;
 // The camp, while it is on screen: the roster it was given and its own clock,
 // so the fire keeps its rhythm across the frames the run is not using.
 let camp = null, campT = 0;
+// Whether the open panel is the thing holding the clock — see togglePanel.
+let panelPaused = false;
 const runes = [];
 
 export function init(state, handlers) {
@@ -46,8 +48,11 @@ export function init(state, handlers) {
   // Begin does not start the run — it opens the overview, and the map's own
   // button is what puts the hero on the road.
   el.ovBtn.addEventListener('click', () => { el.overlay.classList.add('hidden'); H.overview(); });
+  // The ✕ goes through the same door as the ⚒ and the ☰. Hiding the panel
+  // directly skipped the bookkeeping that resumes the run, so closing a panel
+  // that way left the game paused with no PAUSED tag to explain it.
   for (const b of document.querySelectorAll('[data-close]'))
-    b.addEventListener('click', () => b.closest('.panel').classList.add('hidden'));
+    b.addEventListener('click', closePanels);
 
   el.btnPause.addEventListener('click', (e) => { e.stopPropagation(); H.pause(); });
   el.minimap.addEventListener('click', (e) => { e.stopPropagation(); H.worldMap(); });
@@ -110,16 +115,36 @@ export function rebuildRunes() {
   }
 }
 
+/** Shut everything and give the clock back, if we were the ones holding it. */
+function closePanels() {
+  el.gearPanel.classList.add('hidden');
+  el.menuPanel.classList.add('hidden');
+  if (panelPaused) { panelPaused = false; H.pause(false); }
+}
+
+/**
+ * Open or close a panel — and stop the clock while it is open.
+ *
+ * Reading your own character sheet is not a turn you should be able to lose.
+ * The run used to keep going behind the Armoury, so a hero could be killed by a
+ * wave the player could not see, and the death overlay then rendered *through*
+ * the open panel. The map already stops the clock to be read; a panel is the
+ * same claim on the player's attention and gets the same treatment.
+ */
 export function togglePanel(id) {
   const p = el[id];
   const wasHidden = p.classList.contains('hidden');
-  el.gearPanel.classList.add('hidden');
-  el.menuPanel.classList.add('hidden');
+  closePanels();
   if (wasHidden) {
     p.classList.remove('hidden');
     if (id === 'gearPanel') { el.btnGear.classList.remove('newLoot'); S.newLoot = 0; }
     refreshPanels();
   }
+  // Whether *we* paused is remembered, exactly as the world map does it, so
+  // closing a panel can never resume a game the player had paused first.
+  const open = !p.classList.contains('hidden');
+  if (open && !S.paused) { panelPaused = true; H.pause(true); }
+  else if (!open && panelPaused) { panelPaused = false; H.pause(false); }
 }
 
 /**
@@ -293,9 +318,13 @@ export function frame(S, dt) {
 
   // The globe fills towards the cheapest thing skulls can still buy — which is
   // now only ever a card, since armour is taken off bosses and never bought.
+  //
+  // It no longer *glows* when it fills. The gold pulse means "you can act on
+  // this now", and this globe opens the Armoury, which sells nothing — it fired
+  // permanently from about wave three and was visually identical to the loot
+  // flash, which does mean something. One signal, one meaning.
   const afford = Math.min(1, S.skulls / TIER_BANDS[1].max);
   el.xpGlobe.querySelector('i').style.height = `${afford * 100}%`;
-  el.xpGlobe.classList.toggle('ready', afford >= 1);
 
   runes.forEach((r, i) => {
     const left = S.cd[i];
@@ -361,6 +390,11 @@ export function fireRune(i) {
 export function showDeath(show, n, lost) {
   el.deathOverlay.classList.toggle('hidden', !show);
   if (!show) return;
+  // Never a death screen layered over a character sheet: dying while the
+  // Armoury was open printed both, fully legible, on top of each other.
+  el.gearPanel.classList.add('hidden');
+  el.menuPanel.classList.add('hidden');
+  panelPaused = false;
   el.reviveNum.textContent = Math.ceil(n);
   if (lost !== undefined) {
     el.deathText.textContent = lost > 0
@@ -552,6 +586,7 @@ function buildCampSlots() {
   camp.slots.forEach((s, i) => {
     const b = document.createElement('button');
     b.className = `campSlot${s.locked ? ' locked' : ''}${i === camp.sel ? ' sel' : ''}`;
+    b.setAttribute('aria-label', `${s.name || 'Empty place'} — ${s.sub || ''}`);
     b.style.width = `${(1 / camp.slots.length) * 55}%`;
     // Named either way. An empty place at this fire belongs to somebody
     // specific, and saying so is the difference between a gap and a promise.
@@ -800,6 +835,11 @@ export function showDraft(cards, skulls, gained, rerollCost) {
     const b = document.createElement('button');
     const afford = skulls >= c.cost;
     b.className = `card ${c.kind} ${c.band || 'gray'}${afford ? '' : ' broke'}`;
+    b.setAttribute('aria-label',
+      `${c.name}${c.tier > 1 ? ` tier ${c.tier}` : ''} — ${c.desc} — `
+      + (c.cost > 0 ? `costs ${c.cost} skulls` : 'free')
+      + (afford ? '' : `, ${c.cost - skulls} short`));
+    b.disabled = !afford;
     b.innerHTML = `
       <span class="cardKind">${c.type === 'skill' ? 'New ability' : c.kind}</span>
       <span class="cardIcon">${c.icon}</span>
