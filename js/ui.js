@@ -4,19 +4,10 @@ import { heroStats } from './entities.js';
 import { levelFor, levelAt, LEVELS } from './world.js';
 import { SKILLS, skillById, PERKS, MAX_SKILLS, iconOpts, TIER_BANDS } from './perks.js';
 import * as Atlas from './atlas.js';
-import { heroKit, armourTierOf, weaponTierOf, drawActor } from './sprites.js';
-import { SLOTS, slotByKey, attrText, bandName, itemScore } from './items.js';
+import { heroKit, drawActor, drawShadow, drawCampfire,
+         drawCookpot, kitFor } from './sprites.js';
+import { SLOTS, slotByKey, attrText, bandName, itemScore, itemArt } from './items.js';
 import * as Audio from './audio.js';
-
-export const GEAR = [
-  { key: 'weapon', name: 'Blade',  icon: '⚔', base: 30, effect: (n) => `+${n * 4} damage · +${n * 2}% attack speed` },
-  { key: 'armor',  name: 'Plate',  icon: '❖', base: 34, effect: (n) => `+${n * 18} life · +${n * 3} armour` },
-  { key: 'ring',   name: 'Ring',   icon: '◎', base: 55, effect: (n) => `+${(n * 2.5).toFixed(1)}% critical · +${n * 6}% crit damage` },
-  { key: 'amulet', name: 'Amulet', icon: '✦', base: 70, effect: (n) => `+${(n * 1.2).toFixed(1)}% life steal · +${n * 3}% cooldown` },
-];
-
-export const gearCost = (g, key) =>
-  Math.round(GEAR.find(x => x.key === key).base * Math.pow(1.28, g[key]));
 
 // Cached so the renderer isn't rebuilding the hero's palette every frame.
 let kitCache = null, kitKey = '';
@@ -29,31 +20,39 @@ export function heroKitFor(gear) {
 const $ = (id) => document.getElementById(id);
 const el = {};
 let S, H, toastTimer = 0;
+// The camp, while it is on screen: the roster it was given and its own clock,
+// so the fire keeps its rhythm across the frames the run is not using.
+let camp = null, campT = 0;
 const runes = [];
 
 export function init(state, handlers) {
   S = state; H = handlers;
   for (const id of ['stageName', 'stageSub', 'waveText', 'waveBar', 'skullText', 'toast', 'banner',
-                    'hpGlobe', 'hpText', 'xpGlobe', 'xpStrip', 'xpText', 'skills', 'gearList',
+                    'hpGlobe', 'hpText', 'xpGlobe', 'xpStrip', 'xpText', 'skills',
                     'statList', 'gearPanel', 'menuPanel', 'runStats', 'deathOverlay', 'reviveNum',
                     'overlay', 'ovBtn', 'btnGear', 'btnMenu', 'btnReset', 'deathText',
                     'draftPanel', 'draftCards', 'perkList',
                     'draftPurse', 'btnPause', 'pausedTag', 'volSlider', 'volValue', 'btnMute',
                     'slotsLeft', 'slotsRight', 'dollCanvas', 'dollLevel', 'bagList', 'bagCount',
                     'mapPanel', 'mapPins', 'mapChoices', 'mapSub', 'mapNextHead', 'mapClose', 'mapArt',
+                    'campPanel', 'campScene', 'campCanvas', 'campSlots', 'campName', 'campLevel',
+                    'campSub', 'campStart', 'campPlate',
                     'minimap', 'topLeft'])
     el[id] = $(id);
 
   el.btnGear.addEventListener('click', (e) => { e.stopPropagation(); togglePanel('gearPanel'); });
   el.btnMenu.addEventListener('click', (e) => { e.stopPropagation(); togglePanel('menuPanel'); });
   el.btnReset.addEventListener('click', () => { if (confirm('Abandon this run and start over?')) H.reset(); });
-  el.ovBtn.addEventListener('click', () => { el.overlay.classList.add('hidden'); H.start(); });
+  // Begin does not start the run — it opens the overview, and the map's own
+  // button is what puts the hero on the road.
+  el.ovBtn.addEventListener('click', () => { el.overlay.classList.add('hidden'); H.overview(); });
   for (const b of document.querySelectorAll('[data-close]'))
     b.addEventListener('click', () => b.closest('.panel').classList.add('hidden'));
 
   el.btnPause.addEventListener('click', (e) => { e.stopPropagation(); H.pause(); });
   el.minimap.addEventListener('click', (e) => { e.stopPropagation(); H.worldMap(); });
   el.mapClose.addEventListener('click', () => H.worldMapClose());
+  el.campStart.addEventListener('click', () => H.campStart(camp && camp.slots[camp.sel].key));
 
   // Volume survives reloads; nobody wants to re-mute a game every session.
   // Test for the key, not the number: Number(null) is 0, which would start
@@ -68,7 +67,6 @@ export function init(state, handlers) {
     applyVolume(Number(el.volSlider.value), !Audio.isMuted());
   });
 
-  buildGearRows();
 }
 
 function applyVolume(pct, muted) {
@@ -124,24 +122,6 @@ export function togglePanel(id) {
   }
 }
 
-function buildGearRows() {
-  el.gearList.innerHTML = '';
-  for (const g of GEAR) {
-    const row = document.createElement('div');
-    row.className = 'gearRow';
-    row.innerHTML = `
-      <div class="gearIcon">${g.icon}</div>
-      <div class="gearInfo">
-        <div class="gearName">${g.name} <b data-lvl>+0</b><i data-tier></i></div>
-        <div class="gearEffect" data-eff></div>
-      </div>
-      <button class="buy" data-buy>—</button>`;
-    row.querySelector('[data-buy]').addEventListener('click', () => H.buy(g.key));
-    el.gearList.appendChild(row);
-    g._row = row;
-  }
-}
-
 /**
  * The globe asks to be opened.
  *
@@ -190,7 +170,25 @@ function slotCell(key) {
     ? `<span class="slotIcon">${slot.icon}</span><span class="slotName">${it.name}</span>`
     : `<span class="slotIcon dim">${slot.icon}</span><span class="slotName dim">${slot.name}</span>`;
   if (it) b.addEventListener('click', () => H.unequip(key));
+  // The art rides on the element and is painted once it is in the document —
+  // `paintIcon` refuses to paint a host that is not connected yet, and it fails
+  // by leaving the glyph, which looks like art that simply has not arrived.
+  b._art = it && itemArt(it);
   return b;
+}
+
+// The smaller side of a host's box — loot icons sit in slots and rows that are
+// wider than they are tall, or the reverse, and the art has to clear both.
+const fitBox = (host) => Math.max(16, Math.min(host.clientWidth || 24, host.clientHeight || 24));
+
+// Appended first, painted second — see the note in `slotCell`.
+function addSlot(host, key) {
+  const b = slotCell(key);
+  host.appendChild(b);
+  if (b._art) {
+    const host = b.querySelector('.slotIcon');
+    paintIcon(host, { art: b._art }, fitBox(host));
+  }
 }
 
 // The hero, drawn from the same routine the road uses, so the figure in the
@@ -229,6 +227,7 @@ function buildBag() {
     const better = !worn || itemScore(it) > itemScore(worn);
     const row = document.createElement('div');
     row.className = `bagRow ${it.band}`;
+    const art = itemArt(it);
     row.innerHTML = `
       <div class="bagIcon">${slot.icon}</div>
       <div class="bagInfo">
@@ -238,6 +237,10 @@ function buildBag() {
       <button class="buy${better ? ' up' : ''}">${better ? 'Equip' : 'Swap'}</button>`;
     row.querySelector('button').addEventListener('click', () => H.equip(it.id));
     el.bagList.appendChild(row);
+    if (art) {
+      const host = row.querySelector('.bagIcon');
+      paintIcon(host, { art }, fitBox(host));
+    }
   });
 }
 
@@ -246,24 +249,11 @@ export function refreshPanels() {
 
   el.slotsLeft.innerHTML = '';
   el.slotsRight.innerHTML = '';
-  for (const k of LEFT_SLOTS) el.slotsLeft.appendChild(slotCell(k));
-  for (const k of RIGHT_SLOTS) el.slotsRight.appendChild(slotCell(k));
+  for (const k of LEFT_SLOTS) addSlot(el.slotsLeft, k);
+  for (const k of RIGHT_SLOTS) addSlot(el.slotsRight, k);
   el.dollLevel.innerHTML = `<b>${itemLevel()}</b><span>Item Level</span>`;
   paintDoll();
   buildBag();
-  for (const g of GEAR) {
-    const n = S.gear[g.key];
-    const cost = gearCost(S.gear, g.key);
-    g._row.querySelector('[data-lvl]').textContent = `+${n}`;
-    g._row.querySelector('[data-eff]').textContent = g.effect(n);
-    const tier = g._row.querySelector('[data-tier]');
-    // Only the two visible slots advertise a look; a ring has no silhouette.
-    tier.textContent = g.key === 'armor' ? `  ·  Mark ${armourTierOf(n)}`
-                     : g.key === 'weapon' ? `  ·  Mark ${weaponTierOf(n)}` : '';
-    const b = g._row.querySelector('[data-buy]');
-    b.textContent = `☠ ${cost}`;
-    b.disabled = S.skulls < cost;
-  }
 
   el.statList.innerHTML = [
     ['Level', S.hero.level],
@@ -292,6 +282,7 @@ export function refreshPanels() {
 }
 
 export function frame(S, dt) {
+  if (camp) paintCamp(dt);
   const st = heroStats(S.hero, S.gear, S.perks, S.equipped);
   el.hpGlobe.querySelector('i').style.height = `${Math.max(0, S.hero.hp / st.maxHp) * 100}%`;
   el.hpText.textContent = `${Math.max(0, Math.round(S.hero.hp))}/${st.maxHp}`;
@@ -300,8 +291,9 @@ export function frame(S, dt) {
   el.xpText.textContent = `Level ${S.hero.level} · ${Math.floor(S.hero.xp)} / ${S.hero.xpNext}`;
   el.skullText.textContent = S.skulls.toLocaleString();
 
-  const cheapest = Math.min(...GEAR.map(g => gearCost(S.gear, g.key)));
-  const afford = Math.min(1, S.skulls / cheapest);
+  // The globe fills towards the cheapest thing skulls can still buy — which is
+  // now only ever a card, since armour is taken off bosses and never bought.
+  const afford = Math.min(1, S.skulls / TIER_BANDS[1].max);
   el.xpGlobe.querySelector('i').style.height = `${afford * 100}%`;
   el.xpGlobe.classList.toggle('ready', afford >= 1);
 
@@ -323,9 +315,11 @@ export function frame(S, dt) {
   el.stageSub.textContent = `Level ${S.section}`;
 
   const left = S.monsters.filter(m => !m.dead).length + S.queue.length;
-  if (S.phase === 'march') {
+  if (S.phase === 'enter') {
     el.waveText.textContent = 'Marching…';
     el.waveBar.querySelector('i').style.width = '0%';
+  } else if (S.phase === 'lull') {
+    el.waveText.textContent = 'The ground is clear';
   } else if (S.phase === 'drop') {
     el.waveText.textContent = 'The Coffin Drop';
   } else if (S.phase === 'draft') {
@@ -387,15 +381,23 @@ const ICON_PX = 62;
  * simply stands in until then. The panel outlives any single roll now, so a
  * detached card has to be checked for, or a late frame paints into nothing.
  */
-function paintIcon(host, card) {
+/**
+ * Paint a sheet cell into an element, in place of its glyph.
+ *
+ * `px` is the box to fit inside, because the same routine serves a 62px card
+ * icon and a 20px armoury slot — sized to the card everywhere, loot art spills
+ * out of its row and prints over the item's own name.
+ */
+function paintIcon(host, card, px) {
   if (!host || !host.isConnected) return;
   const s = Atlas.sheet(card.art.src, 0, 0, iconOpts(card.art.src));
-  if (!s) { requestAnimationFrame(() => paintIcon(host, card)); return; }
+  if (!s) { requestAnimationFrame(() => paintIcon(host, card, px)); return; }
   const c = s.cells[card.art.cell];
   if (!c) return;                                   // no such cell: keep the glyph
 
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const k = Math.min(ICON_PX / c.w, ICON_PX / c.h); // fit the box, keep the aspect
+  const box = px || ICON_PX;
+  const k = Math.min(box / c.w, box / c.h);          // fit the box, keep the aspect
   const w = Math.round(c.w * k), h = Math.round(c.h * k);
   const cv = document.createElement('canvas');
   cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
@@ -433,6 +435,15 @@ function tierRow(c) {
  * and this is the only place that says out loud how far the hero has actually
  * come. Levels already behind are struck through and dimmed; the one just
  * finished is lit, because that is the one the boss died in.
+ *
+ * Three modes, one screen. `fork` is the choice after a boss falls, `browse` is
+ * the minimap opened to be read, and `overview` is the one the run opens on —
+ * the same map with nothing to decide on it, ending in the button that puts the
+ * hero on the road. They share a panel deliberately: the map a player is shown
+ * before their first step should be the map they keep coming back to, not a
+ * separate picture of the same journey.
+ *
+ * `opts.sub` and `opts.next` carry the run's own numbers, which live in game.js.
  */
 export function showMap(choices, section) {
   el.mapPanel.classList.toggle('hidden', !choices);
@@ -476,6 +487,309 @@ export function showMap(choices, section) {
     b.addEventListener('click', () => H.mapPick(i));
     el.mapChoices.appendChild(b);
   });
+}
+
+/**
+ * The camp: the party that walks the road, and the places at the fire nobody
+ * has filled yet.
+ *
+ * A roster of one is still a roster, and the screen is built to say so — the
+ * empty places are drawn as places, not as absence. A player who sees three
+ * unlit spots at their fire knows something is coming without a word of copy
+ * promising it.
+ *
+ * `roster` is an array of slots, in the order they stand:
+ *   { name, sub, kit }            someone who is here
+ *   { locked: true, sub }         a place at the fire, still empty
+ */
+export function showCamp(roster) {
+  el.campPanel.classList.toggle('hidden', !roster);
+  // The road's HUD has nothing to say here — no life to watch, no cooldowns to
+  // spend — and left up it competes with the one thing this screen is for.
+  document.body.classList.toggle('camp', !!roster);
+  if (!roster) { camp = null; return; }
+  // Open on somebody the road can actually be taken as — on a run already
+  // under way that is the class walking it, and anything else opens the screen
+  // on a disabled button with no clue that the fix is to click your own hero.
+  const first = roster.findIndex(s => s.takeable);
+  camp = {
+    slots: roster,
+    sel: first >= 0 ? first : Math.max(0, roster.findIndex(s => !s.locked)),
+    geom: '',
+  };
+  buildCampSlots();
+}
+
+/**
+ * Where everybody stands.
+ *
+ * The party rings the fire rather than lining up beside it: the places spread
+ * across the middle two thirds of the scene, and the ones nearer the centre
+ * stand further back and smaller. That arc is the whole difference between a
+ * camp and a row of portraits — and it is shared by the painting and the hit
+ * areas, so a name plate can never drift off the head it belongs to.
+ */
+function campGeom(i, n, W, H) {
+  // Centred on the lit clearing in art/camp-boneyard.png, not on the canvas —
+  // the painted firelight is where a fire visibly was, so that is where ours
+  // goes and where the party stands round it.
+  const cx = W / 2, cy = H * 0.72;
+  const rx = W * 0.30, ry = H * 0.15;
+  // 140° to 400°: the middle of the party stands behind the fire and the outer
+  // two wrap forward past it, so the fire has people on both sides of it. A row
+  // with a stagger is still a row — this is the difference between figures that
+  // are near a fire and figures that are gathered at one.
+  const th = ((140 + ((i + 0.5) / n) * 260) * Math.PI) / 180;
+  const x = cx + Math.cos(th) * rx;
+  const y = cy + Math.sin(th) * ry;
+  const depth = (-Math.sin(th) + 1) / 2;      // 1 behind the fire, 0 in front of it
+  const scale = (H / 300) * 3.8 * (1 - depth * 0.34);
+  return { f: x / W, depth, x, y, scale, headY: y - 44 * 0.92 * scale };
+}
+
+function buildCampSlots() {
+  el.campSlots.innerHTML = '';
+  camp.slots.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.className = `campSlot${s.locked ? ' locked' : ''}${i === camp.sel ? ' sel' : ''}`;
+    b.style.width = `${(1 / camp.slots.length) * 55}%`;
+    // Named either way. An empty place at this fire belongs to somebody
+    // specific, and saying so is the difference between a gap and a promise.
+    b.innerHTML = `<span class="csPlate"><b>${s.name || '?'}</b><i>${s.sub}</i></span>`;
+    // Locked places are buttons already, so the day a hero can be recruited
+    // into one there is nothing to build — only something to say.
+    // Selecting an empty place is allowed — it puts that class in the plate so
+    // it can be read. What it cannot do is become the hero you march as, which
+    // is what `campStart` will have to check the day a second class exists.
+    b.addEventListener('click', () => {
+      camp.sel = i;
+      buildCampSlots();
+    });
+    el.campSlots.appendChild(b);
+  });
+  placeCampSlots();
+  paintCampName();
+}
+
+// Slot boxes follow the figures. Only run when the scene has actually changed
+// size — the geometry is stable between resizes and writing four elements'
+// styles every frame would be layout thrash for nothing.
+function placeCampSlots(W, H) {
+  const box = el.campScene.getBoundingClientRect();
+  W = W || box.width; H = H || box.height;
+  if (!W) return;
+  [...el.campSlots.children].forEach((b, i) => {
+    const g = campGeom(i, camp.slots.length, W, H);
+    b.style.left = `${g.f * 100}%`;
+    // Sat just above the head, in the figure's own space rather than at a fixed
+    // height, so the back row's plates rise with them.
+    // Above the head of whoever is standing there — or just above the bare
+    // ground when nobody is, because a "?" hanging at head height over an empty
+    // place is a label pinned to a body that was never drawn.
+    const top = camp.slots[i].locked
+      ? (g.y / H) * 100 - 11
+      : (g.headY / H) * 100 - 11;
+    b.style.top = `${Math.max(0, top)}%`;
+  });
+}
+
+function paintCampName() {
+  const s = camp.slots[camp.sel];
+  el.campName.textContent = s.name || '';
+  el.campLevel.textContent = s.sub || '';
+  el.campSub.textContent = s.detail || '';
+  el.campPlate.classList.toggle('empty', !s.takeable);
+  // The road is walked as whoever is in the plate, so a class that cannot be
+  // taken cannot offer it. Disabled and relabelled rather than hidden — a
+  // control that vanishes reads as a bug, and this one has to come back.
+  el.campStart.disabled = !s.takeable;
+  el.campStart.textContent = s.takeable ? 'Take the road'
+    : s.locked ? 'Yet to be found'
+    : 'Already on the road';
+}
+
+// The unknown are drawn from the hero's own build with the colour taken out and
+// the weapon left behind — a shape you recognise as a person and cannot
+// identify, which is exactly what a hero you have not met yet is.
+const GHOST = { ...kitFor('hero'), skin: '#100d0a', cloth: '#100d0a', mail: '#15120e',
+                trim: '#1d1913', cape: null, helm: true, eyes: null, glow: null,
+                weapon: 'none' };
+
+/**
+ * The hero, painted rather than drawn.
+ *
+ * `art/Pixel-Warrior.png` is two columns — idle, attack — by five rows, one row
+ * per armour tier, in the same order as ARMOUR_TIERS: leather, steel, gold,
+ * crystal, bone. So the row is `armourTierOf(gear.armor)` and the hero visibly
+ * re-forges as the plate is bought, which is the one thing the vector kit was
+ * doing that a bitmap must not lose.
+ *
+ * Sliced by content, not by lattice: generated sheets never land on an even
+ * grid, and the attack pose is twice the width of the idle one.
+ */
+export const heroSheet = (src = 'art/Pixel-Warrior.png') => Atlas.sheet(src, 2, 5, { auto: true });
+// Column 0 is idle, column 1 is the swing.
+const heroCell = (tier, attacking) => (Math.max(1, Math.min(5, tier)) - 1) * 2 + (attacking ? 1 : 0);
+
+/**
+ * A figure with the fire on them.
+ *
+ * `drawActor` paints flat kit colour, which is right on the road where the
+ * light is ambient and wrong here, where there is one fire and everybody is
+ * standing round it. So the figure goes into a buffer of its own, a warm-to-
+ * cold gradient is laid over it with `source-atop` — which paints only where
+ * the figure already is — and the result is blitted back. The gradient runs
+ * from the fire's side to the far side, so the two heroes across the fire from
+ * each other are lit from opposite hands.
+ */
+let litBuf = null;
+function litActor(ctx, a, x, y, t, fireX) {
+  // The buffer has to hold the whole figure — a raised greatsword reaches well
+  // above the head and a cape well behind the heels — and the figure's size is
+  // the scale, so the buffer is sized from it rather than fixed. Grown, never
+  // shrunk: one allocation covers every frame after the first.
+  const h = 44 * 0.92 * a.scale;          // the body, feet to crown
+  const pad = Math.ceil(h * 1.7);
+  const size = pad * 2;
+  if (!litBuf) litBuf = document.createElement('canvas');
+  if (litBuf.width < size) { litBuf.width = size; litBuf.height = size; }
+  const b = litBuf.getContext('2d');
+  b.setTransform(1, 0, 0, 1, 0, 0);
+  b.clearRect(0, 0, litBuf.width, litBuf.height);
+  drawActor(b, a, pad, pad, t);
+
+  // Warm on the fire's side, cold on the other. `source-atop` paints only where
+  // the figure already is, so this lights the body without touching the scene.
+  const dir = Math.sign(fireX - x) || 1;
+  b.globalCompositeOperation = 'source-atop';
+  const g = b.createLinearGradient(pad + dir * h * 0.5, pad - h * 1.1, pad - dir * h * 0.5, pad - h * 0.4);
+  g.addColorStop(0, 'rgba(255,168,80,.32)');
+  g.addColorStop(0.55, 'rgba(255,150,70,.07)');
+  g.addColorStop(1, 'rgba(16,20,34,.40)');
+  b.fillStyle = g;
+  b.fillRect(0, 0, litBuf.width, litBuf.height);
+  b.globalCompositeOperation = 'source-over';
+
+  ctx.drawImage(litBuf, x - pad, y - pad);
+}
+
+/**
+ * One frame of the camp. Driven from `frame()` rather than its own loop: the
+ * render loop runs whether or not the run does, so the fire is already being
+ * given frames and a second rAF would only fight it for them.
+ */
+function paintCamp(dt) {
+  campT += dt;
+  const cv = el.campCanvas, ctx = cv.getContext('2d');
+  const box = cv.getBoundingClientRect();
+  if (!box.width) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = box.width, H = box.height;
+  const pw = Math.round(W * dpr), ph = Math.round(H * dpr);
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+
+  const key = `${pw}x${ph}`;
+  if (key !== camp.geom) { camp.geom = key; placeCampSlots(W, H); }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const n = camp.slots.length;
+  const fireX = W / 2, fireY = H * 0.72;
+
+  // No ground and no scenery are painted here any more: art/camp-boneyard.png is
+  // the set, and a drawn clearing on top of a painted one is two grounds. All
+  // that is left is the fire's own light, which has to be live because it moves.
+  const flick = 0.88 + Math.sin(campT * 2.4) * 0.08 + Math.sin(campT * 7.3) * 0.04;
+  const glow = ctx.createRadialGradient(fireX, fireY - 26, 10, fireX, fireY - 26, W * 0.30 * flick);
+  glow.addColorStop(0, 'rgba(255,172,74,.20)');
+  glow.addColorStop(0.42, 'rgba(206,116,42,.08)');
+  glow.addColorStop(1, 'rgba(255,140,50,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // Everyone standing, back row first so the near ones overlap them.
+  const order = camp.slots.map((s, i) => i)
+    .sort((a, b) => campGeom(b, n, W, H).depth - campGeom(a, n, W, H).depth);
+  // The fire is a thing in the ring, not a layer over it: it goes down when the
+  // sort reaches the near half, so the two who wrapped forward stand in front of
+  // the flame and the two behind it are lit through it.
+  let fireDown = false;
+  const dropFire = () => {
+    drawCampfire(ctx, fireX, fireY, campT, H / 190);
+    drawCookpot(ctx, fireX, fireY, Math.max(0.8, H / 560));
+    fireDown = true;
+  };
+  for (const i of order) {
+    const s = camp.slots[i];
+    const { x, y, scale, depth } = campGeom(i, n, W, H);
+    if (!fireDown && depth < 0.5) dropFire();
+
+    // Whatever is being looked at stands in a pool of light of its own, inside
+    // a ring on the ground — the same gold that means "you can act on this"
+    // everywhere else. Drawn before the locked branch so an empty place that
+    // has been selected is lit too: the plate below names it, and this is what
+    // says which of the four it is.
+    if (i === camp.sel) {
+      ctx.save();
+      ctx.translate(x, y); ctx.scale(1, 0.34);
+      const r = 22 * scale * 0.5;
+      const ring = ctx.createRadialGradient(0, 0, 4, 0, 0, r);
+      ring.addColorStop(0, 'rgba(200,162,74,.40)');
+      ring.addColorStop(0.7, 'rgba(200,162,74,.13)');
+      ring.addColorStop(1, 'rgba(200,162,74,0)');
+      ctx.fillStyle = ring;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+      // The rim breathes on the fire's clock, so it reads as lit rather than
+      // as a decal stuck to the floor.
+      ctx.strokeStyle = `rgba(224,196,99,${0.5 + Math.sin(campT * 2.2) * 0.14})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.86, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+
+    if (s.locked) {
+      // An empty place is drawn as the place: ground worn bare where somebody
+      // will stand, and nothing standing on it. A dim body reads as a figure
+      // lurking in the dark, which is a different and worse promise than an
+      // empty seat at the fire.
+      const r = 16 * scale * 0.42;
+      ctx.save();
+      ctx.translate(x, y); ctx.scale(1, 0.36);
+      const worn = ctx.createRadialGradient(0, 0, 2, 0, 0, r);
+      worn.addColorStop(0, 'rgba(30,22,14,.75)');
+      worn.addColorStop(1, 'rgba(30,22,14,0)');
+      ctx.fillStyle = worn;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(216,201,168,.16)';
+      ctx.lineWidth = 1.6; ctx.setLineDash([6, 9]);
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+      continue;
+    }
+
+    drawShadow(ctx, x, y, 6 * scale * 0.5, 0.5);
+    // Everyone else stands back into the dark. Dimming the unselected is what
+    // makes the selected one obvious at a glance — a highlight on its own has
+    // to be found, a contrast does not.
+    if (i !== camp.sel) ctx.globalAlpha = 0.62;
+    const sheet = heroSheet(s.sheet);
+    if (sheet) {
+      // Matched to the vector figure it replaces, so the camp's composition —
+      // which was tuned against that — still holds: same crown height, same
+      // feet on the same ground.
+      const cell = sheet.cells[heroCell(s.tier || 1, false)];
+      const k = cell ? (44 * 0.92 * scale) / cell.h : 1;
+      Atlas.drawSprite(ctx, sheet, heroCell(s.tier || 1, false), x, y, k, false);
+    } else {
+      // Only the class carrying this run's gear has a kit of its own; the rest
+      // fall back to the base look for the moment before their sheet decodes.
+      litActor(ctx, { kit: s.kit || kitFor('hero'), scale, walk: 0, swing: 0, hurt: 0, fx: 0.2 },
+               x, y, campT + i * 1.7, fireX);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  if (!fireDown) dropFire();
 }
 
 export function showDraft(cards, skulls, gained, rerollCost) {

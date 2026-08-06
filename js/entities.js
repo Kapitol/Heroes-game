@@ -2,6 +2,35 @@
 
 import { equippedBonuses } from './items.js';
 
+/**
+ * The four, and the order they stand around the fire.
+ *
+ * **One character to a run.** The camp is a choosing screen, not a party: the
+ * class picked there is the class the whole run is walked as, and it cannot be
+ * changed once the road has been started — which is why the camp only offers
+ * the choice while a run is still untouched.
+ *
+ * `ready` is whether the class can be played at all yet, which today means
+ * whether its art exists. A class that is not ready still stands named at the
+ * fire, because "Warlock, yet to be found" is a promise and an anonymous gap is
+ * only an absence.
+ *
+ * `sheet` is a 2 × 5 tier sheet in the shape of `art/Pixel-Warrior.png`: two
+ * columns of idle and attack, five rows of armour tier.
+ */
+export const CLASSES = [
+  { key: 'warrior', name: 'Warrior', sheet: 'art/Pixel-Warrior.png', ready: true,
+    blurb: 'Walks in front and stays there.' },
+  { key: 'paladin', name: 'Paladin', sheet: 'art/Pixel-Paladin.png', ready: true,
+    blurb: 'Holds the line and mends it.' },
+  { key: 'warlock', name: 'Warlock', sheet: 'art/Pixel-Warlock.png',
+    blurb: 'Spends life to spend the dead.' },
+  { key: 'druid',   name: 'Druid',   sheet: 'art/Pixel-Druid.png',
+    blurb: 'Brings the wood in with them.' },
+];
+
+export const classByKey = (k) => CLASSES.find(c => c.key === k) || CLASSES[0];
+
 export const MONSTERS = {
   fallen:   { name: 'Fallen One', kind: 'fallen',   hp: 20, dmg: 4,  speed: 2.6, atk: 0.9, range: 0.9, scale: 0.85, skulls: 4,  xp: 5 },
   skeleton: { name: 'Skeleton',   kind: 'skeleton', hp: 34, dmg: 7,  speed: 2.1, atk: 1.2, range: 1.0, scale: 1.0,  skulls: 7,  xp: 9 },
@@ -46,6 +75,8 @@ export function makeMonster(key, depth, pos) {
 
 export function makeHero() {
   return {
+    // Which of CLASSES this hero is. Only the warrior exists so far.
+    class: 'warrior',
     kind: 'hero', name: 'Hero',
     x: 0, y: 0, scale: 1,
     level: 1, xp: 0, xpNext: 60,

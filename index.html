@@ -71,10 +71,6 @@
     <div class="secHead"><h3>The Bag</h3><span id="bagCount"></span></div>
     <div id="bagList"></div>
 
-    <div class="secHead"><h3>Forge</h3></div>
-    <p class="panelSub">Skulls reforge the blade and the plate — and you can see it on them.</p>
-    <div id="gearList"></div>
-
     <div class="secHead"><h3>Drafted</h3></div>
     <div id="perkList"></div>
   </div>
@@ -126,6 +122,23 @@
       </div>
       <span id="mapNextHead"></span>
       <button id="mapClose" class="hidden">Back to the road</button>
+    </div>
+  </div>
+
+  <!-- The camp: who is going down the road, and the places still empty.
+       Shown between the title and the first step. -->
+  <div id="campPanel" class="overlay hidden">
+    <div class="campInner">
+      <div id="campScene">
+        <canvas id="campCanvas"></canvas>
+        <div id="campSlots"></div>
+      </div>
+      <div id="campPlate">
+        <div id="campName"></div>
+        <div id="campLevel"></div>
+        <p id="campSub"></p>
+      </div>
+      <button id="campStart">Take the road</button>
     </div>
   </div>
 

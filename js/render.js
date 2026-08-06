@@ -7,7 +7,7 @@
 
 import { TILE_W, TILE_H, toScreen, tilePath, hash2, clamp } from './iso.js';
 import { HALF, VERGE, propAt, decalAt, landmarkAt } from './world.js';
-import { drawActor, drawShadow, drawProp, drawTelegraph } from './sprites.js';
+import { drawActor, drawShadow, drawProp, drawTelegraph, drawChest } from './sprites.js';
 import * as Atlas from './atlas.js';
 import * as Coffin from './coffin.js';
 
@@ -463,11 +463,17 @@ function drawDepthPass(ctx, S, t, painted) {
     }
   }
   if (!S.hero.dead || S.hero.deathAnim < 1) items.push(S.hero);
+  if (S.chest) items.push(S.chest);
   for (const m of S.monsters) if (!m.dead || m.fade > 0) items.push(m);
   for (const p of S.projectiles) items.push(p);
   items.sort((p, q) => (p.x + p.y) - (q.x + q.y));
 
   for (const it of items) {
+    if (it.state && it.loot) {                     // the boss's chest
+      const p = toScreen(it.x, it.y);
+      drawChest(ctx, p.x, p.y, it.z, it.open || 0, t, 1);
+      continue;
+    }
     const p = toScreen(it.x, it.y);
     if (it.propSheet) { Atlas.drawSprite(ctx, it.propSheet, it.propCell, p.x, p.y, it.scale); continue; }
     if (it.prop) { drawProp(ctx, it.prop, p.x, p.y, t, it.seed, b); continue; }
@@ -507,7 +513,10 @@ function drawFighter(ctx, o, p, t) {
 function drawPaintedFighter(ctx, o, sx, sy, t) {
   if (!o.sprite) return false;
   const sp = o.sprite;
-  const sh = Atlas.sheet(sp.sheet, sp.cols, sp.rows);
+  // `sp` doubles as the slicing options, the way projectile art does: the
+  // class sheets are sliced by content because their rows grow taller down the
+  // sheet, and a lattice would cut the horned helms in half.
+  const sh = Atlas.sheet(sp.sheet, sp.cols, sp.rows, sp);
   if (!sh) return false;
 
   const attacking = o.swing > 0.15 && o.swing < 0.85;

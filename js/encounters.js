@@ -75,7 +75,17 @@ export const BOSSES = [
   },
 ];
 
-export const bossFor = (stage) => BOSSES[(Math.floor(stage / BOSS_EVERY) - 1) % BOSSES.length];
+/**
+ * Which boss stands in the road.
+ *
+ * Clamped at the bottom on purpose: the boss is *triggered* by a count of waves
+ * and *chosen* by the stage, and those two can disagree. A run that loses waves
+ * to deaths can reach its twelfth encounter still under stage 8, which indexed
+ * `BOSSES[-1]` — undefined — and threw inside the render loop, killing the
+ * frame and freezing the game on the last thing it had drawn.
+ */
+export const bossFor = (stage) =>
+  BOSSES[Math.max(0, Math.floor(stage / BOSS_EVERY) - 1) % BOSSES.length];
 
 export const BOSS_EVERY = 8;
 export const isBossStage = (stage) => stage % BOSS_EVERY === 0;
@@ -131,13 +141,18 @@ export const stageScale = (stage) => ({
   xp: Math.pow(1.17, stage - 1),
 });
 
-export function makeMonster(key, stage, pos, champion) {
+export function makeMonster(key, stage, pos, champion, threat) {
   const t = MONSTERS[key];
-  const s = stageScale(stage);
+  // `threat` is the hero-relative scaling — see `threat()` in game.js. Absent,
+  // the old stage-only curve stands, which is what the dev hooks want.
+  const s = threat ? { ...stageScale(stage), hp: threat.hp, dmg: threat.dmg } : stageScale(stage);
   const boost = champion ? 3.4 : 1;
   const hp = Math.round(t.hp * s.hp * boost);
   return {
     ...t, key, x: pos.x, y: pos.y,
+    // Where it was placed. A shooter is allowed to back away from the hero,
+    // but not indefinitely — see rangedAI.
+    home: { x: pos.x, y: pos.y },
     hp, maxHp: hp,
     dmg: Math.round(t.dmg * s.dmg * (champion ? 1.5 : 1)),
     skulls: Math.round(t.skulls * s.skulls * (champion ? 4 : 1)),
@@ -151,9 +166,13 @@ export function makeMonster(key, stage, pos, champion) {
   };
 }
 
-export function makeBoss(stage, pos) {
+export function makeBoss(stage, pos, threat) {
   const b = bossFor(stage);
-  const s = stageScale(stage);
+  const base = stageScale(stage);
+  // A boss is a wall on purpose, but a wall measured against the hero who
+  // walked up to it: three times a normal body's health, not three times an
+  // imaginary one's.
+  const s = threat ? { ...base, hp: threat.hp * 3.2, dmg: threat.dmg * 1.35 } : base;
   const hp = Math.round(b.hp * s.hp);
   return {
     ...b, key: b.key, ai: 'boss', boss: true,

@@ -3,9 +3,15 @@
 How to generate art for Crypt Heroes that drops straight into the engine, and
 exactly what each of the ten map areas needs.
 
-Work through it in this order: read **The rules** once, pick an area from **The
-ten areas**, then use the recipe for the asset type you are making. Every prompt
-is paste-ready apart from one flavour line you swap per area.
+**If you just want something to paste, open [PROMPTS.md](PROMPTS.md).** Every
+prompt there is already finished — rules block included, flavour lines filled
+in, nothing to substitute.
+
+This file is the *why*: what each rule is load-bearing for, what breaks when one
+is dropped, and how each sheet is wired once it lands. Read it when a generation
+comes back wrong, or when you need a recipe for something PROMPTS.md does not
+cover yet — the recipes below carry `FLAVOUR` and `[+ the rules block]`
+placeholders precisely because they are templates, not prompts.
 
 ---
 
@@ -192,6 +198,124 @@ Group each sheet by card kind so the hue is baked in — the card colour languag
 is warm copper for attack, cold steel-blue for defence, gold for utility. See
 the two existing sheets for the pattern.
 
+### 7. The hero, by tier — `Pixel-Warrior.png` — **2 columns × 5 rows**
+
+The one sheet the whole game is hung on. Two columns are idle and attack; the
+five rows are the five armour tiers, in the order `ARMOUR_TIERS` declares them
+in `sprites.js`, so the row index *is* `armourTierOf(gear.armor)` and the hero
+visibly re-forges as the plate is bought.
+
+**Why tiers and not layers.** A per-item paperdoll — a helm layer, a chest
+layer, each swapped on one body — is what the loot system wants, and it is the
+one thing this pipeline cannot produce. Layers must register to the same body
+at the same pixel across every generation, and each generation draws its body a
+few pixels different. Whole characters need no registration, which is why they
+work. Per-item layering is an artist's job or a system like LPC's, not a
+prompt's.
+
+```
+A flat 2-column by 5-row grid of a fantasy warrior on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is the SAME character in a different armour set, in this order top
+to bottom: worn brown leather; dull grey steel plate; ornate gold plate with
+horned helm; blackened plate with glowing blue crystal inlays; pale bone
+armour with a horned skull helm.
+
+Left column: standing idle, weight settled, sword lowered.
+Right column: mid-attack, sword swung forward.
+
+All ten poses are the same character at the same scale and the same height,
+facing right, seen from a slight elevation, lit identically from the upper
+left, standing on nothing — no ground, no base, no shadow.
+
+Very wide empty magenta gutters between every row and column.
+
+[+ the rules block]
+```
+
+Sliced with `{ auto: true }`, never a lattice: the rows grow taller down the
+sheet as the helmets gain horns — 210px at leather, 238px at bone — and a
+uniform grid cuts the tall ones in half.
+
+### 8. Loot icons — `icons-<slot>.png` — **one row of 5**
+
+One sheet per equipment slot, five cells, worst band to best. The cell index is
+the item's rarity band, so `items.js` needs no lookup table — see `SLOT_ART`
+there. Add a sheet and the slot wires itself.
+
+Keep the five tier descriptions identical to the hero sheet's, so a looted gold
+helm and the gold row of the body are the same gold.
+
+```
+A flat single row of five ITEM on a solid pure magenta background (#FF00FF),
+dark-gothic pixel art style, chunky readable pixels.
+
+The same piece of equipment five times, ascending in quality left to right:
+worn brown leather; dull grey steel; ornate gold with horned flourishes;
+blackened steel with glowing blue crystal inlays; pale carved bone.
+
+All five at the same scale and the same angle, seen three-quarter from the
+front, lit identically from the upper left, floating on nothing — no ground,
+no base, no shadow, no hand or body holding them.
+
+Very wide empty magenta gutters between them.
+
+[+ the rules block]
+```
+
+| File | ITEM line | Status |
+|---|---|---|
+| `helmets.png` | `a fantasy helmet` | done |
+| `icons-cuirass.png` | `a fantasy chest cuirass` | wanted |
+| `icons-gauntlets.png` | `a pair of fantasy gauntlets` | wanted |
+| `icons-greaves.png` | `a pair of fantasy leg greaves with boots` | wanted |
+| `icons-weapon.png` | `a fantasy straight sword, blade pointing up` | wanted |
+
+Those are the five slots in `items.js` verbatim. Note the game merges legs and
+boots into one Greaves slot, and has a Gauntlets and a Weapon slot that the
+original concept board never drew.
+
+### 9. Scene backdrop — `camp-<area>.png` — **one painted image, 16:9**
+
+**The one recipe that is not on magenta and has no gutters.** It is a single
+backdrop that never tiles and never gets cut, so there is nothing to key and
+nothing to slice — it is set as a CSS background and drawn behind everything.
+The warning at the top of this file about scenes is about scenes used as
+*repeating ground textures*; a one-off backdrop is the case where a scene is
+the right answer.
+
+Ask for 1792×1024. The centre must be empty: that is where the engine paints
+the fire, the cookpot and the party, and anything painted there is drawn over.
+
+```
+A single wide painted scene of FLAVOUR at night, dark-gothic fantasy, muted
+and desaturated, seen from a slight elevation looking down — the same
+three-quarter view as an isometric game.
+
+The centre of the clearing is BARE, EMPTY trodden earth: no fire, no fire
+pit, no logs, no ring of stones, nothing standing in the middle. The whole
+scene is lit as if by a single low campfire sitting on that empty ground —
+warm orange light raking outward across the dirt from the lower centre,
+everything falling to near-black within a short distance of it.
+
+Around the edges of the clearing, in silhouette against that firelight:
+PROPS.
+
+The upper third is dark empty night sky above the horizon line. The bottom
+fifth of the image fades to solid near-black.
+
+Near-black ground, one warm light source only, no other light. No people, no
+characters, no figures, no skeletons, no animals. No text, letters, numbers,
+labels, logos or watermarks. No UI, frames or borders. No magenta.
+```
+
+For `camp-boneyard.png`, FLAVOUR was *an abandoned camp in a graveyard
+clearing* and PROPS were *a sagging canvas tent, a bedroll and a pack, spears
+and a shield stuck in the earth, a stack of firewood, a wooden handcart, a low
+broken stone wall, bare dead trees, leaning gravestones, and a ruined crypt
+archway on the horizon*.
+
 ---
 
 ## The ten areas
@@ -242,9 +366,19 @@ what these filenames assume.
    lattice, and a miscount shifts every index after it. This has already caught
    one sheet that produced 11 cells instead of 9.
 
+### Two things that turned out not to matter
+
+- **The magenta does not have to be exact.** `Pixel-Warrior.png` came back at
+  `rgb(246,4,250)` with only 19% of its background pixels on that exact value,
+  and it keyed perfectly: `atlas.js` scores magenta-ness as `(r+b)/2 - g` rather
+  than testing for a colour, so noise and dithering in the background are
+  invisible to it. Only a background that drifts *towards green* would fail.
+- **Nor does the lattice.** `{ auto: true }` finds the gutters, so rows of
+  different heights are fine — which is what generated sheets always are.
+
 ### Checklist before you accept a generation
 
-- [ ] Background is one flat magenta, not a gradient
+- [ ] Background is magenta throughout, and never shades towards green
 - [ ] Nothing touches another object or the image edge
 - [ ] No text anywhere, including numbers
 - [ ] No frames, plates or circles behind objects

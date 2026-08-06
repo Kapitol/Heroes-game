@@ -487,6 +487,10 @@ h1.dead {
 body.minigame #top,
 body.minigame #belt,
 body.minigame #toast { opacity:0; pointer-events:none; }
+/* Same argument at the camp: no life to watch and no cooldown to spend, so the
+   road's HUD is only competition for the one thing on screen. */
+body.camp #top,
+body.camp #belt { opacity:0; pointer-events:none; }
 
 /* ---------- armoury: the paperdoll ---------- */
 /* Wider than the other panels — this one has three columns to hold. */
@@ -558,7 +562,10 @@ body.minigame #toast { opacity:0; pointer-events:none; }
 /* No clipping here. The road cards hang below the map on purpose, and an
    `overflow` on this box slices off the part that sticks out — which is exactly
    the part carrying the level names. The overlay scrolls instead. */
-.mapInner { width:min(1180px,97vw); overflow:visible; text-align:center; }
+/* `100%` of the overlay's content box, not a slice of the viewport: the overlay
+   pads 24px a side, so a vw-based width is that much too wide and pushes the
+   map off the right edge on a phone. */
+.mapInner { width:min(1180px,100%); overflow:visible; text-align:center; }
 .mapInner h2 {
   margin:0 0 2px; font-size:19px; font-weight:normal; letter-spacing:.16em;
   color:var(--gild); text-transform:uppercase;
@@ -600,6 +607,109 @@ body.minigame #toast { opacity:0; pointer-events:none; }
 .mapChoice.deep .mcName { color:#e0a06a; }
 .mapChoice.hold { border-color:#24405d; }
 .mapChoice.hold .mcName { color:#9fc0e6; }
+
+/* ---------- the camp ---------- */
+/* No frame, no plate, no card: the camp is a place, and the only way a place
+   reads as one is if nothing is drawn around it. The scene fades into the
+   overlay's own dark instead of ending at a border. */
+/* Opaque, unlike the other overlays: the road is still painted on the canvas
+   underneath, and a lit strip of pavement showing through the camp's own dark
+   ground is the one thing that breaks the place completely. */
+#campPanel {
+  background:radial-gradient(ellipse at 50% 74%, #140e08, #060504 62%);
+  background-color:#060504;
+}
+.campInner { width:min(1240px,100%); text-align:center; }
+/* 16/9, not 16/7: the set needs sky to stand against, and the shallower
+   box left the top quarter of the frame as dead black. */
+#campScene {
+  position:relative; width:100%; aspect-ratio:3/2; max-height:66vh;
+  background:url("../art/camp-boneyard.png") center / cover no-repeat;
+}
+#campCanvas { position:absolute; inset:0; width:100%; height:100%; }
+
+/* The hit areas over the figures. Each is a column the width of one place at
+   the fire, so a click anywhere on or near a hero picks them. */
+#campSlots { position:absolute; inset:0; }
+.campSlot {
+  position:absolute; bottom:0; transform:translateX(-50%);
+  padding:0; border:0; background:none; font:inherit; color:var(--parch);
+  cursor:pointer; display:flex; align-items:flex-start; justify-content:center;
+}
+/* The name plate rides above the figure's head, as it does over the hero on
+   the road — the same convention, so the camp needs no explaining. */
+.csPlate { display:flex; flex-direction:column; gap:2px; pointer-events:none; }
+.csPlate b {
+  font-weight:normal; font-size:15px; letter-spacing:.06em; color:var(--parch);
+  text-shadow:0 1px 3px #000, 0 0 10px #000;
+}
+.csPlate i {
+  font-style:normal; font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+  opacity:.5; text-shadow:0 1px 3px #000;
+}
+.campSlot.sel .csPlate b {
+  color:var(--gild); text-shadow:0 1px 3px #000, 0 0 16px rgba(200,162,74,.5);
+  border-bottom:1px solid var(--gild-dim); padding-bottom:3px;
+}
+.campSlot.sel .csPlate i { opacity:.72; }
+/* Everyone who is not selected steps back, so the lit one is lit by contrast
+   and not only by being slightly warmer. */
+.campSlot:not(.sel):not(.locked) .csPlate b { opacity:.6; }
+.campSlot:not(.sel):not(.locked):hover .csPlate b { opacity:1; }
+/* An empty place is legible but never competes: its name sits quiet until
+   there is somebody standing under it. */
+.campSlot.locked .csPlate b { color:#6b5c3e; }
+.campSlot.locked .csPlate i { opacity:.32; }
+.campSlot:hover .csPlate b { color:var(--gild); }
+
+/* Who is selected, said once and plainly. The plates over the figures name
+   everyone at the fire; this is the one that answers "and which of them am I
+   looking at" — so it is an object with a lit edge, like everything else in
+   this game that the player is meant to act on. */
+#campPlate {
+  width:min(340px,86%); margin:-30px auto 0; position:relative; z-index:2;
+  padding:11px 18px 13px; border-radius:4px;
+  background:linear-gradient(180deg,rgba(34,27,22,.97),rgba(16,12,9,.97));
+  border:1px solid #3d3025;
+  box-shadow:inset 0 1px 0 rgba(200,162,74,.18), 0 10px 30px rgba(0,0,0,.8);
+}
+#campName {
+  margin:0; font-size:21px; letter-spacing:.12em; color:var(--gild);
+  text-transform:uppercase; text-shadow:0 0 26px rgba(200,162,74,.3);
+}
+#campLevel {
+  margin:3px 0 0; font-size:11px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--parch); opacity:.75;
+}
+#campSub { margin:7px 0 0; font-size:10px; letter-spacing:.1em; text-transform:uppercase; opacity:.42; }
+/* Reading an empty place is allowed, and the plate says what it is: the gold
+   goes, because gold here means a hero you can actually march as. */
+/* Reading a class you cannot take this run is allowed, and the plate says so:
+   the gold goes, because gold here means a road you can actually walk. */
+#campPlate.empty { border-color:#2b2219; }
+#campPlate.empty #campName { color:#7d6a45; text-shadow:none; }
+#campPlate.empty #campLevel { opacity:.45; }
+#campStart {
+  margin:20px auto 0; padding:11px 34px; display:block; cursor:pointer;
+  font:inherit; font-size:14px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--gild); background:linear-gradient(180deg,#241d17,#120e0b);
+  border:1px solid var(--gild-dim); border-radius:3px;
+}
+#campStart:hover:not(:disabled) { color:#f0d89a; border-color:var(--gild); }
+#campStart:disabled { color:#5d5040; border-color:#2b2219; cursor:default; }
+
+/* A plate is one line or it is nothing: wrapped onto three, four of them
+   collide with each other and print across the faces underneath. */
+.csPlate b, .csPlate i { white-space:nowrap; }
+
+@media (max-width:620px) {
+  #campScene { aspect-ratio:1/1; max-height:56vh; }
+  .csPlate b { font-size:11px; }
+  .csPlate i { font-size:8px; letter-spacing:.06em; }
+  .campSlot.locked .csPlate i { display:none; }   /* "?" carries it at this size */
+  #campName { font-size:18px; }
+  #campSub { font-size:9.5px; letter-spacing:.08em; }
+}
 
 /* ---------- the map: pins on the overworld ---------- */
 /* The image sets the box's shape and the pins are placed inside it by

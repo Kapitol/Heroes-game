@@ -23,6 +23,10 @@ export const ICON_SHEETS = [
   // 0 cupped hands · 1 bandaged splint · 2 herb sprig. Cells 1 and 2 are spare,
   // waiting on the Healing classification having more than one card in it.
   { src: 'art/mend-icons.png', opts: { auto: true, minCell: 0.08 } },
+  // Loot art, not card art: five helms in one row, worst to best, so the cell
+  // index is the rarity band. See SLOT_ART in items.js.
+  { src: 'art/helmets.png', opts: { auto: true, minCell: 0.08 } },
+  { src: 'art/icons-weapon.png', opts: { auto: true, minCell: 0.08 } },
 ];
 const ICON1 = (cell) => ({ src: ICON_SHEETS[0].src, cell });
 const ICON2 = (cell) => ({ src: ICON_SHEETS[1].src, cell });
