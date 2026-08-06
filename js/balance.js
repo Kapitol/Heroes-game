@@ -43,14 +43,33 @@ const dial = (key, value) =>
     ? Number(process.env[key])
     : value);
 
+// Enemy health tracks the hero's damage, so a wave never becomes a formality.
 export const HP_FROM_DPS = dial('HP_FROM_DPS', 0.45);
-export const DMG_FROM_EHP = dial('DMG_FROM_EHP', 0.40);
-export const HP_FROM_STAGE = dial('HP_FROM_STAGE', 0.55);
-export const DMG_FROM_STAGE = dial('DMG_FROM_STAGE', 0.45);
+/**
+ * Enemy damage does NOT track the hero's toughness — deliberately zero.
+ *
+ * It used to, and that was the quiet reason nothing a player did mattered:
+ * `heroEhp` counts armour and life, so buying either made every enemy hit
+ * harder in exact proportion. Both axes cancelled player investment, the game
+ * became self-balancing to the point of being static, and every strategy died
+ * at the same depth however the other dials were set. Health scales with you;
+ * how hard you are hit is a fact about the road.
+ */
+export const DMG_FROM_EHP = dial('DMG_FROM_EHP', 0);
+/**
+ * How fast the road gets worse. Both were far steeper — 0.55 and 0.45 — which
+ * was tuned for a game that sold plate and blades in the armoury. With that
+ * gone the hero's power budget went with it, and the curve was climbing at
+ * roughly eight times the rate the hero could grow: every run died on the third
+ * wave, before a single card had been bought. Measured over 36 settings and
+ * thousands of headless runs in tools/sweep.mjs.
+ */
+export const HP_FROM_STAGE = dial('HP_FROM_STAGE', 0.14);
+export const DMG_FROM_STAGE = dial('DMG_FROM_STAGE', 0.06);
 // How fast a wave grows. Lives here rather than in game.js because it is part
 // of the same curve: bodies on the ground are difficulty just as much as the
 // health in them.
-export const WAVE_GROWTH = dial('WAVE_GROWTH', 0.45);
+export const WAVE_GROWTH = dial('WAVE_GROWTH', 0.20);
 export const waveSize = (stage, count) =>
   Math.max(2, Math.round((3 + Math.floor(stage * WAVE_GROWTH)) * count));
 

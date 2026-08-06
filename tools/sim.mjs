@@ -53,32 +53,51 @@ const TICK = 0.1;             // seconds per simulated step
 const WAVE_TIMEOUT = 180;     // a wave nobody can win is a stall, not a loss
 const MELEE_SLOTS = 3;        // how many bodies can reach the hero at once
 
-/** The draft strategies under test. Each picks an index, or -1 to walk on. */
+/**
+ * The draft strategies under test.
+ *
+ * Every one of them sees only what the purse can cover. Since an offer now
+ * deliberately carries one card that is out of reach, a strategy that does not
+ * filter picks the unaffordable one, takes nothing at all, and reports the
+ * draft as worthless — which is how this harness spent a whole sweep claiming
+ * card choice could not matter.
+ */
 const STRATEGIES = {
   // The naive player: takes whatever is on the left.
-  first: (cards) => 0,
+  first: (cards, st, budget) => Math.max(0, cards.findIndex(c => c.cost <= budget)),
   // Random, as a control. If a considered strategy cannot beat this, the draft
   // is not carrying any decisions.
-  random: (cards) => Math.floor(rnd() * cards.length),
+  random: (cards, st, budget) => {
+    const ok = cards.map((c, i) => [c, i]).filter(([c]) => c.cost <= budget);
+    return ok.length ? ok[Math.floor(rnd() * ok.length)][1] : 0;
+  },
   // Everything into hurting things.
-  damage: (cards) => pickBy(cards, ['might', 'brutal', 'keen', 'swift', 'leech']),
+  damage: (cards, st, b) => pickBy(cards, ['might', 'brutal', 'keen', 'swift', 'leech'], b),
   // Everything into staying alive.
-  defense: (cards) => pickBy(cards, ['vigor', 'plate', 'stoic', 'renew', 'dress']),
+  defense: (cards, st, b) => pickBy(cards, ['vigor', 'plate', 'stoic', 'renew', 'dress'], b),
   // Damage until it starts hurting, then patch the holes.
-  balanced: (cards, st) =>
+  balanced: (cards, st, b) =>
     (st.maxHp < 140 * Math.max(1, st._stage / 6)
-      ? pickBy(cards, ['vigor', 'plate', 'stoic', 'renew'])
-      : pickBy(cards, ['might', 'brutal', 'keen', 'swift'])),
+      ? pickBy(cards, ['vigor', 'plate', 'stoic', 'renew'], b)
+      : pickBy(cards, ['might', 'brutal', 'keen', 'swift'], b)),
   // Always the most expensive thing affordable — a proxy for "best card".
-  richest: (cards) => cards.reduce((b, c, i) => (c.cost > cards[b].cost ? i : b), 0),
+  richest: (cards, st, budget) => {
+    let best = -1;
+    cards.forEach((c, i) => {
+      if (c.cost <= budget && (best < 0 || c.cost > cards[best].cost)) best = i;
+    });
+    return best < 0 ? 0 : best;
+  },
 };
 
-function pickBy(cards, wanted) {
+function pickBy(cards, wanted, budget) {
+  const can = (c) => c.cost <= budget;
   for (const key of wanted) {
-    const i = cards.findIndex(c => c.key === key || c.id === key);
+    const i = cards.findIndex(c => (c.key === key || c.id === key) && can(c));
     if (i >= 0) return i;
   }
-  return 0;
+  const fallback = cards.findIndex(can);
+  return fallback >= 0 ? fallback : 0;
 }
 
 /** One run. Returns the stage reached when the hero first died. */
@@ -146,8 +165,15 @@ function playRun(strategy) {
       // middle of the ladder and is what an average player takes home.
       S.skulls += Math.round(S.pot * 2.4);
       S.pot = 0;
-      // The coffin and the cards are another stretch of standing still.
-      S.hero.hp = Math.min(stats().maxHp, S.hero.hp + stats().maxHp * 0.05 * 12);
+      // A new map is walked into fresh. Without this the hero's health only
+      // ever declines — a wave costs more than the lull gives back — so every
+      // run is a slow slide to a death that no card can prevent, and the
+      // 3-wave map becomes the real unit of attrition instead of the run.
+      if (process.env.NO_MAP_HEAL) {
+        S.hero.hp = Math.min(stats().maxHp, S.hero.hp + stats().maxHp * 0.05 * 12);
+      } else {
+        S.hero.hp = stats().maxHp;
+      }
       draft(S, strategy, stats, () => cardsTaken++, (n) => spent += n);
     }
     S.stage++;
@@ -160,7 +186,7 @@ function draft(S, strategy, stats, onTake, onSpend) {
   const cards = rollDraft(S, S.skulls, S.hero.hp / st.maxHp);
   if (!cards || !cards.length) return;
   st._stage = S.stage;
-  const i = STRATEGIES[strategy](cards, st);
+  const i = STRATEGIES[strategy](cards, st, S.skulls);
   const card = cards[i];
   if (process.env.TRACE) {
     console.log(`  draft: purse ${S.skulls} offered ${cards.map(c => `${c.id}@${c.cost}`).join(', ')}`
@@ -241,6 +267,22 @@ function fightWave(S, stats, isBoss) {
     // --- and takes what is coming ------------------------------------------
     const engaged = alive.slice(0, isBoss ? 1 : MELEE_SLOTS);
     for (const m of engaged) {
+      // A bloater is not a melee unit: it sprints in, bursts once for 1.6x its
+      // damage, and is gone. Modelling it as something that keeps swinging made
+      // stage 8 — where bloaters unlock — a wall that every run hit at exactly
+      // the same depth no matter what the curve was set to, which is what a
+      // model error looks like when it is mistaken for a balance problem.
+      if (m.ai === 'exploder') {
+        m._fuse = (m._fuse === undefined ? 0.8 : m._fuse) - TICK;
+        if (m._fuse <= 0) {
+          const raw = m.dmg * 1.6
+            * (1 - st.armor / (st.armor + 55))
+            * st.mitigate;
+          S.hero.hp -= Math.max(1, Math.min(raw, st.maxHp * MAX_HIT_FRACTION));
+          m.hp = 0;
+        }
+        continue;
+      }
       m._atk = (m._atk || rnd() * m.atk) - TICK;
       if (m._atk > 0) continue;
       m._atk = m.atk;
@@ -307,16 +349,25 @@ for (const name of names) {
 console.log(`\n${RUNS} runs per strategy · seed ${SEED}`);
 console.table(rows);
 
-const best = rows.reduce((a, b) => (b.median > a.median ? b : a));
-const worst = rows.reduce((a, b) => (b.median < a.median ? b : a));
-const spread = worst.median ? (best.median / worst.median) : 0;
+/**
+ * The verdict, read off the mean rather than the median.
+ *
+ * Depth is bimodal: most runs end at the first boss, and the ones that get past
+ * it run a very long way. The median therefore sits on the boss wave for every
+ * strategy and reports "no difference" while the means are three and four times
+ * apart — which is exactly the mistake this harness made until the numbers were
+ * looked at properly. Mean depth and bosses killed are what carry the signal.
+ */
+const byMean = [...rows].sort((a, b) => b.mean - a.mean);
+const best = byMean[0], worst = byMean[byMean.length - 1];
+const spread = worst.mean ? best.mean / worst.mean : 0;
 console.log(
-  `\nBest: ${best.strategy} (median stage ${best.median}) · ` +
-  `worst: ${worst.strategy} (${worst.median}) · spread ${spread.toFixed(2)}x`);
+  `\nBest: ${best.strategy} (mean depth ${best.mean}, ${best['bosses (mean)']} bosses) · `
+  + `worst: ${worst.strategy} (${worst.mean}) · spread ${spread.toFixed(2)}x`);
 console.log(
   spread >= 1.5
-    ? 'The draft is deciding runs — good picks go meaningfully deeper.'
-    : 'The draft is NOT deciding runs: every strategy lands in the same place.\n' +
-      'Lower HP_FROM_DPS in js/balance.js so damage cards buy more, or widen the\n' +
-      'gap between card tiers.');
+    ? 'The draft decides runs: picking well goes meaningfully deeper.'
+    : 'The draft is NOT deciding runs: every strategy lands in the same place.\n'
+      + 'Lower HP_FROM_DPS in js/balance.js so damage cards buy more, or widen\n'
+      + 'the gap between card tiers.');
 if (rows.some(r => r.stalled)) console.log('Some waves timed out — see `stalled`.');

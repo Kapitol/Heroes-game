@@ -92,6 +92,12 @@ export function makeHero() {
 
 // Derived hero stats. Gear levels and drafted perks both fold in here, so the
 // panel, the cards and the combat code can never disagree about the numbers.
+// How much innate armour a level is worth. Sweepable from the balance harness,
+// which is where the number came from.
+export const ARMOR_PER_LEVEL =
+  (typeof process !== 'undefined' && process.env && process.env.ARMOR_PER_LEVEL !== undefined)
+    ? Number(process.env.ARMOR_PER_LEVEL) : 1.6;
+
 export function heroStats(h, gear, perks, equipped) {
   const p = perks || {};
   const n = (k) => p[k] || 0;
@@ -110,7 +116,15 @@ export function heroStats(h, gear, perks, equipped) {
     maxHp,
     // Rounded, not raw: an item rolls a fractional armour value and this number
     // is read by the damage maths as well as the panel.
-    armor: Math.round(gear.armor * 3 + n('plate') * 6 + i('armor')),
+    //
+    // The level term is the hole the Forge left. Armour used to come almost
+    // entirely from bought plate — `gear.armor * 3` — and with the Forge gone a
+    // hero stood in single digits for the whole run, which is 3% mitigation and
+    // may as well be none. Damage and life already scale with level; toughness
+    // does now too, so growing up is worth something on the axis that decides
+    // whether a wave kills you.
+    armor: Math.round(h.baseArmor + (h.level - 1) * ARMOR_PER_LEVEL
+      + gear.armor * 3 + n('plate') * 6 + i('armor')),
     crit: Math.min(0.65, h.critChance + gear.ring * 0.025 + n('keen') * 0.04 + i('crit')),
     critMult: h.critMult + gear.ring * 0.06 + n('brutal') * 0.3 + i('critMult'),
     lifesteal: gear.amulet * 0.012 + n('leech') * 0.015 + i('lifesteal'),
