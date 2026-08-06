@@ -265,3 +265,70 @@ every icon on every sheet is now spoken for.
   road running the other way.
 - The hero is still vector-drawn against painted enemies — the most visible
   art mismatch left.
+
+---
+
+## Where the fourth session left it
+
+**The loop is a place, not a scrolling road.** The camera holds on a *mark*, the
+hero walks in from the top, waves after the first spawn on that same ground, and
+a one-second lull separates a won wave from what follows. Cards come off the
+coffin; a fresh map follows the cards. Phases are `enter · fight · lull · drop ·
+draft · map`.
+
+**Skulls buy cards and nothing else.** The Forge is gone. Armour is taken from a
+chest the boss leaves — it falls, cracks the ground, opens, and waits to be
+clicked. Every run starts in a full Gray kit (`startingKit()` in `items.js`), and
+the body's tier is read from what is worn (`wornTier`).
+
+**One character to a run.** The camp is a choosing screen: Warrior and Paladin
+are playable, Warlock and Druid are named empty places waiting on art. The class
+is fixed once the road is taken and rides in the save.
+
+**Difficulty is measured against the hero** in `js/balance.js`, and that file is
+the balance of the game. Two things there are load-bearing and were expensive to
+learn:
+
+- Enemy *health* scales with the hero's damage. Enemy *damage* does not scale
+  with the hero's toughness, and must not: when both did, every point a player
+  bought was cancelled in proportion, and no strategy could outperform any other
+  at any setting.
+- The stage exponents (`0.14` health, `0.06` damage) are eight times gentler
+  than the originals, which were tuned for a game that sold plate in an armoury.
+
+**`tools/sim.mjs` plays the game headlessly** and `tools/sweep.mjs` ranks curve
+settings across a grid. Use them before touching a number. Read the verdict off
+the **mean**, never the median: depth is bimodal — most runs end at the first
+boss, and the ones that get past it run a very long way — so the median sits on
+the boss wave for every strategy and hides the whole signal. As of now: mean
+depth 42 played for survival, 30 balanced, 11 careless.
+
+**Known-open, in the order I would take them:**
+
+1. **Survivability beats damage far too heavily** — `defense` averages stage 42,
+   `damage` averages 11. Card kinds are not close to parity.
+2. **The inferno art is in `art/` and not wired**: `grass-`, `road-`, `props-`,
+   `decals-`, `landmarks-inferno.png`. Wiring it needs an `art` block on the
+   `inferno` biome in `world.js` shaped like `boneyard`'s, and the prop sheet's
+   cells map to `world.js` slots in order — check the slice count first, a
+   miscount shifts every index.
+3. The road HUD is still a borrowed Diablo skeleton; the camp is the only screen
+   doing identity work and it is shown once.
+4. The Armoury has nothing you can *do* during a run.
+
+**Traps found the hard way this session** — all fixed, none worth rediscovering:
+
+- `bossFor()` indexed `BOSSES[-1]` below stage 8 and threw inside the render
+  loop. `requestAnimationFrame` was the *last* statement in that loop, so one
+  bad frame killed the session and looked exactly like a hang. It is scheduled
+  first now and a thrown frame is logged and skipped.
+- A wave of shooters could never end: they keep five tiles, the hero is leashed
+  to two. The mark walks forward when nothing is reachable.
+- Sprites anchored on the centre of their bounding box, so a raised sword threw
+  the swing pose 80px off the body. They anchor on the footprint.
+- A hairline of background between two boots made the slicer read one sprite as
+  two. Sheets with paired objects need a `gutter` in `ICON_SHEETS`.
+- `--band-*` tokens were declared in DESIGN.md and never defined in the CSS, so
+  the whole tier ladder rendered colourless.
+- **A backgrounded browser tab stops `requestAnimationFrame`.** A frozen-looking
+  game is a hidden tab until proven otherwise — check `document.hidden` first.
