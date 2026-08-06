@@ -374,6 +374,7 @@ h1.dead {
 .perkChip.attack  { border-color:#5d2a20; }
 .perkChip.defense { border-color:#24405d; }
 .perkChip.utility { border-color:#4a4320; }
+.perkChip.healing { border-color:#25503a; }
 .perkChip.none { opacity:.4; border-style:dashed; }
 
 .gearName i { font-style:normal; font-size:11px; opacity:.5; }

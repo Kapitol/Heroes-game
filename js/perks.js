@@ -56,6 +56,13 @@ export const PERKS = [
   { id: 'leech',  kind: 'defense', icon: '☙', power: 0.8, art:ICON1(7), name: 'Bloodthirst', desc: (n) => `+1.5% life steal (now +${(n * 1.5).toFixed(1)}%)` },
   { id: 'focus',  kind: 'utility', icon: '◷', power: 0.9, art:ICON1(8), name: 'Focus',       desc: (n) => `−9% skill cooldowns (now −${Math.round((1 - Math.pow(0.91, n)) * 100)}%)` },
   { id: 'greed',  kind: 'utility', icon: '☠', power: 0.7, art:ICON2(7), name: 'Avarice',     desc: (n) => `+25% skulls found (now +${n * 25}%)` },
+  // Healing is sustain, not rescue — the two below carry the classification
+  // between one Last Rites and the next, so it stops being the same card every
+  // time. One works during the fight, one between them, which is the whole
+  // difference: regeneration answers a long grind, dressing answers attrition
+  // across a section.
+  { id: 'renew',  kind: 'healing', icon: '❧', power: 0.85, art:ICON3(2), name: 'Renewal',       desc: (n) => `+0.5% life a second (now +${(n * 0.5).toFixed(1)}%/s)` },
+  { id: 'dress',  kind: 'healing', icon: '✜', power: 0.8,  art:ICON3(1), name: 'Field Dressing', desc: (n) => `+8% life after every fight (now +${n * 8}%)` },
 ];
 
 /**

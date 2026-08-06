@@ -577,6 +577,11 @@ function update(dt) {
   if (h.hp > st.maxHp) h.hp = st.maxHp;
   h.maxHp = st.maxHp;
   h.hurt = Math.max(0, h.hurt - dt * 4);
+  // Renewal ticks wherever the hero is — mid-fight, on the march, watching a
+  // coffin fall. Healing that stopped between encounters would be a worse
+  // version of Field Dressing rather than a different answer to the same
+  // problem. The dead do not regenerate.
+  if (!h.dead && st.regen) h.hp = Math.min(st.maxHp, h.hp + st.maxHp * st.regen * dt);
 
   if (h.dead) {
     h.deathAnim = Math.min(1, (h.deathAnim || 0) + dt * 1.6);
@@ -636,6 +641,15 @@ function fightStep(dt, st) {
 
   if (!target) {
     if (!S.queue.length && !S.monsters.some(m => !m.dead)) {
+      // Field Dressing is paid out here, on the last body dropping, so it is
+      // visibly the reward for surviving the fight rather than something that
+      // happens off-screen between stages.
+      if (st.dressing && h.hp < st.maxHp) {
+        const back = Math.min(st.maxHp - h.hp, st.maxHp * st.dressing);
+        h.hp += back;
+        float(h.x, h.y, `+${Math.round(back)}`, '#7fd6a0');
+        Audio.sfx.heal();
+      }
       startDrop();          // everything is down: the spoils go in the box
       return;
     }

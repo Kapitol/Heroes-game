@@ -154,6 +154,12 @@ spent the run's skulls unasked and made saving impossible.
 - **One card per classification.** Kinds are picked first, then a card inside
   each, so three attack cards can never come up — that would be one choice
   wearing three coats. An unowned ability takes a seat whenever the kit has room.
+- **Healing is a real classification now**, not one card. `Renewal` regenerates
+  0.5% of maximum life a second, everywhere — mid-fight, on the march, watching a
+  coffin fall; `Field Dressing` returns 8% at the moment the last body drops.
+  Both are fractions of the *maximum*, so Vigour cannot quietly render them
+  worthless. They are sustain rather than rescue, which is why they come up at
+  full health while the remedy does not.
 - **`Last Rites`** is the one *remedy*: a one-shot full heal, no tier ladder,
   offered only below 90% life. It exists because Vigour raises the maximum
   without filling it, so drafting a bigger pool leaves you proportionally worse
@@ -170,14 +176,8 @@ it, so `atlas.js` now takes a minimum-area fraction and throws specks away.
 
 ## Next session
 
-1. **A Healing classification with more than one card in it.** Right now
-   `healing` holds only `Last Rites`, so that kind always offers the same thing.
-   Mend is an ability and the life-related perks (Vigour, Bloodthirst) sit under
-   defence — moving them would leave defence thin, so this wants new perks
-   rather than reshuffling.
-2. ~~A Mend icon of its own.~~ Done — `mend-icons.png`, cupped gauntlets with a
-   green flame. Cells 1 (bandaged splint) and 2 (herb sprig) on that sheet are
-   spare and are waiting on the Healing classification above.
+Nothing outstanding from this one. The Healing classification is filled out and
+every icon on every sheet is now spoken for.
 
 ## Known caveats
 

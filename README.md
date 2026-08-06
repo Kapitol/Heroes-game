@@ -158,7 +158,7 @@ The first biome is drawn from generated assets in `art/`:
 | `skulls.png` | four skulls and four rubble chunks, for spills and debris |
 | `icons-01.png` | nine perk icons — Might through Focus |
 | `icons-02.png` | seven ability icons, plus Avarice |
-| `mend-icons.png` | cupped hands, bandaged splint, herb sprig |
+| `mend-icons.png` | Mend, Field Dressing, Renewal |
 
 **Ground** is two repeating textures. Grass covers the screen; the road is the
 same trick clipped to the walkable band, so the two can never disagree about

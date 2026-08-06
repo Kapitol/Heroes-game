@@ -81,6 +81,11 @@ export function heroStats(h, gear, perks) {
     cdr: 1 - (1 - Math.min(0.5, gear.amulet * 0.03)) * Math.pow(0.91, n('focus')),
     mitigate: Math.pow(0.92, n('stoic')),
     skullMul: 1 + n('greed') * 0.25,
+    // Both are fractions of the *maximum*, so they keep their worth as the pool
+    // grows — a flat number of points would quietly become nothing by the time
+    // Vigour has done its work.
+    regen: n('renew') * 0.005,        // per second, always
+    dressing: n('dress') * 0.08,      // once, at the end of each fight
   };
 }
 
