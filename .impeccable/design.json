@@ -1,0 +1,334 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-05T22:35:00Z",
+  "title": "Design System: Crypt Heroes",
+  "extensions": {
+    "colorMeta": {
+      "tarnished-gild": {
+        "role": "primary",
+        "displayName": "Tarnished Gild",
+        "canonical": "#c8a24a",
+        "tonalRamp": [
+          "#241c0c",
+          "#3d3016",
+          "#5a4720",
+          "#77602b",
+          "#94793a",
+          "#b08f45",
+          "#c8a24a",
+          "#e0c17a"
+        ]
+      },
+      "old-parchment": {
+        "role": "neutral",
+        "displayName": "Old Parchment",
+        "canonical": "#d8c9a8",
+        "tonalRamp": [
+          "#241f16",
+          "#3b3426",
+          "#544a36",
+          "#6f6248",
+          "#8c7d5f",
+          "#ab9b7b",
+          "#c5b593",
+          "#d8c9a8"
+        ]
+      },
+      "crypt-ink": {
+        "role": "neutral",
+        "displayName": "Crypt Ink",
+        "canonical": "#0a0806",
+        "tonalRamp": [
+          "#0a0806",
+          "#151009",
+          "#20190f",
+          "#2c2216",
+          "#392d1d",
+          "#463825",
+          "#54442e",
+          "#635038"
+        ]
+      },
+      "old-blood": {
+        "role": "secondary",
+        "displayName": "Old Blood",
+        "canonical": "#8e1a12",
+        "tonalRamp": [
+          "#250604",
+          "#3d0a07",
+          "#570f0b",
+          "#71140e",
+          "#8e1a12",
+          "#ad2a1f",
+          "#c8402f",
+          "#d6352a"
+        ]
+      },
+      "fresh-blood": {
+        "role": "secondary",
+        "displayName": "Fresh Blood",
+        "canonical": "#d6352a",
+        "tonalRamp": [
+          "#2c0806",
+          "#460d09",
+          "#61130d",
+          "#7d1a12",
+          "#9c2418",
+          "#bb2c20",
+          "#d6352a",
+          "#e5624f"
+        ]
+      },
+      "band-gray": {
+        "role": "tertiary",
+        "displayName": "Gray Band",
+        "canonical": "#9a9184"
+      },
+      "band-green": {
+        "role": "tertiary",
+        "displayName": "Green Band",
+        "canonical": "#5fa860"
+      },
+      "band-blue": {
+        "role": "tertiary",
+        "displayName": "Blue Band",
+        "canonical": "#4f86c6"
+      },
+      "band-purple": {
+        "role": "tertiary",
+        "displayName": "Purple Band",
+        "canonical": "#9a5fc0"
+      },
+      "band-gold": {
+        "role": "tertiary",
+        "displayName": "Gold Band",
+        "canonical": "#d8b45c"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The title screen only."
+      },
+      "headline": {
+        "displayName": "Banner",
+        "purpose": "Announces a level or a boss; appears, holds, fades."
+      },
+      "title": {
+        "displayName": "Panel Title",
+        "purpose": "Panel and overlay headings, uppercase."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Card descriptions, help text, stat rows."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Names rather than says. Uppercase, widely tracked."
+      }
+    },
+    "shadows": [
+      {
+        "name": "plate",
+        "value": "inset 0 1px 0 rgba(200,162,74,.18), 0 4px 14px rgba(0,0,0,.6)",
+        "purpose": "Default for any raised surface: HUD plates, panels, the purse."
+      },
+      {
+        "name": "rune",
+        "value": "inset 0 1px 0 rgba(200,162,74,.2), 0 3px 8px rgba(0,0,0,.6)",
+        "purpose": "Smaller objects sitting closer to the ground."
+      },
+      {
+        "name": "card-rest",
+        "value": "inset 0 1px 0 rgba(200,162,74,.28), 0 8px 24px rgba(0,0,0,.75)",
+        "purpose": "A card floats higher than a plate."
+      },
+      {
+        "name": "card-hover",
+        "value": "inset 0 1px 0 rgba(200,162,74,.45), 0 12px 30px rgba(0,0,0,.8)",
+        "purpose": "Lifts 4px; the edge light strengthens."
+      },
+      {
+        "name": "globe",
+        "value": "inset 0 0 22px rgba(0,0,0,.9), 0 0 16px rgba(0,0,0,.7)",
+        "purpose": "Inset all round rather than at the top — a sphere, not a plate."
+      },
+      {
+        "name": "ready-pulse",
+        "value": "0 0 22px rgba(200,162,74,.75)",
+        "purpose": "Gold glow, animated. Means an action is available now — never ambience."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "0.12s ease",
+        "purpose": "Hover and press on cards, buttons and plates."
+      },
+      {
+        "name": "fluid",
+        "value": "0.22s ease",
+        "purpose": "Globe fill heights and bar widths."
+      },
+      {
+        "name": "cooldown",
+        "value": "0.1s linear",
+        "purpose": "The rune's cooldown curtain rising."
+      },
+      {
+        "name": "pulse",
+        "value": "1.1s–1.8s ease-in-out infinite",
+        "purpose": "Ready and waiting states: loot globe, map pin, XP globe."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "@media (prefers-reduced-motion: reduce)",
+        "purpose": "All decorative motion is wrapped: card smoke, loot pulse, map pin."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stack",
+        "value": "620px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Plate Button",
+      "kind": "button",
+      "refersTo": "plate",
+      "description": "The default HUD control — pause, menu, close. Presses 1px down.",
+      "html": "<button class=\"ds-plate\">☰</button>",
+      "css": ".ds-plate { background: linear-gradient(180deg,#221b16,#100c09); border: 1px solid #3d3025; box-shadow: inset 0 1px 0 rgba(200,162,74,.18), 0 4px 14px rgba(0,0,0,.6); border-radius: 3px; color: #d8c9a8; font-family: 'Iowan Old Style', Palatino, Georgia, serif; font-size: 17px; padding: 6px 11px; cursor: pointer; } .ds-plate:hover { border-color: #8a6d2c; } .ds-plate:focus-visible { outline: 2px solid #c8a24a; outline-offset: 2px; } .ds-plate:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Boon Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The signature component. Classification, icon, name with tier, description, cost pill, tier ladder.",
+      "html": "<button class=\"ds-card\"><span class=\"ds-card-kind\">attack</span><span class=\"ds-card-icon\">⚔</span><span class=\"ds-card-name\">Might <b>4</b></span><span class=\"ds-card-desc\">+15% weapon damage (now +60%)</span><span class=\"ds-card-cost\">☠ 450</span><span class=\"ds-tiers\"><i class=\"on gray\"></i><i class=\"on green\"></i><i class=\"on blue\"></i><i class=\"next purple\"></i><i class=\"gold\"></i></span></button>",
+      "css": ".ds-card { display:flex; flex-direction:column; align-items:center; gap:6px; width:236px; min-height:200px; padding:18px 14px; text-align:center; cursor:pointer; border-radius:4px; border:1px solid #5d2a20; background:linear-gradient(180deg,#332a20,#181209); box-shadow: inset 0 1px 0 rgba(200,162,74,.28), 0 8px 24px rgba(0,0,0,.75); color:#d8c9a8; font-family:'Iowan Old Style', Palatino, Georgia, serif; transition: transform .12s ease, border-color .12s ease, box-shadow .18s ease; } .ds-card:hover { transform: translateY(-4px); border-color:#8a6d2c; box-shadow: inset 0 1px 0 rgba(200,162,74,.45), 0 12px 30px rgba(0,0,0,.8); } .ds-card:focus-visible { outline:2px solid #c8a24a; outline-offset:3px; } .ds-card-kind { font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; opacity:.8; } .ds-card-icon { font-size:38px; line-height:1.1; height:62px; display:grid; place-items:center; color:#e07a52; } .ds-card-name { font-size:17px; } .ds-card-name b { color:#c8a24a; font-weight:normal; } .ds-card-desc { font-size:12px; opacity:.85; line-height:1.5; } .ds-card-cost { margin-top:auto; padding:5px 12px; border-radius:3px; font-size:13px; color:#150620; background:linear-gradient(180deg,#b884d8,#6b3894); border:1px solid #522a72; } .ds-tiers { display:grid; grid-template-columns:repeat(5,1fr); gap:5px; width:100%; margin-top:10px; } .ds-tiers i { height:6px; border-radius:1px; background:#241d16; border:1px solid #3d3025; } .ds-tiers i.gray.on { background:#9a9184; border-color:#9a9184; } .ds-tiers i.green.on { background:#5fa860; border-color:#5fa860; } .ds-tiers i.blue.on { background:#4f86c6; border-color:#4f86c6; } .ds-tiers i.purple.next { background:#2c2318; border-color:#9a5fc0; box-shadow: inset 0 0 5px rgba(154,95,192,.45); }"
+    },
+    {
+      "name": "Free Cost Pill",
+      "kind": "chip",
+      "refersTo": "cost-pill-free",
+      "description": "A free card breaks the pattern deliberately — no fill, Gray border, the word FREE. An absence of price should not look like a price of zero.",
+      "html": "<span class=\"ds-cost-free\">Free</span>",
+      "css": ".ds-cost-free { display:inline-block; padding:5px 12px; border-radius:3px; border:1px solid #4a4238; background:none; color:#9a9184; letter-spacing:.16em; text-transform:uppercase; font-size:11px; font-family:'Iowan Old Style', Palatino, Georgia, serif; }"
+    },
+    {
+      "name": "Skill Rune",
+      "kind": "custom",
+      "refersTo": "rune",
+      "description": "A skill on the belt. The cooldown is a dark curtain rising from the bottom — never a spinner or a number.",
+      "html": "<button class=\"ds-rune\"><span class=\"ds-rune-key\">1</span>⚔<span class=\"ds-rune-cd\"></span></button>",
+      "css": ".ds-rune { position:relative; width:62px; height:62px; border-radius:4px; border:1px solid #8a6d2c; background:linear-gradient(180deg,#2a211a,#0d0a08); box-shadow: inset 0 1px 0 rgba(200,162,74,.2), 0 3px 8px rgba(0,0,0,.6); display:grid; place-items:center; overflow:hidden; font-size:26px; color:#c8a24a; text-shadow:0 0 10px rgba(200,162,74,.45); cursor:pointer; font-family:'Iowan Old Style', Palatino, Georgia, serif; } .ds-rune:active { transform: translateY(1px); } .ds-rune:focus-visible { outline:2px solid #c8a24a; outline-offset:2px; } .ds-rune-key { position:absolute; top:2px; left:4px; font-size:9px; opacity:.45; color:#d8c9a8; text-shadow:none; } .ds-rune-cd { position:absolute; left:0; right:0; bottom:0; height:38%; background:rgba(4,3,2,.82); pointer-events:none; }"
+    },
+    {
+      "name": "Life Globe",
+      "kind": "custom",
+      "refersTo": "globe",
+      "description": "A sphere, not a plate — inset all round, with a specular highlight at 33% 24%. Fills with Old Blood and lights to Fresh Blood.",
+      "html": "<div class=\"ds-globe\"><div class=\"ds-globe-fluid\"></div><span class=\"ds-globe-text\">895/895</span></div>",
+      "css": ".ds-globe { position:relative; width:104px; height:104px; border-radius:50%; background:radial-gradient(circle at 34% 28%, #2a211a, #070504 70%); border:2px solid #3d3025; box-shadow: inset 0 0 22px rgba(0,0,0,.9), 0 0 16px rgba(0,0,0,.7); overflow:hidden; } .ds-globe-fluid { position:absolute; left:0; right:0; bottom:0; height:82%; background:linear-gradient(180deg,#d6352a,#8e1a12 45%,#4a0b07); transition:height .22s ease; } .ds-globe::after { content:\"\"; position:absolute; inset:0; border-radius:50%; pointer-events:none; background:radial-gradient(circle at 33% 24%, rgba(255,255,255,.22), transparent 42%), radial-gradient(circle at 50% 120%, rgba(0,0,0,.7), transparent 55%); } .ds-globe-text { position:absolute; inset:0; display:grid; place-items:center; z-index:2; font-size:12px; color:#d8c9a8; text-shadow:0 1px 3px #000; font-family:'Iowan Old Style', Palatino, Georgia, serif; }"
+    },
+    {
+      "name": "Equipment Slot",
+      "kind": "custom",
+      "refersTo": "slot-empty",
+      "description": "A loot slot on the character sheet. Bordered in the band colour of what occupies it; empty slots are dashed and half-opacity.",
+      "html": "<button class=\"ds-slot ds-slot-blue\"><span class=\"ds-slot-icon\">⚔</span><span class=\"ds-slot-name\">Runed Falchion</span></button><button class=\"ds-slot ds-slot-empty\"><span class=\"ds-slot-icon\">⛑</span><span class=\"ds-slot-name\">Helm</span></button>",
+      "css": ".ds-slot { display:flex; align-items:center; gap:7px; width:190px; text-align:left; padding:6px 8px; border-radius:3px; cursor:pointer; color:#d8c9a8; background:linear-gradient(180deg,#241d17,#120e0b); border:1px solid #3d3025; font-family:'Iowan Old Style', Palatino, Georgia, serif; margin-bottom:6px; } .ds-slot-blue { border-color:#2c5a8c; } .ds-slot-empty { border-style:dashed; opacity:.5; cursor:default; } .ds-slot-icon { font-size:17px; width:20px; text-align:center; } .ds-slot-name { font-size:11px; line-height:1.25; }"
+    },
+    {
+      "name": "Road Card",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "One of three roads offered when a boss falls. Straddles the map's bottom edge.",
+      "html": "<button class=\"ds-road ds-road-deep\"><span class=\"ds-road-tag\">The deep road</span><span class=\"ds-road-name\">The Killing Fields</span><span class=\"ds-road-note\">Skip a level. Everything there hits harder, and everything there pays.</span><span class=\"ds-road-meta\">Difficulty +3 · richer</span></button>",
+      "css": ".ds-road { display:flex; flex-direction:column; gap:1px; width:260px; text-align:left; cursor:pointer; padding:9px 12px; border-radius:4px; border:1px solid #5d2a20; background:linear-gradient(180deg,rgba(42,34,26,.97),rgba(15,11,8,.97)); box-shadow:0 12px 28px rgba(0,0,0,.85); color:#d8c9a8; font-family:'Iowan Old Style', Palatino, Georgia, serif; transition:transform .12s ease, border-color .12s ease; } .ds-road:hover { transform:translateY(-4px); border-color:#8a6d2c; } .ds-road:focus-visible { outline:2px solid #c8a24a; outline-offset:3px; } .ds-road-tag { font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; opacity:.6; } .ds-road-name { font-size:15px; color:#e0a06a; line-height:1.2; } .ds-road-note { font-size:10.5px; opacity:.62; line-height:1.45; } .ds-road-meta { font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; opacity:.45; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Lit Reliquary",
+    "overview": "Every surface in this game is a gilded object resting in a dark vault, lit by a single low source. Nothing is a panel; everything is a thing — a plate, a globe, a rune, a card, a coffin. The ground beneath them is always near-black (#0a0806), and it never lightens, because the room is not the subject. The objects are.\n\nGold is the whole discipline. #c8a24a is not decoration and not a brand colour to be sprinkled — it marks what the player can act on or must decide about: a cost, the level they are in, the pin they are standing on, the tier they are about to buy. On a dark ground a warm accent reads as lit, so spending it everywhere would put the whole screen at the same distance from the player and flatten the one thing this interface is for, which is making a small number of decisions legible.\n\nThe type is a single serif — Iowan Old Style — set generously tracked and often uppercase for anything that labels rather than speaks. There is no second family and no sans anywhere. A dark gothic interface with a UI sans in it reads as a web app wearing a costume; one old serif doing every job is what makes the whole thing feel cast from one mould.",
+    "keyCharacteristics": [
+      "Near-black ground, always; surfaces are objects raised off it",
+      "One low light source: gold hairline on top edges, black shadow beneath",
+      "A single serif at every size, tracked wide and uppercased for labels",
+      "Gold is rare and always means \"you can act on this\"",
+      "Five rarity bands are the one ladder for value across cards, loot and tiers",
+      "Sharp corners (3–4px); nothing is soft or pill-shaped except globes"
+    ],
+    "rules": [
+      {
+        "name": "The Earned Gold Rule",
+        "body": "Tarnished Gild marks only what the player can act on or must decide about. If gold appears on something inert, it is wrong. Audit test: cover every gold element on a screen — what remains should be unactionable.",
+        "section": "colors"
+      },
+      {
+        "name": "The Never-White Rule",
+        "body": "No pure white and no pure black anywhere. Text is Old Parchment (#d8c9a8); the darkest ground is Crypt Ink (#0a0806). Pure values belong to browser defaults, and this interface should never look defaulted.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Ladder Rule",
+        "body": "Value is expressed only through the five bands. A new system that needs to say \"how good is this\" uses Gray→Gold, never a new scale.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tracking Ladder Rule",
+        "body": "As type gets smaller it gets more tracked and more likely uppercase. 9.5px labels sit at .2em; 13px body sits at normal. This is the only hierarchy device besides size — weight is never used.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Family Rule",
+        "body": "No second typeface, and never a sans-serif. If a new surface seems to need one, it needs different tracking instead.",
+        "section": "typography"
+      },
+      {
+        "name": "The Thumbs Rule",
+        "body": "Anything the player touches during play lives in a bottom corner or the rune belt. The top bar is for reading, not for acting.",
+        "section": "layout"
+      },
+      {
+        "name": "The Top-Edge Rule",
+        "body": "Every raised surface catches the light on its top edge and nowhere else. A shadow without its highlight, or a highlight on the wrong edge, breaks the single light source and reads as a mistake even to someone who cannot say why.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Glow-Means-Ready Rule",
+        "body": "A gold glow is never ambience. It means an action is available: a rune off cooldown, loot waiting in the bag, the pin you are standing on.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Cut-Not-Moulded Rule",
+        "body": "Radius never exceeds 4px on a rectangle. If something needs to feel softer, it is the wrong component.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do put a gold top-edge highlight and a black drop shadow on every raised surface (inset 0 1px 0 rgba(200,162,74,.18) plus a shadow scaled to importance). One light source, always from above.",
+      "Do spend Tarnished Gild (#c8a24a) only on what the player can act on or must decide about.",
+      "Do express any notion of value through the five bands, Gray → Gold.",
+      "Do use tracking and case for hierarchy: smaller means more tracked and more likely uppercase.",
+      "Do state a rule in words as well as in colour — the classification is written on every card, the drop shows a number beside its green lip.",
+      "Do give every control a touch path and a keyboard path.",
+      "Do wrap new motion in prefers-reduced-motion: reduce, as the card smoke, loot pulse and map pin already are.",
+      "Do set explicit color on <button> elements. font: inherit carries family and size but never colour, and a button's default is black — which was invisible on these grounds until it was caught."
+    ],
+    "donts": [
+      "Don't use pure white or pure black. Text is #d8c9a8; the ground is #0a0806.",
+      "Don't introduce a second typeface, and never a sans-serif.",
+      "Don't exceed a 4px radius on a rectangle, or use pill shapes.",
+      "Don't use a flat fill on a raised surface — top-lit gradients only.",
+      "Don't use a cool grey border. Edges are warm (#3d3025).",
+      "Don't let a gold glow mean anything except \"available now\".",
+      "Don't hide a control that is unavailable — grey it out. A control that vanishes reads as a bug.",
+      "Don't rely on colour alone to carry a rule.",
+      "Don't put resting shadows on things that are not raised; depth is a claim about the light, not a decoration."
+    ]
+  }
+}
