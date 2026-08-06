@@ -20,14 +20,18 @@
 export const ICON_SHEETS = [
   { src: 'art/icons-01.png', opts: { auto: true, minCell: 0.08 } },
   { src: 'art/icons-02.png', opts: { auto: true, minCell: 0.08 } },
+  // 0 cupped hands · 1 bandaged splint · 2 herb sprig. Cells 1 and 2 are spare,
+  // waiting on the Healing classification having more than one card in it.
+  { src: 'art/mend-icons.png', opts: { auto: true, minCell: 0.08 } },
 ];
 const ICON1 = (cell) => ({ src: ICON_SHEETS[0].src, cell });
 const ICON2 = (cell) => ({ src: ICON_SHEETS[1].src, cell });
+const ICON3 = (cell) => ({ src: ICON_SHEETS[2].src, cell });
 export const iconOpts = (src) => (ICON_SHEETS.find(s => s.src === src) || ICON_SHEETS[0]).opts;
 
 export const SKILLS = [
   { id: 'cleave',  name: 'Cleave',   glyph: '⚔', cd: 8,  cost: 250,  art:ICON2(0), desc: '220% damage to everything within 3 paces.' },
-  { id: 'mend',    name: 'Mend',     glyph: '✚', cd: 18, cost: 250, art:ICON2(1), desc: 'Restores 40% of your life at once.' },
+  { id: 'mend',    name: 'Mend',     glyph: '✚', cd: 18, cost: 250, art:ICON3(0), desc: 'Restores 40% of your life at once.' },
   { id: 'fire',    name: 'Firebolt', glyph: '✹', cd: 6,  cost: 450, art:ICON2(2), desc: 'A bolt that bursts for 280% on the target.' },
   { id: 'frenzy',  name: 'Frenzy',   glyph: '⚡', cd: 22, cost: 450, art:ICON2(3), desc: 'Seven seconds of doubled attack speed.' },
   { id: 'quake',   name: 'Quake',    glyph: '◈', cd: 14, cost: 450, art:ICON2(4), desc: '180% to everything near, and it slows them.' },

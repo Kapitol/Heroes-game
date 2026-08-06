@@ -141,6 +141,13 @@ spent the run's skulls unasked and made saving impossible.
   **Gray being free is load-bearing.** It is what lets the roll filter by
   affordability without ever dealing a dead hand: a player with nothing is still
   shown three cards they can take.
+- **Another coffin costs ☠ 50.** `rerollDraft` deals three fresh cards for a
+  flat fee. The new offer is rolled against the purse *after* the fee, so what
+  comes back is honestly affordable — reroll down to your last few skulls and
+  the coffins start turning up Gray. It can never strand anyone, because Gray is
+  free: there is always something in the next one. The button greys rather than
+  disappears when the fee is out of reach; a control that vanishes reads as a
+  bug.
 - **Every card offered is affordable.** The roll draws from what the purse
   covers; a card you can't buy is a taunt, not an option. An empty-handed purse
   gets no panel at all rather than a wall of three greyed cards.
@@ -168,8 +175,9 @@ it, so `atlas.js` now takes a minimum-area fraction and throws specks away.
    Mend is an ability and the life-related perks (Vigour, Bloodthirst) sit under
    defence — moving them would leave defence thin, so this wants new perks
    rather than reshuffling.
-2. **A Mend icon of its own.** Mend and Last Rites currently share the green
-   vial, `icons-02` cell 1.
+2. ~~A Mend icon of its own.~~ Done — `mend-icons.png`, cupped gauntlets with a
+   green flame. Cells 1 (bandaged splint) and 2 (herb sprig) on that sheet are
+   spare and are waiting on the Healing classification above.
 
 ## Known caveats
 

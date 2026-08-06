@@ -441,13 +441,19 @@ h1.dead {
   background:linear-gradient(180deg,#2a231c,#181310);
   color:#8a7358; border-color:#3d3025;
 }
-#draftSkip {
+#draftSkip, #draftReroll {
   margin:18px auto 0; padding:9px 20px; display:block; cursor:pointer;
   font:inherit; font-size:13px; letter-spacing:.08em; color:var(--parch);
   background:linear-gradient(180deg,#241d17,#120e0b);
   border:1px solid #3d3025; border-radius:3px;
 }
-#draftSkip:hover { border-color:var(--gild-dim); }
+#draftSkip:hover, #draftReroll:hover:not(:disabled) { border-color:var(--gild-dim); }
+/* The reroll leads — it is the one that costs something — so it sits directly
+   under the cards and carries its price on its face. */
+#draftReroll { margin-top:22px; border-color:#4a3a22; }
+#draftReroll b { color:var(--gild); font-weight:normal; margin-left:6px; }
+#draftReroll:disabled { opacity:.4; cursor:not-allowed; }
+#draftSkip { margin-top:8px; font-size:12px; opacity:.72; }
 
 /* ---------- pause + volume ---------- */
 #pausedTag {

@@ -43,7 +43,8 @@ modules, which browsers refuse to load over `file://`.
    nothing and it drops on its own after five seconds.
 4. **The cards.** After **every** drop, three cards come up — one per
    classification, never two of a kind — each with a **price in skulls**. Buy
-   one or walk on and keep the purse. There is no clock on the choice. Prices
+   one, pay ☠ 50 to crack open another coffin for three fresh ones, or walk on
+   and keep the purse. There is no clock on the choice. Prices
    belong to the card and its tier, not to when you meet it, so a dear card can
    be saved towards. Boons compete directly with the armoury for the same
    skulls, which is the actual decision. Every third section ends on a boss.
@@ -157,6 +158,7 @@ The first biome is drawn from generated assets in `art/`:
 | `skulls.png` | four skulls and four rubble chunks, for spills and debris |
 | `icons-01.png` | nine perk icons — Might through Focus |
 | `icons-02.png` | seven ability icons, plus Avarice |
+| `mend-icons.png` | cupped hands, bandaged splint, herb sprig |
 
 **Ground** is two repeating textures. Grass covers the screen; the road is the
 same trick clipped to the walkable band, so the two can never disagree about

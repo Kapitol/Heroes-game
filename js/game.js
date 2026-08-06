@@ -73,6 +73,7 @@ UI.init(S, {
   buy: buyGear,
   draftPick: takeCard,
   draftSkip: skipDraft,
+  draftReroll: rerollDraft,
   pause: togglePause,
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },
 });
@@ -490,6 +491,11 @@ function nextWave() {
 
 // --- the draft --------------------------------------------------------------
 
+// What another coffin costs to crack open. Flat, and cheap next to the cards
+// themselves: rerolling is meant to be the thing you do when an offer misses,
+// not a tax on getting a good one.
+const REROLL_COST = 50;
+
 function openDraft(after) {
   S.draftAfter = after;
   // The remedy is only worth a seat when there is life missing to restore.
@@ -498,7 +504,29 @@ function openDraft(after) {
   // all. Three cards nobody can buy is a wall, not an offer.
   if (!S.draft.length) { S.draft = null; closeDraft(); return; }
   S.phase = 'draft';
-  UI.showDraft(S.draft, S.skulls, S.lastDrop);
+  UI.showDraft(S.draft, S.skulls, S.lastDrop, REROLL_COST);
+}
+
+/**
+ * Crack open another coffin: pay, and deal three fresh cards.
+ *
+ * The new offer is rolled against the purse *after* the fee, so what comes back
+ * is honestly affordable — reroll down to your last few skulls and the coffins
+ * start turning up Gray. That is also why this can never strand anyone: Gray is
+ * free, so there is always something in the next one.
+ */
+function rerollDraft() {
+  if (S.phase !== 'draft' || !S.draft) return;
+  if (S.skulls < REROLL_COST) {
+    Audio.sfx.deny();
+    UI.toast(`A coffin costs ☠ ${REROLL_COST}`);
+    return;
+  }
+  S.skulls -= REROLL_COST;
+  S.draft = rollDraft(S, S.skulls, S.hero.hp / stats().maxHp);
+  Audio.sfx.bones();
+  UI.showDraft(S.draft, S.skulls, S.lastDrop, REROLL_COST);
+  UI.refreshPanels();
 }
 
 // There is no clock on this screen and nothing that decides for you. The road

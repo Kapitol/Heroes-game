@@ -305,7 +305,7 @@ function tierRow(c) {
   return `<span class="tierRow" style="--tiers:${c.tiers}">${pips}</span>`;
 }
 
-export function showDraft(cards, skulls, gained) {
+export function showDraft(cards, skulls, gained, rerollCost) {
   el.draftPanel.classList.toggle('hidden', !cards);
   if (!cards) return;
   el.draftCards.innerHTML = '';
@@ -327,7 +327,16 @@ export function showDraft(cards, skulls, gained) {
   if (!el.draftSkip) {
     el.draftSkip = document.getElementById('draftSkip');
     el.draftSkip.addEventListener('click', () => H.draftSkip());
+    el.draftReroll = document.getElementById('draftReroll');
+    el.draftReroll.addEventListener('click', () => H.draftReroll());
   }
+  // The price rides on the button, so the cost of another look is never a
+  // thing you have to remember. Greyed rather than hidden when it is out of
+  // reach — a control that vanishes reads as a bug.
+  const canReroll = skulls >= rerollCost;
+  el.draftReroll.innerHTML = `Open another coffin <b>☠ ${rerollCost}</b>`;
+  el.draftReroll.disabled = !canReroll;
+  el.draftReroll.title = canReroll ? '' : `You need ☠ ${rerollCost}`;
   // Two figures, because they answer different questions: what the drop just
   // brought up out of the shaft, and what there is to spend in total. The purse
   // is the one being spent from, so it leads.
