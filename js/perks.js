@@ -27,6 +27,11 @@ export const ICON_SHEETS = [
   // index is the rarity band. See SLOT_ART in items.js.
   { src: 'art/helmets.png', opts: { auto: true, minCell: 0.08 } },
   { src: 'art/icons-weapon.png', opts: { auto: true, minCell: 0.08 } },
+  { src: 'art/warrior-chests.png', opts: { auto: true, minCell: 0.08 } },
+  { src: 'art/icons-gauntlets.png', opts: { auto: true, minCell: 0.08, gutter: 40 } },
+  // Boots come in pairs with a gap between them; without a wider gutter the
+  // slicer reads one pair as two sprites and every tier after it shifts.
+  { src: 'art/icon-greaves.png', opts: { auto: true, minCell: 0.08, gutter: 40 } },
 ];
 const ICON1 = (cell) => ({ src: ICON_SHEETS[0].src, cell });
 const ICON2 = (cell) => ({ src: ICON_SHEETS[1].src, cell });

@@ -35,7 +35,10 @@ export const slotByKey = (k) => SLOTS.find(s => s.key === k);
  * keep their glyph, which is why this returns null rather than a placeholder.
  */
 export const SLOT_ART = {
-  head: 'art/helmets.png',
+  head:   'art/helmets.png',
+  chest:  'art/warrior-chests.png',
+  hands:  'art/icons-gauntlets.png',
+  feet:   'art/icon-greaves.png',
   weapon: 'art/icons-weapon.png',
 };
 

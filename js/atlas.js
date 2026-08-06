@@ -83,7 +83,13 @@ export function sheet(src, cols, rows, opts) {
   c.putImageData(id, 0, 0);
 
   // Trim each grid cell to its content.
-  let cells = opts && opts.auto ? sliceAuto(d, w, h) : sliceGrid(d, w, h, cols, rows);
+  // `gutter` is the narrowest gap that still counts as a break between two
+  // sprites. It has to be per-sheet: a pair of boots has a slot of magenta
+  // between the left boot and the right one, and at the default the slicer
+  // called them two items — which silently shifted every tier after it.
+  let cells = opts && opts.auto
+    ? sliceAuto(d, w, h, opts.gutter)
+    : sliceGrid(d, w, h, cols, rows);
   // Some art throws debris — sparks, bone chips, a spray of grit — clear of the
   // object it belongs to. The gutter finder can only see a gap, so it calls
   // those separate cells, and every index after one shifts by one. `minCell`
@@ -169,7 +175,7 @@ function sliceGrid(d, w, h, cols, rows) {
  * Finding the empty gutters instead works whatever the spacing, and returns
  * cells in reading order.
  */
-function sliceAuto(d, w, h) {
+function sliceAuto(d, w, h, gutter) {
   const solid = (i) => d[i * 4 + 3] > 24;
   const rowFull = [];
   for (let y = 0; y < h; y++) {
@@ -187,7 +193,12 @@ function sliceAuto(d, w, h) {
       for (let y = y0; y <= y1; y += 2) if (solid(y * w + x)) { n++; break; }
       colFull.push(n > 0);
     }
-    for (const [x0, x1] of runs(colFull, 14)) {
+    // Bridge hairline splits before treating a run as its own sprite: a pair of
+    // boots has a single column of background between the left boot and the
+    // right one, and unbridged that reads as two items and shifts every tier
+    // after it. `gutter` is the widest gap that still counts as *inside* one
+    // sprite, not the narrowest that separates two.
+    for (const [x0, x1] of bridge(runs(colFull, 6), gutter || 4)) {
       // Trim the band's own vertical slack off this column.
       let ty = y1, by = y0;
       for (let y = y0; y <= y1; y++)
@@ -200,6 +211,18 @@ function sliceAuto(d, w, h) {
     }
   }
   return cells;
+}
+
+// Merge runs separated by a gap no wider than `maxGap` — one sprite that the
+// scan happened to see as two.
+function bridge(list, maxGap) {
+  const out = [];
+  for (const r of list) {
+    const last = out[out.length - 1];
+    if (last && r[0] - last[1] - 1 <= maxGap) last[1] = r[1];
+    else out.push([r[0], r[1]]);
+  }
+  return out;
 }
 
 // Contiguous true-runs of at least `min` length.
