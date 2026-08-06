@@ -224,6 +224,7 @@ button.wide:active { transform:translateY(1px); }
 /* ---------- overlays ---------- */
 .overlay {
   position:absolute; inset:0; z-index:40; display:grid; place-items:center;
+  overflow-y:auto;
   background:radial-gradient(ellipse at center, rgba(12,9,7,.86), rgba(4,3,2,.97));
   padding:24px; text-align:center;
 }
@@ -554,7 +555,10 @@ body.minigame #toast { opacity:0; pointer-events:none; }
     url("../art/shaft-wall.png") center / cover no-repeat;
   background-color:#0a0806;
 }
-.mapInner { width:min(960px,96vw); max-height:94vh; overflow-y:auto; text-align:center; padding-bottom:8px; }
+/* No clipping here. The road cards hang below the map on purpose, and an
+   `overflow` on this box slices off the part that sticks out — which is exactly
+   the part carrying the level names. The overlay scrolls instead. */
+.mapInner { width:min(960px,96vw); overflow:visible; text-align:center; }
 .mapInner h2 {
   margin:0 0 2px; font-size:19px; font-weight:normal; letter-spacing:.16em;
   color:var(--gild); text-transform:uppercase;
@@ -566,7 +570,7 @@ body.minigame #toast { opacity:0; pointer-events:none; }
    overlap to read as attached to the map, little enough that no card is parked
    over a place you might be choosing. */
 #mapChoices {
-  position:absolute; left:10px; right:10px; bottom:-64px;
+  position:absolute; left:10px; right:10px; bottom:-78px;
   display:grid; grid-template-columns:repeat(3,1fr); gap:10px;
 }
 @media (max-width:620px) {
@@ -606,8 +610,14 @@ body.minigame #toast { opacity:0; pointer-events:none; }
    box, so any gap between box and picture would slide every pin off its
    town. Capping the height keeps the road cards on screen on a short
    window without ever letting the two drift apart. */
-#mapImage { position:relative; display:inline-block; max-width:100%; margin:0 0 78px; border:1px solid #3d3025; border-radius:4px; overflow:hidden; }
-#mapArt { display:block; max-width:100%; max-height:56vh; width:auto; height:auto; }
+/* Deliberately NOT `overflow:hidden` — the road cards live in here so they can
+   be positioned against the map's edge, and hiding the overflow would clip off
+   exactly the part that hangs below. The rounding goes on the image instead. */
+#mapImage { position:relative; display:inline-block; max-width:100%; margin:0 0 96px; }
+#mapArt {
+  display:block; max-width:100%; max-height:56vh; width:auto; height:auto;
+  border:1px solid #3d3025; border-radius:4px;
+}
 #mapPins { position:absolute; inset:0; }
 
 .pin {
