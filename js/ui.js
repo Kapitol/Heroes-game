@@ -40,7 +40,7 @@ export function init(state, handlers) {
                     'draftPanel', 'draftCards', 'perkList',
                     'draftPurse', 'btnPause', 'pausedTag', 'volSlider', 'volValue', 'btnMute',
                     'slotsLeft', 'slotsRight', 'dollCanvas', 'dollLevel', 'bagList', 'bagCount',
-                    'mapPanel', 'mapPins', 'mapChoices', 'mapSub', 'mapNextHead', 'mapClose',
+                    'mapPanel', 'mapPins', 'mapChoices', 'mapSub', 'mapNextHead', 'mapClose', 'mapArt',
                     'minimap', 'topLeft'])
     el[id] = $(id);
 
@@ -162,8 +162,11 @@ export function updateMinimap() {
   const box = el.minimap.clientWidth || 62;
   const lv = levelAt(S.section);
   const w = box * MINIMAP_ZOOM;
-  // The art is 4:3; keeping that ratio here stops the crop from stretching.
-  const h = w * (1086 / 1448);
+  // Take the ratio from the image itself rather than hard-coding it: the map
+  // art gets replaced, and a baked-in ratio silently skews the crop when it is.
+  const art = el.mapArt;
+  const ratio = art && art.naturalWidth ? art.naturalHeight / art.naturalWidth : 0.8;
+  const h = w * ratio;
   el.minimap.style.backgroundSize = `${w}px ${h}px`;
   el.minimap.style.backgroundPosition = `${box / 2 - lv.at[0] * w}px ${box / 2 - lv.at[1] * h}px`;
 }

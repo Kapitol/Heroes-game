@@ -107,28 +107,29 @@ export const biomeFor = (stage) => BIOMES[Math.min(BIOMES.length - 1, Math.floor
  * The road is endless and this list is not, so the last name holds once it is
  * reached. The number keeps climbing regardless — "Level 23 · The Inferno" is
  * still a true statement about how far down the hero is.
- */
-/**
- * Each level is a place on `art/overview-map.png`, and `at` is where it sits on
- * that image as a fraction of its width and height. Fractions rather than
- * pixels so the map can be drawn at any size — it is shown scaled to fit a
- * panel, and a pin measured in pixels would slide off it.
  *
- * The order is a journey with a shape: it starts in farmland in the east,
- * works west and south through the swamps and the desert, and ends in the
- * volcano in the north-west. Read down the list and you are reading the run.
+ * Each level is also a place on `art/world-map.png`, and `at` is where it sits
+ * on that image as a fraction of its width and height. Fractions rather than
+ * pixels so the map can be drawn at any size — it is shown scaled to fit a
+ * panel, and a pin measured in pixels would slide off it. Replacing the art
+ * means retyping these ten pairs and nothing else.
+ *
+ * The order is a journey with a shape: it starts at the village in the
+ * south-east and works north and west, through the battlefield and the cave and
+ * the drowned chapel, ending in the volcano in the far corner. Read down the
+ * list and you are reading the run.
  */
 export const LEVELS = [
-  { name: 'Outside of a Town', at: [0.775, 0.385] },   // the village and its windmill
-  { name: 'The Open Road',     at: [0.505, 0.610] },   // the crossroads south of the castle
-  { name: 'The Killing Fields', at: [0.490, 0.760] },  // the drowned battlefield
-  { name: 'Dangerous Cave',    at: [0.055, 0.920] },   // the cave mouth in the badlands
-  { name: 'The Elder Wood',    at: [0.480, 0.095] },   // the deep forest in the north
-  { name: 'The Broken Gate',   at: [0.170, 0.240] },   // the gatehouse under the volcano
-  { name: 'The Sunken Chapel', at: [0.172, 0.470] },   // the house out in the lake
-  { name: 'The Crypt',         at: [0.180, 0.780] },   // the desert tomb
-  { name: 'The Bone Halls',    at: [0.800, 0.600] },   // the ring of standing stones
-  { name: 'The Inferno',       at: [0.150, 0.100] },   // the crater itself
+  { name: 'Outside of a Town',  at: [0.805, 0.825] },  // the palisaded village and its windmill
+  { name: 'The Open Road',      at: [0.565, 0.715] },  // the wayside cross and shrine
+  { name: 'The Killing Fields', at: [0.630, 0.555] },  // the drowned field of spears
+  { name: 'Dangerous Cave',     at: [0.622, 0.365] },  // the black mouth in the rock
+  { name: 'The Elder Wood',     at: [0.495, 0.175] },  // the stand of dead white trees
+  { name: 'The Broken Gate',    at: [0.370, 0.435] },  // the split gatehouse towers
+  { name: 'The Sunken Chapel',  at: [0.198, 0.560] },  // the drowned church in the lake
+  { name: 'The Crypt',          at: [0.180, 0.375] },  // the walled graveyard
+  { name: 'The Bone Halls',     at: [0.212, 0.212] },  // the ring of standing stones
+  { name: 'The Inferno',        at: [0.130, 0.070] },  // the crater bleeding lava
 ];
 
 export const levelAt = (section) =>
