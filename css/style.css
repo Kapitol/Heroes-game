@@ -558,7 +558,7 @@ body.minigame #toast { opacity:0; pointer-events:none; }
 /* No clipping here. The road cards hang below the map on purpose, and an
    `overflow` on this box slices off the part that sticks out — which is exactly
    the part carrying the level names. The overlay scrolls instead. */
-.mapInner { width:min(960px,96vw); overflow:visible; text-align:center; }
+.mapInner { width:min(1180px,97vw); overflow:visible; text-align:center; }
 .mapInner h2 {
   margin:0 0 2px; font-size:19px; font-weight:normal; letter-spacing:.16em;
   color:var(--gild); text-transform:uppercase;
@@ -615,7 +615,16 @@ body.minigame #toast { opacity:0; pointer-events:none; }
    exactly the part that hangs below. The rounding goes on the image instead. */
 #mapImage { position:relative; display:inline-block; max-width:100%; margin:0 0 96px; }
 #mapArt {
-  display:block; max-width:100%; max-height:56vh; width:auto; height:auto;
+  /* Bounded on both axes so it grows into whatever room the window has and
+     shrinks with it: width from the panel, height from the viewport, and the
+     smaller of the two wins. `height:auto` keeps the aspect intact either way,
+     which the pins depend on. */
+  display:block; max-width:100%; width:auto; height:auto;
+  /* The subtraction is the chrome this panel needs around the picture: the
+     title, the cards hanging off the bottom edge, and the overlay padding.
+     Tying the cap to that rather than a flat vh fraction means the map takes
+     every pixel actually going spare, on a laptop and on a big display. */
+  max-height:min(78vh, calc(100vh - 250px));
   border:1px solid #3d3025; border-radius:4px;
 }
 #mapPins { position:absolute; inset:0; }
