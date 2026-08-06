@@ -221,6 +221,11 @@ function openChest() {
   save();
 }
 
+// Dev hook: ?debug hands the whole state to the console. Read-only in spirit —
+// it exists because a stuck run cannot be diagnosed from the HUD alone, and
+// guessing at it from screenshots costs more than one line of exposure.
+if (new URLSearchParams(location.search).has('debug')) window.__S = S;
+
 // Screens that are waiting on the player rather than running: the coffin, the
 // cards, the fork in the road.
 const choosing = () => S.phase === 'drop' || S.phase === 'draft' || S.phase === 'map';
@@ -1453,13 +1458,32 @@ if (DEV_CAMP && !DEV_DROP) {
 }
 
 let last = performance.now();
+let frameErrors = 0;
+
+/**
+ * One frame — and it always asks for the next one.
+ *
+ * The `requestAnimationFrame` used to sit at the end of the body, so a single
+ * thrown frame ended the session: no more rAF was ever queued, the canvas
+ * froze on whatever it had last drawn, and the HUD kept its final values. It
+ * looked exactly like a hang, which is the worst way for a bug to present —
+ * twice this happened and twice it cost an hour to find. The scheduling is now
+ * unconditional and a bad frame is logged and skipped instead of fatal.
+ */
 function loop(now) {
+  requestAnimationFrame(loop);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  // Paused still renders — the scene stays on screen, it just stops moving.
-  if (S.running && !S.paused) update(dt);
-  render(ctx, S, S.time, dt);
-  UI.frame(S, dt);
-  requestAnimationFrame(loop);
+  try {
+    // Paused still renders — the scene stays on screen, it just stops moving.
+    if (S.running && !S.paused) update(dt);
+    render(ctx, S, S.time, dt);
+    UI.frame(S, dt);
+  } catch (e) {
+    // Noisy on purpose for the first few, then quiet: a fault that repeats
+    // every frame would otherwise bury the console it is meant to be reported
+    // in.
+    if (frameErrors++ < 5) console.error(`frame ${frameErrors}:`, e);
+  }
 }
 requestAnimationFrame(loop);

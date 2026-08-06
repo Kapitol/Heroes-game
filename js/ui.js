@@ -806,6 +806,7 @@ export function showDraft(cards, skulls, gained, rerollCost) {
       <span class="cardName">${c.name}${c.tier > 1 ? ` <b>${c.tier}</b>` : ''}</span>
       <span class="cardDesc">${c.desc}</span>
       <span class="cardCost">${c.cost > 0 ? `☠ ${c.cost}` : 'Free'}</span>
+      ${afford ? '' : `<span class="cardShort">☠ ${(c.cost - skulls).toLocaleString()} short</span>`}
       ${tierRow(c)}`;
     b.addEventListener('click', () => H.draftPick(i));
     el.draftCards.appendChild(b);

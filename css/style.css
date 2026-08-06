@@ -437,11 +437,28 @@ h1.dead {
   background:none; border-color:#4a4238; color:#9a9184;
   letter-spacing:.16em; text-transform:uppercase; font-size:11px;
 }
-.card.broke { opacity:.5; cursor:not-allowed; }
-.card.broke:hover { transform:none; border-color:#3d3025; }
+/* Out of reach, and still readable — this is a card you are being asked to
+   want, so it cannot be the dimmest thing on the screen. Half opacity took its
+   text to 1.9:1 against the panel; the card is dimmed by its own darker ground
+   instead and every string keeps its own contrast. */
+.card.broke {
+  cursor:not-allowed;
+  background:linear-gradient(180deg,#1c1712,#0d0a08);
+  border-color:#2b2219;
+}
+.card.broke:hover { transform:none; border-color:#2b2219; }
+.card.broke .cardName { color:#a2947c; }
+.card.broke .cardDesc { opacity:.62; }
+.card.broke .cardIcon { opacity:.55; }
 .card.broke .cardCost {
   background:linear-gradient(180deg,#2a231c,#181310);
-  color:#8a7358; border-color:#3d3025;
+  color:#b9a583; border-color:#4a3a29;
+}
+/* What it would take. The shortfall is the whole point of the card: it turns
+   the purse from a total into a target. */
+.cardShort {
+  margin-top:5px; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--gild-dim);
 }
 #draftSkip, #draftReroll {
   margin:18px auto 0; padding:9px 20px; display:block; cursor:pointer;

@@ -142,10 +142,18 @@ const pick = (a) => a[Math.floor(Math.random() * a.length)];
  * choice a shape rather than a list: something for the swing, something for the
  * hide, something for everything else.
  *
- * A card you cannot pay for is not an option, it is a taunt — so each kind
- * offers only what the purse actually covers. The offer therefore sharpens as
- * the purse empties: spend down to almost nothing and only cheap first tiers
- * come up.
+ * **One seat is deliberately out of reach.** Every card being affordable was
+ * the quiet thing wrong with this game: the purse could never bind, so no
+ * choice ever cost anything, and a run played by taking the leftmost card went
+ * exactly as deep as a run played well. A price that never stops you is not a
+ * price — it is a label.
+ *
+ * So the offer keeps at least two cards the purse covers, and gives the third
+ * seat to the *nearest* thing it does not: the cheapest card above the purse,
+ * shown greyed with the shortfall on it. That is the card you walk on to save
+ * for, and walking on is what makes the skulls mean something. When nothing is
+ * out of reach — an early hand where everything is Gray and free — the seat
+ * goes back to an ordinary affordable card and nothing is lost.
  *
  * An unowned ability takes the fourth kind whenever there is room in the kit
  * and skulls to cover it — a draft that can't ever widen your kit stops being a
@@ -164,7 +172,7 @@ export function rollDraft(state, budget, hpFrac = 1) {
 
   if (state.loadout.length < MAX_SKILLS) {
     for (const s of SKILLS) {
-      if (owned.has(s.id) || s.cost > budget) continue;
+      if (owned.has(s.id)) continue;
       add('ability', {
         type: 'skill', id: s.id, kind: 'ability', icon: s.glyph, art: s.art,
         name: s.name, desc: s.desc, cost: s.cost, band: bandFor(s.cost).key,
@@ -174,7 +182,6 @@ export function rollDraft(state, budget, hpFrac = 1) {
 
   if (hpFrac < HURT_ENOUGH) {
     for (const r of REMEDIES) {
-      if (r.cost > budget) continue;
       add(r.kind, { type: 'remedy', id: r.id, kind: r.kind, icon: r.icon, art: r.art,
         name: r.name, desc: r.desc, cost: r.cost, band: bandFor(r.cost).key });
     }
@@ -186,7 +193,6 @@ export function rollDraft(state, budget, hpFrac = 1) {
     const tier = (state.perks[p.id] || 0) + 1;
     if (tier > MAX_TIER) continue;
     const cost = costOf(p.power, tier);
-    if (cost > budget) continue;
     add(p.kind, {
       type: 'perk', id: p.id, kind: p.kind, icon: p.icon, art: p.art,
       name: p.name, desc: p.desc(tier), tier, cost, band: TIER_BANDS[tier - 1].key,
@@ -207,7 +213,40 @@ export function rollDraft(state, budget, hpFrac = 1) {
   }
   if (byKind.has('ability')) kinds.unshift('ability');
 
-  return kinds.slice(0, 3).map(k => pick(byKind.get(k)));
+  const canPay = (c) => c.cost <= budget;
+  const cheapest = (list) => list.slice().sort((a, b) => a.cost - b.cost)[0];
+
+  // One seat per kind, each knowing what it could offer either way.
+  const seats = kinds.slice(0, 3).map((k) => {
+    const all = byKind.get(k);
+    const affordable = all.filter(canPay);
+    return {
+      afford: affordable.length ? pick(affordable) : null,
+      reach: cheapest(all.filter(c => !canPay(c))) || null,
+    };
+  });
+
+  // Fill every seat: what the purse covers, or failing that what it does not.
+  // A seat that can only offer something out of reach still offers it — an
+  // empty seat is a smaller hand, and a hand of two is a worse offer than a
+  // hand of three with a goal in it.
+  const hand = seats.map(s => s.afford || s.reach).filter(Boolean);
+
+  // Then, if all three are payable, give one seat to the nearest thing that is
+  // not. Cheapest first: a goal two waves away is worth saving for and one
+  // twenty waves away is wallpaper.
+  if (hand.length === 3 && hand.every(canPay)) {
+    const nearest = cheapest(seats.map(s => s.reach).filter(Boolean));
+    if (nearest) hand[hand.length - 1] = nearest;
+  }
+
+  // Never deal a hand nobody can take. Gray is free, so something payable
+  // always exists; this only matters when every seat happened to draw a reach.
+  if (hand.length && !hand.some(canPay)) {
+    const payable = cheapest([...byKind.values()].flat().filter(canPay));
+    if (payable) hand[0] = payable;
+  }
+  return hand;
 }
 
 export function applyCard(state, card) {
