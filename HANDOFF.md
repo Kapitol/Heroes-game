@@ -90,6 +90,40 @@ relative to the hero. Tier 1 is Gray and Gray is free, so it costs nothing and
 the purse still starts empty. `openingDone` is saved; runs from before it existed
 are treated as having had theirs.
 
+## Bosses, loot and the map
+
+A boss leaves **2–4 armour pieces, 1–3 weapons and bonus skulls**, all collected
+for you — there is nothing to walk over in a game with no movement control — and
+the ⚒ globe pulses until the panel is opened, since the bag is the only thing
+announcing a pile.
+
+**Loot stacks on the armoury, it does not replace it.** The armoury stays the
+steady part: levels bought with skulls, driving the hero's visible marks. Loot
+is the windfall. Every looted bonus lands in the same stat lines gear and perks
+already feed (`heroStats` takes `equipped` as a fourth argument), so nothing
+downstream knows where a number came from. Rarity is the same five bands the
+cards use — Gray drains away and Gold creeps in as the run deepens. Swapping is
+non-destructive: whatever comes off goes back in the bag.
+
+The armoury is built as a character sheet — armour slots left, weapon right, the
+hero drawn in the middle from the same routine the road uses, item level, then
+attributes, bag, forge, drafted perks.
+
+**When a boss falls the map opens**, after its drop and cards have settled —
+choosing a road is the last beat of the reward, not an interruption of it. The
+track shows levels walked (struck through), the one just finished (lit) and a
+glimpse ahead. Three roads, and they are three different questions rather than
+one wearing three coats:
+
+| road | goes to | costs |
+|---|---|---|
+| Press on | next level | difficulty +1 |
+| The deep road | skips a level | difficulty +3, richer |
+| Hold here | this level again | difficulty unchanged |
+
+`stage` is what difficulty actually reads from, so the deep road buys its danger
+by jumping two extra stages and holding costs nothing but time.
+
 ## Levels
 
 A **Level** is the named place the hero is walking through, one per section, from

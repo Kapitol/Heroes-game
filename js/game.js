@@ -84,6 +84,7 @@ const S = {
   queue: [], spawnTimer: 0, waveTotal: 0, formation: null,
   marchTo: 0, draft: null, draftAfter: null, lastDrop: 0,
   wavesSinceDraft: 0, wavesSinceBoss: 0, wavesSinceDrop: 0, pot: 0,
+  roads: null, pendingMap: false,
   openingPicks: 0, openingDone: false,
   kills: 0, earned: 0, deaths: 0, best: 1,
   running: false, paused: false, reviveTimer: 0, time: 0,
@@ -114,6 +115,7 @@ UI.init(S, {
   draftSkip: skipDraft,
   draftReroll: rerollDraft,
   equip: equipItem,
+  mapPick: chooseRoad,
   unequip: unequipItem,
   pause: togglePause,
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },
@@ -486,6 +488,62 @@ function takeCard(i) {
   closeDraft();
 }
 
+// --- the map ----------------------------------------------------------------
+
+/**
+ * Three roads, and they have to be three different questions or it is one road
+ * wearing three coats: press on, push harder for more, or walk this stretch
+ * again for what it drops.
+ *
+ * `stage` is what difficulty actually reads from, so the deep road buys its
+ * extra danger by jumping two of them — and holding costs nothing but time.
+ */
+function rollRoads() {
+  const s = S.section;
+  return [
+    {
+      key: 'steady', section: s + 1, stage: S.stage + 1,
+      tag: 'Press on', title: levelFor(s + 1),
+      note: 'The road as it comes.', meta: 'Difficulty +1',
+    },
+    {
+      key: 'deep', section: s + 2, stage: S.stage + 3,
+      tag: 'The deep road', title: levelFor(s + 2),
+      note: 'Skip a level. Everything there hits harder, and everything there pays.',
+      meta: 'Difficulty +3 · richer',
+    },
+    {
+      key: 'hold', section: s, stage: S.stage,
+      tag: 'Hold here', title: levelFor(s),
+      note: 'Walk this stretch again for what it drops.',
+      meta: 'Difficulty unchanged',
+    },
+  ];
+}
+
+function openMap() {
+  S.phase = 'map';
+  S.roads = rollRoads();
+  UI.showMap(S.roads, S.section);
+}
+
+function chooseRoad(i) {
+  const road = S.roads && S.roads[i];
+  if (!road) return;
+  S.roads = null;
+  S.pendingMap = false;
+  UI.showMap(null);
+  Audio.sfx.descend();
+
+  S.section = road.section;
+  S.stage = road.stage;
+  S.wave = 1;
+  S.wavesInSection = 3 + (Math.random() < 0.5 ? 1 : 0);
+  UI.banner(levelFor(S.section));
+  enterStage(S.stage);
+  save();
+}
+
 // --- loot -------------------------------------------------------------------
 
 /**
@@ -557,6 +615,9 @@ function endWave() {
     S.newLoot += loot.length;
     UI.flashBag();
     UI.toast(`${loot.length} pieces taken from the body · ☠ ${bonus} more`, 3);
+    // A boss ends the level. The map waits until its drop and cards are done —
+    // choosing a road is the last beat, not an interruption of the reward.
+    S.pendingMap = true;
   }
 
   if (++S.wavesSinceDrop >= WAVES_PER_DROP) {
@@ -608,6 +669,7 @@ function afterWave() {
 // Where the road goes once the cards are done with — or straight away, on the
 // four waves out of five that have no cards at all.
 function advance(after) {
+  if (S.pendingMap) { openMap(); return; }
   if (after === 'section') nextSection();
   else nextWave();
 }
@@ -738,7 +800,7 @@ function update(dt) {
   } else if (S.phase === 'drop') {
     idleStep(dt, st);
     if (S.drop) updateDrop(dt);
-  } else if (S.phase === 'draft') {
+  } else if (S.phase === 'draft' || S.phase === 'map') {
     idleStep(dt, st);   // the hero waits, for as long as the choice takes
   }
 
@@ -1052,6 +1114,7 @@ function save() {
       stage: S.stage, section: S.section, wave: S.wave, wavesInSection: S.wavesInSection, best: S.best,
       wavesSinceDraft: S.wavesSinceDraft, wavesSinceBoss: S.wavesSinceBoss,
       wavesSinceDrop: S.wavesSinceDrop, pot: S.pot, openingDone: S.openingDone,
+      pendingMap: S.pendingMap,
       level: S.hero.level, xp: S.hero.xp, xpNext: S.hero.xpNext,
       kills: S.kills, earned: S.earned, deaths: S.deaths,
     }));
@@ -1079,6 +1142,7 @@ function load() {
   S.wavesSinceBoss = Math.max(0, d.wavesSinceBoss | 0);
   S.wavesSinceDrop = Math.max(0, d.wavesSinceDrop | 0);
   S.pot = Math.max(0, d.pot | 0);
+  S.pendingMap = !!d.pendingMap;
   // Saves from before the opening hand existed have already played past it.
   S.openingDone = d.openingDone !== undefined ? !!d.openingDone : true;
   S.best = Math.max(1, d.best | 0 || 1);

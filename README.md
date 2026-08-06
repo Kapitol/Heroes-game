@@ -50,6 +50,12 @@ modules, which browsers refuse to load over `file://`.
    be saved towards. Boons compete directly with the armoury for the same
    skulls, which is the actual decision. Every third section ends on a boss.
 
+5. **The boss, and the map.** Every 13th encounter is a boss. It leaves armour,
+   weapons and skulls, and then the road forks: press on, take the deep road
+   (skip a level, everything harder and richer), or hold and walk this stretch
+   again. Loot is collected for you and equipped from the ⚒ armoury, which
+   pulses when something new is in the bag.
+
 Die and you fall back to the start of the section rather than replaying the
 fight that killed you — a boss wave pays nothing on its own, so retrying it
 could never fund the gear to beat it. You keep every level, perk and piece of

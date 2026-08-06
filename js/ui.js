@@ -1,7 +1,7 @@
 // DOM layer: globes, the rune belt, the armoury, the draft cards.
 
 import { heroStats } from './entities.js';
-import { levelFor } from './world.js';
+import { levelFor, LEVELS } from './world.js';
 import { SKILLS, skillById, PERKS, MAX_SKILLS, iconOpts, TIER_BANDS } from './perks.js';
 import * as Atlas from './atlas.js';
 import { heroKit, armourTierOf, weaponTierOf, drawActor } from './sprites.js';
@@ -39,7 +39,8 @@ export function init(state, handlers) {
                     'overlay', 'ovBtn', 'btnGear', 'btnMenu', 'btnReset', 'deathText',
                     'draftPanel', 'draftCards', 'perkList',
                     'draftPurse', 'btnPause', 'pausedTag', 'volSlider', 'volValue', 'btnMute',
-                    'slotsLeft', 'slotsRight', 'dollCanvas', 'dollLevel', 'bagList', 'bagCount'])
+                    'slotsLeft', 'slotsRight', 'dollCanvas', 'dollLevel', 'bagList', 'bagCount',
+                    'mapPanel', 'mapTrack', 'mapChoices', 'mapSub'])
     el[id] = $(id);
 
   el.btnGear.addEventListener('click', (e) => { e.stopPropagation(); togglePanel('gearPanel'); });
@@ -397,6 +398,49 @@ function tierRow(c) {
   const pips = TIER_BANDS.slice(0, c.tiers).map((b, i) =>
     `<i class="${b.key}${i < c.held ? ' on' : i === c.held ? ' next' : ''}"></i>`).join('');
   return `<span class="tierRow" style="--tiers:${c.tiers}">${pips}</span>`;
+}
+
+/**
+ * The map: what has been walked, and the fork ahead.
+ *
+ * The track is the point of it — a run is a long line of near-identical waves,
+ * and this is the only place that says out loud how far the hero has actually
+ * come. Levels already behind are struck through and dimmed; the one just
+ * finished is lit, because that is the one the boss died in.
+ */
+export function showMap(choices, section) {
+  el.mapPanel.classList.toggle('hidden', !choices);
+  if (!choices) return;
+
+  el.mapSub.textContent = `${section} ${section === 1 ? 'level' : 'levels'} behind you`;
+  el.mapTrack.innerHTML = '';
+  // A window around where the hero is: everything done, plus a glimpse of what
+  // is still unnamed ahead. The whole list would be a wall by level 20.
+  const from = Math.max(1, section - 5);
+  const to = Math.min(LEVELS.length, section + 2);
+  for (let i = from; i <= to; i++) {
+    const done = i < section, here = i === section;
+    const row = document.createElement('div');
+    row.className = `mapStop${done ? ' done' : here ? ' here' : ' ahead'}`;
+    row.innerHTML = `
+      <span class="mapMark">${done ? '✓' : here ? '◆' : '·'}</span>
+      <span class="mapNo">${i}</span>
+      <span class="mapName">${levelFor(i)}</span>`;
+    el.mapTrack.appendChild(row);
+  }
+
+  el.mapChoices.innerHTML = '';
+  choices.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.className = `mapChoice ${c.key}`;
+    b.innerHTML = `
+      <span class="mcTag">${c.tag}</span>
+      <span class="mcName">${c.title}</span>
+      <span class="mcNote">${c.note}</span>
+      <span class="mcMeta">${c.meta}</span>`;
+    b.addEventListener('click', () => H.mapPick(i));
+    el.mapChoices.appendChild(b);
+  });
 }
 
 export function showDraft(cards, skulls, gained, rerollCost) {
