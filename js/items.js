@@ -232,4 +232,8 @@ export function wornTier(equipped) {
   return Math.max(1, Math.min(TIER_BANDS.length, Math.round(sum / worn.length)));
 }
 
+/** Where a piece sits on the five-band ladder, as a row index, or -1 for none. */
+export const bandIndex = (it) =>
+  (it ? TIER_BANDS.findIndex(b => b.key === it.band) : -1);
+
 export const bandName = (key) => (TIER_BANDS.find(b => b.key === key) || {}).name || key;

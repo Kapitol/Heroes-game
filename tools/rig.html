@@ -1,0 +1,383 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Rig editor</title>
+<!--
+  The skeleton on its own, and then art hung on it.
+
+  Judging a walk with armour on it is judging two things at once. Here the
+  stick figure is the default and the art is a toggle, so a limp is either in
+  the angles or it is not — and a piece of equipment can only ever be wrong
+  about how it looks, never about how long a limb is.
+-->
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; background: #14100c; color: #cbbfa8;
+    font: 13px/1.5 "Iowan Old Style", Georgia, serif;
+    display: grid; grid-template-columns: 210px 1fr; height: 100vh;
+  }
+  aside { padding: 14px; border-right: 1px solid #2b2419; background: #191410; overflow-y: auto; }
+  h2 { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #7d705a; margin: 14px 0 6px; font-weight: normal; }
+  h2:first-child { margin-top: 0; }
+  .bone {
+    padding: 2px 7px; cursor: pointer; font-size: 12px; border: 1px solid transparent;
+    display: flex; justify-content: space-between;
+  }
+  .bone:hover { background: #221b13; }
+  .bone.sel { background: #4a3a1c; border-color: #8a6c2c; color: #f0dfae; }
+  .bone em { color: #6f6350; font-style: normal; font-size: 10px; }
+  .row { display: flex; gap: 6px; margin: 6px 0; }
+  button {
+    flex: 1; background: #221b13; color: #cbbfa8; border: 1px solid #3b2f20;
+    padding: 5px 8px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  button.on { background: #4a3a1c; border-color: #8a6c2c; color: #f0dfae; }
+  label { display: block; font-size: 11px; color: #7d705a; margin-top: 8px; }
+  input[type=range] { width: 100%; }
+  main { position: relative; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100vh; }
+  #num {
+    position: absolute; left: 14px; bottom: 12px; font-size: 11px; color: #6f6350;
+    font-family: ui-monospace, Menlo, monospace; white-space: pre; pointer-events: none;
+  }
+  textarea {
+    position: absolute; inset: 40px; display: none; background: #0f0c09; color: #cbbfa8;
+    border: 1px solid #33291c; font: 11px/1.5 ui-monospace, Menlo, monospace; padding: 12px;
+  }
+  /* Shot mode: the page is a camera, not an editor. Everything with an opinion
+     about layout goes away so the canvas is exactly the pixels asked for. */
+  body.shot { display: block; background: transparent; }
+  body.shot aside, body.shot #num, body.shot textarea { display: none; }
+  body.shot canvas { width: auto; height: auto; }
+</style>
+
+<aside>
+  <h2>Bones</h2>
+  <div id="list"></div>
+
+  <h2>Selected bone</h2>
+  <label>length <span id="lenV"></span></label>
+  <input type="range" id="len" min="0.02" max="0.40" step="0.005">
+  <label>rest angle <span id="restV"></span></label>
+  <input type="range" id="rest" min="-0.5" max="0.5" step="0.005">
+  <label>hangs at <span id="atV"></span></label>
+  <input type="range" id="at" min="0" max="1" step="0.01">
+
+  <h2>State</h2>
+  <div class="row"><button data-state="rest">rest</button><button data-state="idle">idle</button></div>
+  <div class="row"><button data-state="walk">walk</button><button data-state="attack">attack</button></div>
+
+  <h2>View</h2>
+  <div class="row"><button id="bPlay">Play</button><button id="bStick">Stick</button></div>
+  <div class="row"><button id="bArt">Art</button><button id="bTravel">Travel</button></div>
+  <div class="row"><button id="bCopy">Copy</button></div>
+
+  <h2>Equipment</h2>
+  <div class="row"><button id="bHelm">helm: none</button></div>
+  <div class="row"><button id="bChest">chest: none</button></div>
+  <div class="row"><button id="bGlove">gloves: none</button></div>
+  <div class="row"><button id="bLegs">legs: none</button></div>
+  <div class="row"><button id="bBoot">boots: none</button></div>
+
+  <h2>Hide slot</h2>
+  <div class="row"><button data-slot="head">helm</button><button data-slot="chest">chest</button></div>
+  <div class="row"><button data-slot="hands">hands</button><button data-slot="legs">legs</button></div>
+  <div class="row"><button data-slot="feet">feet</button></div>
+</aside>
+
+<main>
+  <canvas id="cv"></canvas>
+  <div id="num"></div>
+  <textarea id="out" spellcheck="false"></textarea>
+</main>
+
+<script type="module">
+import * as Atlas from '../js/atlas.js';
+import * as Rig from '../js/rig.js';
+
+const GLOVES = '../art/gloves-01.png';
+const BOOTS = '../art/more-feet.png';
+const CHEST = '../art/torso-arm.png';
+const HELM = '../art/hair-helmets.png';
+const LEGS = '../art/legs-01.png';
+const THIGH = '../art/thigh-02.png';
+const CLOTH = '../art/cloth-garmets.png';
+const WEAPON = '../art/weapon-03.png';
+const BANDS = ['none', 'leather', 'steel', 'gold', 'crystal', 'bone'];
+
+// --- driven from the URL ----------------------------------------------------
+//
+// The editor is also the camera. `tools/gauntlet/shot.mjs` cannot click
+// buttons, so every control that decides what a frame *looks like* has to be
+// reachable from the query string — and reachable deterministically, which is
+// the harder half: a screenshot tool that races the animation clock produces a
+// different picture every run and no critique of it means anything.
+//
+//   tier=1..5    wear one band in all five slots (1 = Gray … 5 = Gold)
+//   state=rest|idle|walk|attack     which entry in ANIMS to pose from
+//   frame=N&frames=M                phase = N/M. Default M is 4, the number of
+//                                   strides in art/warrior-walk.png, so frame
+//                                   numbers line up with the sheet's columns.
+//   p=0..1       the phase directly, if a frame index is the wrong unit
+//   art=0|1  stick=0|1  travel=0|1
+//   shot=1       hide the editor; the canvas becomes the whole page
+//   w= h=        canvas size in device pixels (shot mode forces dpr 1)
+//   fh=          figure height in pixels; by= baseline as a fraction of h
+//   bg=none      no fill — a transparent PNG
+//
+// `state=attack` works the moment `ANIMS.attack` exists; until then it falls
+// back to the rest pose rather than throwing, because a missing animation is a
+// thing to see, not a stack trace.
+const Q = new URLSearchParams(location.search);
+const qNum = (k, d) => (Q.has(k) ? +Q.get(k) : d);
+const qBool = (k, d) => (Q.has(k) ? Q.get(k) !== '0' && Q.get(k) !== 'false' : d);
+const SHOT = Q.has('shot');
+const tier = Q.has('tier') ? Math.max(1, Math.min(5, qNum('tier', 1))) - 1 : -1;
+
+const S = {
+  sel: 'spine',
+  // In shot mode the clock is stopped by default: the frame is whatever the
+  // URL asked for, not whatever the animation had reached when the shutter fell.
+  play: qBool('play', !SHOT),
+  stick: qBool('stick', !SHOT),
+  art: qBool('art', SHOT),
+  travel: qBool('travel', !SHOT),
+  state: Q.get('state') || 'walk',
+  p: Q.has('p') ? qNum('p', 0) : (qNum('frame', 0) / qNum('frames', 4)),
+  hide: {},
+  glove: tier, boot: tier, chest: tier, helm: tier, legs: tier,
+};
+S.p = ((S.p % 1) + 1) % 1;
+if (SHOT) document.body.classList.add('shot');
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const out = document.getElementById('out');
+
+const list = document.getElementById('list');
+list.innerHTML = Rig.BONES.map(b =>
+  `<div class="bone" data-k="${b.key}">${b.key}<em>${b.slot}</em></div>`).join('');
+list.onclick = (e) => {
+  const el = e.target.closest('.bone');
+  if (el) { S.sel = el.dataset.k; syncBone(); }
+};
+
+const bone = () => Rig.BONES.find(b => b.key === S.sel);
+const SLIDERS = { len: 'length', rest: 'rest', at: 'at' };
+const show = (key, v) => (key === 'rest' ? (v * 360).toFixed(0) + '°' : v.toFixed(3));
+
+function syncBone() {
+  for (const el of list.children) el.classList.toggle('sel', el.dataset.k === S.sel);
+  const b = bone();
+  for (const [id, key] of Object.entries(SLIDERS)) {
+    document.getElementById(id).value = b[key];
+    document.getElementById(id + 'V').textContent = show(key, b[key]);
+  }
+}
+for (const [id, key] of Object.entries(SLIDERS)) {
+  document.getElementById(id).oninput = (e) => {
+    const v = +e.target.value;
+    bone()[key] = v;
+    document.getElementById(id + 'V').textContent = show(key, v);
+  };
+}
+syncBone();
+
+const btn = (id, fn) => document.getElementById(id).onclick = (e) => fn(e.target);
+btn('bPlay', (t) => { S.play = !S.play; t.classList.toggle('on', S.play); t.textContent = S.play ? 'Stop' : 'Play'; });
+btn('bStick', (t) => { S.stick = !S.stick; t.classList.toggle('on', S.stick); });
+btn('bArt', (t) => { S.art = !S.art; t.classList.toggle('on', S.art); });
+btn('bTravel', (t) => { S.travel = !S.travel; t.classList.toggle('on', S.travel); });
+btn('bHelm', (t) => {
+  S.helm = S.helm >= 4 ? -1 : S.helm + 1;
+  t.textContent = 'helm: ' + BANDS[S.helm + 1];
+  t.classList.toggle('on', S.helm >= 0);
+});
+btn('bChest', (t) => {
+  S.chest = S.chest >= 4 ? -1 : S.chest + 1;
+  t.textContent = 'chest: ' + BANDS[S.chest + 1];
+  t.classList.toggle('on', S.chest >= 0);
+});
+btn('bGlove', (t) => {
+  S.glove = S.glove >= 4 ? -1 : S.glove + 1;
+  t.textContent = 'gloves: ' + BANDS[S.glove + 1];
+  t.classList.toggle('on', S.glove >= 0);
+});
+btn('bLegs', (t) => {
+  S.legs = S.legs >= 4 ? -1 : S.legs + 1;
+  t.textContent = 'legs: ' + BANDS[S.legs + 1];
+  t.classList.toggle('on', S.legs >= 0);
+});
+btn('bBoot', (t) => {
+  S.boot = S.boot >= 4 ? -1 : S.boot + 1;
+  t.textContent = 'boots: ' + BANDS[S.boot + 1];
+  t.classList.toggle('on', S.boot >= 0);
+});
+btn('bCopy', () => {
+  out.style.display = out.style.display === 'block' ? 'none' : 'block';
+  out.value = 'export const BONES = [\n' + Rig.BONES.map(b =>
+    `  { key: '${b.key}',`.padEnd(28)
+    + ` parent: ${b.parent ? `'${b.parent}'` : 'null'},`.padEnd(26)
+    + ` at: ${b.at},`.padEnd(11)
+    + ` length: ${b.length.toFixed(3)},`
+    + ` rest: ${b.rest.toFixed(3)},`
+    + ` z: ${b.z},`.padEnd(7)
+    + ` slot: '${b.slot}' },`).join('\n') + '\n];\n';
+  out.select();
+});
+for (const b of document.querySelectorAll('[data-slot]')) {
+  b.onclick = () => { const k = b.dataset.slot; S.hide[k] = !S.hide[k]; b.classList.toggle('on', S.hide[k]); };
+}
+const stateBtns = [...document.querySelectorAll('[data-state]')];
+function syncState() {
+  for (const b of stateBtns) b.classList.toggle('on', b.dataset.state === S.state);
+}
+for (const b of stateBtns) b.onclick = () => { S.state = b.dataset.state; syncState(); };
+syncState();
+
+// The panel has to agree with the URL, or a link shared out of the editor opens
+// showing one thing and claiming another.
+document.getElementById('bPlay').classList.toggle('on', S.play);
+document.getElementById('bPlay').textContent = S.play ? 'Stop' : 'Play';
+document.getElementById('bStick').classList.toggle('on', S.stick);
+document.getElementById('bArt').classList.toggle('on', S.art);
+document.getElementById('bTravel').classList.toggle('on', S.travel);
+for (const [id, k] of [['bHelm', 'helm'], ['bChest', 'chest'], ['bGlove', 'glove'], ['bLegs', 'legs'], ['bBoot', 'boot']]) {
+  const t = document.getElementById(id);
+  t.textContent = t.textContent.split(':')[0] + ': ' + BANDS[S[k] + 1];
+  t.classList.toggle('on', S[k] >= 0);
+}
+
+// Equipment, keyed by bone. Both sides wear the same images — the renderer is
+// what puts one behind the body, not a second drawing.
+// How many requested slots have not decoded yet. A screenshot taken before the
+// sheets land is a stick figure in a wig; `shot.mjs` waits on this reaching 0.
+let pending = 0;
+
+function equipment() {
+  const art = {};
+  pending = 0;
+  const wear = (sh, c) => ({ canvas: sh.canvas, x: c.x, y: c.y, w: c.w, h: c.h });
+  const need = (want, sh) => { if (want && !sh) pending++; return sh; };
+  const gl = need(S.glove >= 0, Atlas.sheet(GLOVES, 2, 5, { auto: true }));
+  if (S.glove >= 0 && gl) {
+    const f = gl.cells[S.glove * 2], h = gl.cells[S.glove * 2 + 1];
+    if (f && h) {
+      art.forearmBack = art.forearmFront = wear(gl, f);
+      art.handBack = art.handFront = wear(gl, h);
+    }
+  }
+  const hm = need(S.helm >= 0, Atlas.sheet(HELM, 1, 5, { auto: true }));
+  if (S.helm >= 0 && hm && hm.cells[S.helm]) art.head = wear(hm, hm.cells[S.helm]);
+  const ch = need(S.chest >= 0, Atlas.sheet(CHEST, 2, 5, { auto: true }));
+  if (S.chest >= 0 && ch) {
+    const torso = ch.cells[S.chest * 2], arm = ch.cells[S.chest * 2 + 1];
+    if (torso && arm) {
+      art.spine = wear(ch, torso);
+      art.upperArmBack = art.upperArmFront = wear(ch, arm);
+    }
+  }
+  // Column 0 only. Column 1 of `legs-01.png` is a greave, not a thigh — the
+  // same shin piece the boots sheet already supplies — and hanging it on the
+  // thighs put the identical lion or skull guard twice down one leg.
+  const lg = need(S.legs >= 0, Atlas.sheet(LEGS, 2, 5, { auto: true }));
+  if (S.legs >= 0 && lg) {
+    const hip = lg.cells[S.legs * 2];
+    if (hip) art.pelvis = wear(lg, hip);
+  }
+  // The cuisse the legs sheet never contained, on the same band: one hero does
+  // not wear a steel faulds over a gold thigh, so it follows `S.legs`.
+  const th = need(S.legs >= 0, Atlas.sheet(THIGH, 1, 5, { auto: true }));
+  if (S.legs >= 0 && th && th.cells[S.legs]) {
+    art.thighBack = art.thighFront = wear(th, th.cells[S.legs]);
+  }
+  // The surcoat, on the legs band like the cuisse. `drawSurcoat` reads it.
+  const cl = need(S.legs >= 0, Atlas.sheet(CLOTH, 1, 5, { auto: true }));
+  if (S.legs >= 0 && cl && cl.cells[S.legs]) art.cloth = wear(cl, cl.cells[S.legs]);
+  // Five blades across one row: the band is the cell.
+  const wp = need(S.glove >= 0, Atlas.sheet(WEAPON, 5, 1, { auto: true }));
+  if (S.glove >= 0 && wp && wp.cells[S.glove]) art.weapon = wear(wp, wp.cells[S.glove]);
+  const bt = need(S.boot >= 0, Atlas.sheet(BOOTS, 2, 5, { auto: true }));
+  if (S.boot >= 0 && bt) {
+    const s = bt.cells[S.boot * 2], f = bt.cells[S.boot * 2 + 1];
+    if (s && f) {
+      art.shinBack = art.shinFront = wear(bt, s);
+      art.footBack = art.footFront = wear(bt, f);
+    }
+  }
+  return art;
+}
+
+let last = performance.now();
+
+/**
+ * The pose for the current state and phase.
+ *
+ * The editor used to read `ANIMS.walk` unconditionally and show the rest pose
+ * whenever the clock was stopped, which conflated two different questions —
+ * "which animation" and "is it running". They are separate now, so a single
+ * frame of a named state can be asked for and got.
+ */
+function poseNow() {
+  if (S.state === 'rest') return Rig.REST;
+  const anim = Rig.ANIMS[S.state];
+  return anim ? anim(S.p) : Rig.REST;
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (S.play) S.p = (S.p + dt) % 1;
+
+  // Shot mode sizes the buffer from the URL and pins the ratio to 1, because a
+  // screenshot whose dimensions depend on the machine's display scaling is not
+  // a measurement of anything.
+  let w, hgt, d;
+  if (SHOT) {
+    w = qNum('w', 480); hgt = qNum('h', 720); d = 1;
+    if (cv.width !== w || cv.height !== hgt) { cv.width = w; cv.height = hgt; }
+    cv.style.width = w + 'px'; cv.style.height = hgt + 'px';
+  } else {
+    const r = cv.getBoundingClientRect();
+    d = devicePixelRatio || 1;
+    w = r.width; hgt = r.height;
+    if (cv.width !== w * d || cv.height !== hgt * d) { cv.width = w * d; cv.height = hgt * d; }
+  }
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.clearRect(0, 0, w, hgt);
+  if (Q.get('bg') !== 'none') {
+    ctx.fillStyle = Q.get('bg') || '#14100c';
+    ctx.fillRect(0, 0, w, hgt);
+  }
+
+  const h = qNum('fh', hgt * (SHOT ? 0.78 : 0.55));
+  const y = hgt * qNum('by', SHOT ? 0.94 : 0.82);
+  // The hero advances a stride a cycle; `shift` only holds what is left over.
+  // With travel off the figure walks on the spot, which is the honest way to
+  // see that a foot cannot stay put unless the body moves.
+  const span = w * 0.6;
+  const walked = S.travel ? ((S.p * Rig.STRIDE * h) % span) : 0;
+  const x = (SHOT && !S.travel ? w * 0.5 : w * 0.25) + walked;
+  const angles = poseNow();
+
+  if (S.art) Rig.drawParts(ctx, x, y, h, false, angles, equipment(), { hide: S.hide });
+  else pending = 0;
+  if (S.stick) Rig.drawStick(ctx, x, y, h, false, angles, { sel: S.sel });
+
+  // The one flag the screenshot tool waits on. It goes up only after a frame
+  // has been drawn with every requested sheet decoded — an earlier shutter
+  // catches a naked skeleton and the round is wasted arguing about armour that
+  // was simply not loaded yet.
+  if (!pending) document.body.dataset.ready = '1';
+
+  if (SHOT) return;
+  const b = bone();
+  const j = Rig.solve(angles)[S.sel];
+  document.getElementById('num').textContent =
+    `${b.key}  (${b.slot})   parent ${b.parent || '—'}\n`
+    + `length ${b.length.toFixed(3)}   rest ${(b.rest * 360).toFixed(0)}°   at ${b.at}\n`
+    + `tip ${j.tx.toFixed(3)}, ${j.ty.toFixed(3)}   hips ${Rig.HIP}\n`
+    + `phase ${S.p.toFixed(2)}   stride ${Rig.STRIDE.toFixed(3)}/cycle   shift ${(angles.shift || 0).toFixed(4)}`;
+}
+
+requestAnimationFrame(frame);
+</script>

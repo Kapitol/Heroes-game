@@ -269,6 +269,15 @@ button.wide:active { transform:translateY(1px); }
   padding:24px; text-align:center;
 }
 .overlayInner { max-width:440px; }
+/* The painted wordmark, once it has decoded. Sized off the panel rather than
+   the viewport so it cannot outgrow the copy beneath it, and given the same
+   warm bloom the typographic title carried. */
+#ovLogo {
+  display: block; width: min(80%, 460px); height: auto; margin: 0 auto 6px;
+  image-rendering: auto;
+  filter: drop-shadow(0 0 26px rgba(200,162,74,.30)) drop-shadow(0 4px 0 rgba(0,0,0,.55));
+}
+
 #ovTitle {
   margin:0 0 4px; font-size:min(13vw,58px); letter-spacing:.14em; font-weight:normal;
   color:var(--gild); text-shadow:0 0 30px rgba(200,162,74,.35), 0 6px 0 #000;

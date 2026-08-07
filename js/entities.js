@@ -15,11 +15,34 @@ import { equippedBonuses } from './items.js';
  * fire, because "Warlock, yet to be found" is a promise and an anonymous gap is
  * only an absence.
  *
- * `sheet` is a 2 × 5 tier sheet in the shape of `art/Pixel-Warrior.png`: two
- * columns of idle and attack, five rows of armour tier.
+ * `sheet` is a tier sheet: one row per armour tier, and a column per pose with
+ * idle first and the attacks after it. Two columns is the baseline shape
+ * (`art/Pixel-Paladin.png`); `cols` and `attacks` are how a sheet that drew
+ * more poses says so.
  */
 export const CLASSES = [
-  { key: 'warrior', name: 'Warrior', sheet: 'art/Pixel-Warrior.png', ready: true,
+  // Four poses, not two: idle, a thrust, an overhead swing, and a shield guard.
+  // The guard is deliberately unwired — there is no blocking state for it to
+  // mean anything, and a pose that appears for no reason reads as a glitch.
+  { key: 'warrior', name: 'Warrior', sheet: 'art/warrior-combat.png', ready: true,
+    cols: 4, attacks: [1, 2],
+    // A drawn stride, four frames, five tiers. `tiered` is what says the rows
+    // are armour rather than more frames — the ghoul's strip is neither.
+    anim: { sheet: 'art/warrior-walk.png', cols: 4, rows: 5, auto: true,
+      tiered: true, walk: [0, 1, 2, 3] },
+    // One entry per thing that is not swinging, each with its own sheet: a
+    // wind-up column and a release column, and the engine puts the damage on
+    // the cut between them. Frames are columns within the tier row, so the row
+    // index carries across every sheet and the hero cannot change armour to
+    // cast a spell. `warrior-actions.png` was the first pass of three *held*
+    // poses and is now unused — kept on disk, not referenced.
+    actions: {
+      heal: { sheet: 'art/warrior-heal.png', cols: 2, rows: 5, frames: [0, 1] },
+      cast: { sheet: 'art/warrior-cast.png', cols: 2, rows: 5, frames: [0, 1] },
+      cry:  { sheet: 'art/warrior-cry.png', cols: 2, rows: 5, frames: [0, 1] },
+      stomp: { sheet: 'art/warrior-stomp.png', cols: 2, rows: 5, frames: [0, 1] },
+      cleave: { sheet: 'art/warrior-cleave.png', cols: 2, rows: 5, frames: [0, 1] },
+    },
     blurb: 'Walks in front and stays there.' },
   { key: 'paladin', name: 'Paladin', sheet: 'art/Pixel-Paladin.png', ready: true,
     blurb: 'Holds the line and mends it.' },
@@ -163,6 +186,10 @@ export function moveToward(e, tx, ty, dt, map, speedMul = 1) {
   }
 
   e.walk += dt * 11;
+  // Ground covered, in tiles. The drawn walk runs on a timer, but a *rigged*
+  // one has to run on distance or its feet skate — a stride is a fixed length
+  // and a hero who moves slower must take slower steps, not smaller ones.
+  e.dist = (e.dist || 0) + Math.min(sp, d);
   faceTo(e, dx, dy);
   return d;
 }

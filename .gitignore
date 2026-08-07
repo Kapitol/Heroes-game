@@ -1,2 +1,12 @@
 .DS_Store
 node_modules/
+
+# Gauntlet scratch. `tools/gauntlet/*.mjs` regenerate every one of these on
+# demand, so the renders, blind comparisons and round files are output, not
+# source. The final contact sheet is kept because it is the artefact the pass
+# is judged on.
+tools/gauntlet/*.png
+!tools/gauntlet/contact-final.png
+tools/gauntlet/*.json
+tools/gauntlet/fixtures/
+tools/gauntlet/reverted/

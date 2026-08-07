@@ -5,18 +5,18 @@
 // three cards decide what the hero becomes. The player's hands are on the
 // skills, the drop and the cards — never on the walking.
 
-import { biomeFor, levelFor, ROAD, onRoad, HALF, MARCH } from './world.js';
+import { BIOMES, biomeFor, levelFor, ROAD, onRoad, HALF, MARCH } from './world.js';
 import { toWorld, toScreen, clamp, lerp } from './iso.js';
 import { makeHero, heroStats, moveToward, faceTo, separate, nearestFoe, CLASSES, classByKey } from './entities.js';
 import {
   MONSTERS, makeMonster, makeBoss, rosterFor, formationFor, isBossStage, bossFor,
 } from './encounters.js';
-import { makeCamera, render, fitZoom } from './render.js';
+import { makeCamera, render, fitZoom, WINDUP } from './render.js';
 import { SKILLS, skillById, rollDraft, applyCard, MAX_SKILLS } from './perks.js';
 import * as UI from './ui.js';
 import * as Audio from './audio.js';
 import * as Coffin from './coffin.js';
-import { rollBossLoot, bossSkullBonus, wornTier, startingKit } from './items.js';
+import { rollBossLoot, bossSkullBonus, wornTier, startingKit, bandIndex } from './items.js';
 // The difficulty curve lives in its own module so the simulator in tools/ can
 // tune the same formula the game runs on — see js/balance.js.
 import { threat as threatFor, MAX_HIT_FRACTION, waveSize } from './balance.js';
@@ -41,6 +41,23 @@ const DEV_DROP = new URLSearchParams(location.search).has('drop')
 // else. `?overview` is the same door under its old name.
 const DEV_CAMP = new URLSearchParams(location.search).has('camp')
   || new URLSearchParams(location.search).has('overview');
+
+// Dev hook: ?biome=inferno pins the palette and the art set for the whole run,
+// whatever section you are in. A biome is six sections deep — the inferno is
+// twenty-five stages of fighting away — so without this, looking at its art
+// means either surviving to it or hand-editing state in the console, and
+// neither is something you want to do twice. Ignored unless the key names a
+// real biome. Nothing else changes: the fights, the loot and the level names
+// are still whatever the section says they are.
+const DEV_BIOME = new URLSearchParams(location.search).get('biome');
+
+// Dev hook: ?rig draws the hero as the jointed figure from `js/rig.js` instead
+// of the painted sheets. Opt-in because only gloves and boots have part art so
+// far — everything else shows as the bare skeleton, which is a thing to develop
+// against and not a thing to ship. It is the only way to judge the rig at the
+// real scale, under the real lighting, driven by the real hero.
+const DEV_RIG = new URLSearchParams(location.search).has('rig');
+const pinnedBiome = () => (DEV_BIOME ? BIOMES.find((b) => b.key === DEV_BIOME) : null);
 
 const LEASH = 1.9;          // how far the hero will step off their mark
 
@@ -80,7 +97,7 @@ const ctx = cv.getContext('2d');
 
 const S = {
   dpr: 1, cam: makeCamera(), view: null,
-  biome: biomeFor(1),
+  biome: pinnedBiome() || biomeFor(1),
   hero: makeHero(),
   monsters: [], projectiles: [], effects: [], floats: [], stains: [],
   drop: null,
@@ -304,7 +321,7 @@ function togglePause(force) {
  */
 function enterStage(stage, silent) {
   const prevBiome = S.biome;
-  S.biome = biomeFor(S.section);
+  S.biome = pinnedBiome() || biomeFor(S.section);
   S.best = Math.max(S.best, S.section);
   S.phase = 'enter';
   S.phaseT = 0;
@@ -519,6 +536,64 @@ function revive() {
 
 // --- skills -----------------------------------------------------------------
 
+/**
+ * Which pose a skill puts the hero in, and for how long.
+ *
+ * Only the moves that look like something. Cleave has no entry because it *is*
+ * a swing and the combat sheet already draws two of those — posing it would
+ * take the sword out of the arc it is cutting. Quake waits on its stomp sheet:
+ * a stomp drawn as a shout would be worse than the shout it already isn't.
+ */
+const SKILL_POSE = {
+  mend:   { pose: 'heal', hold: 0.55 },
+  fire:   { pose: 'cast', hold: 0.44 },
+  volley: { pose: 'cast', hold: 0.55 },
+  frenzy: { pose: 'cry',  hold: 0.68 },
+  ward:   { pose: 'cast', hold: 0.45 },
+  quake:  { pose: 'stomp', hold: 0.62 },
+  cleave: { pose: 'cleave', hold: 0.50 },
+};
+
+/**
+ * Run something on the frame a two-frame pose cuts to its release.
+ *
+ * The renderer swaps frames at `WINDUP` through the hold, so that fraction is
+ * the moment the blow actually lands and not one before it. Tied to the pose
+ * rather than to a timer of its own, because the two must not be able to drift
+ * apart — a stomp whose shockwave arrives while the knee is still up is worse
+ * than one with no wind-up at all.
+ *
+ * Falls through and fires immediately if there is no pose to wait for, which is
+ * what happens for a class whose art has not been drawn yet.
+ */
+function onRelease(h, fn) {
+  if (h.act && h.act.hold) h.act.fire = fn;
+  else fn();
+}
+
+/** Quake, at the moment the boot hits. */
+function quakeLands(h, st, foes) {
+  // The ring is thrown a little forward of the hero, because the stomping foot
+  // is out in front of him — centred on the body it reads as something he is
+  // standing in rather than something he did. The *damage* stays on the body:
+  // nothing gameplay-facing should move because a sprite's leg does.
+  effect('quake', h.x + (h.fx < 0 ? -0.45 : 0.45), h.y + 0.2, 4.4, 0.6);
+  Audio.sfx.cleave();
+  S.cam.shake = 0.6;
+  for (const m of foes()) {
+    if (Math.hypot(m.x - h.x, m.y - h.y) > 4.4) continue;
+    hurtMonster(m, st.dmg * 1.8);
+    m.slow = 3;
+    // Quake is the answer to anything winding up: it breaks a charger's
+    // dash outright and knocks a boss back down its cast bar.
+    if (m.state === 'charge' || m.state === 'wind') { m.state = 'approach'; m.stateT = 0; }
+    if (m.casting) {
+      m.castT = Math.max(0, m.castT - 1.1);
+      float(m.x, m.y, 'staggered', '#a8c8ff');
+    }
+  }
+}
+
 function castSkill(slot) {
   if (!S.running || S.hero.dead || S.phase === 'draft') return;
   const id = S.loadout[slot];
@@ -529,71 +604,85 @@ function castSkill(slot) {
   S.cd[slot] = def.cd * (1 - st.cdr);
   UI.fireRune(slot);
 
+  // The pose is set before the skill resolves, so the frame the damage lands
+  // on is already the frame that threw it.
+  const p = SKILL_POSE[id];
+  if (p) h.act = { pose: p.pose, t: p.hold, hold: p.hold };
+
   const foes = () => S.monsters.filter(m => !m.dead);
 
   switch (id) {
     case 'cleave': {
-      effect('cleave', h.x, h.y, 3.2, 0.45);
-      Audio.sfx.cleave();
-      S.cam.shake = 0.4;
-      let hit = 0;
-      for (const m of foes()) if (Math.hypot(m.x - h.x, m.y - h.y) <= 3.2) { hurtMonster(m, st.dmg * 2.2); hit++; }
-      if (!hit) float(h.x, h.y, 'whiff', '#9a8f7a');
+      onRelease(h, () => {
+        effect('cleave', h.x, h.y, 3.2, 0.45);
+        Audio.sfx.cleave();
+        S.cam.shake = 0.4;
+        let hit = 0;
+        for (const m of foes()) if (Math.hypot(m.x - h.x, m.y - h.y) <= 3.2) { hurtMonster(m, st.dmg * 2.2); hit++; }
+        if (!hit) float(h.x, h.y, 'whiff', '#9a8f7a');
+      });
       break;
     }
     case 'quake': {
-      effect('quake', h.x, h.y, 4.4, 0.6);
-      Audio.sfx.cleave();
-      S.cam.shake = 0.6;
-      for (const m of foes()) {
-        if (Math.hypot(m.x - h.x, m.y - h.y) > 4.4) continue;
-        hurtMonster(m, st.dmg * 1.8);
-        m.slow = 3;
-        // Quake is the answer to anything winding up: it breaks a charger's
-        // dash outright and knocks a boss back down its cast bar.
-        if (m.state === 'charge' || m.state === 'wind') { m.state = 'approach'; m.stateT = 0; }
-        if (m.casting) {
-          m.castT = Math.max(0, m.castT - 1.1);
-          float(m.x, m.y, 'staggered', '#a8c8ff');
-        }
-      }
+      // Everything this move does happens when the foot lands, not when the
+      // button is pressed. The leg is already up by then and the shockwave
+      // comes out from under the boot — which is the whole difference between
+      // a stomp and a noise the hero makes while standing there.
+      onRelease(h, () => quakeLands(h, st, foes));
       break;
     }
     case 'fire': {
-      const t = h.target && !h.target.dead ? h.target : nearestFoe(h, S.monsters, 22);
-      if (!t) { float(h.x, h.y, 'no target', '#9a8f7a'); S.cd[slot] = 0.4; return; }
-      S.projectiles.push({ proj: true, x: h.x, y: h.y, vx: 0, vy: 0, target: t, speed: 10, dmg: st.dmg * 2.8, splash: 2.6, life: 3, mine: true });
-      Audio.sfx.fire();
+      // The target is checked now — an empty field has to refund the cooldown
+      // immediately, not half a second later — but the bolt leaves on the
+      // release, and re-picks if the mark died while the arm was still back.
+      if (!(h.target && !h.target.dead ? h.target : nearestFoe(h, S.monsters, 22))) {
+        float(h.x, h.y, 'no target', '#9a8f7a'); S.cd[slot] = 0.4; h.act = null; return;
+      }
+      onRelease(h, () => {
+        const t = h.target && !h.target.dead ? h.target : nearestFoe(h, S.monsters, 22);
+        if (!t) return;
+        S.projectiles.push({ proj: true, x: h.x, y: h.y, vx: 0, vy: 0, target: t, speed: 10, dmg: st.dmg * 2.8, splash: 2.6, life: 3, mine: true });
+        Audio.sfx.fire();
+      });
       break;
     }
     case 'volley': {
-      const list = foes();
-      if (!list.length) { float(h.x, h.y, 'no target', '#9a8f7a'); S.cd[slot] = 0.4; return; }
-      for (let i = 0; i < 5; i++) {
-        const t = list[Math.floor(Math.random() * list.length)];
-        S.projectiles.push({ proj: true, x: h.x, y: h.y, vx: 0, vy: 0, target: t, speed: 12, dmg: st.dmg * 0.9, splash: 1.1, life: 3, mine: true, delay: i * 0.09 });
-      }
-      Audio.sfx.fire();
+      if (!foes().length) { float(h.x, h.y, 'no target', '#9a8f7a'); S.cd[slot] = 0.4; h.act = null; return; }
+      onRelease(h, () => {
+        const list = foes();
+        if (!list.length) return;
+        for (let i = 0; i < 5; i++) {
+          const t = list[Math.floor(Math.random() * list.length)];
+          S.projectiles.push({ proj: true, x: h.x, y: h.y, vx: 0, vy: 0, target: t, speed: 12, dmg: st.dmg * 0.9, splash: 1.1, life: 3, mine: true, delay: i * 0.09 });
+        }
+        Audio.sfx.fire();
+      });
       break;
     }
     case 'mend': {
-      const heal = st.maxHp * 0.4;
-      h.hp = Math.min(st.maxHp, h.hp + heal);
-      effect('heal', h.x, h.y, 1, 0.9);
-      float(h.x, h.y, `+${Math.round(heal)}`, '#8ce8a0', true);
-      Audio.sfx.heal();
+      onRelease(h, () => {
+        const heal = st.maxHp * 0.4;
+        h.hp = Math.min(st.maxHp, h.hp + heal);
+        effect('heal', h.x, h.y, 1, 0.9);
+        float(h.x, h.y, `+${Math.round(heal)}`, '#8ce8a0', true);
+        Audio.sfx.heal();
+      });
       break;
     }
     case 'frenzy':
-      h.buffs.frenzy = 7;
-      float(h.x, h.y, 'FRENZY', '#ffb84a', true);
-      Audio.sfx.buff();
+      onRelease(h, () => {
+        h.buffs.frenzy = 7;
+        float(h.x, h.y, 'FRENZY', '#ffb84a', true);
+        Audio.sfx.buff();
+      });
       break;
     case 'ward':
-      h.buffs.ward = 6;
-      effect('ward', h.x, h.y, 1, 0.9);
-      float(h.x, h.y, 'WARDED', '#9fc0ff', true);
-      Audio.sfx.buff();
+      onRelease(h, () => {
+        h.buffs.ward = 6;
+        effect('ward', h.x, h.y, 1, 0.9);
+        float(h.x, h.y, 'WARDED', '#9fc0ff', true);
+        Audio.sfx.buff();
+      });
       break;
   }
 }
@@ -614,9 +703,22 @@ function castSkill(slot) {
 function syncHeroSprite() {
   const c = classByKey(S.hero.class);
   S.hero.sprite = c.ready
-    ? { sheet: c.sheet, cols: 2, rows: 5, auto: true,
-        row: wornTier(S.equipped) - 1, h: 56 }
+    ? { sheet: c.sheet, cols: c.cols || 2, rows: 5, auto: true, attacks: c.attacks,
+        anim: c.anim, actions: c.actions, row: wornTier(S.equipped) - 1, h: 56 }
     : null;
+  // What the rig wears, a band per slot. This is the thing the whole rewrite
+  // was for: the piece in the slot is the piece on the hero, with no averaging
+  // and nothing hidden.
+  S.hero.rig = DEV_RIG ? {
+    head: bandIndex(S.equipped && S.equipped.head),
+    chest: bandIndex(S.equipped && S.equipped.chest),
+    legs: bandIndex(S.equipped && S.equipped.chest),
+    hands: bandIndex(S.equipped && S.equipped.hands),
+    feet: bandIndex(S.equipped && S.equipped.feet),
+    // Falls back to the glove band so the hero is never empty-handed while the
+    // weapon slot is still being wired through the bag.
+    weapon: bandIndex(S.equipped && (S.equipped.weapon || S.equipped.hands)),
+  } : null;
 }
 
 function takeCard(i) {
@@ -631,7 +733,10 @@ function takeCard(i) {
   applyCard(S, card);
   // A remedy acts now rather than changing the sheet, and the hero's maximum
   // is only known here — it is built from gear and perks together.
-  if (card.type === 'remedy' && card.id === 'fullheal') S.hero.hp = stats().maxHp;
+  if (card.type === 'remedy' && card.id === 'fullheal') {
+    S.hero.hp = stats().maxHp;
+    S.hero.act = { pose: 'heal', t: 0.7, hold: 0.7 };
+  }
   Audio.sfx.levelUp();
   UI.toast(card.type === 'skill' ? `${card.name} learned`
          : card.type === 'remedy' ? `${card.name} — made whole`
@@ -720,7 +825,7 @@ function showCamp() {
         ? `${levelFor(S.section)} \u00b7 Stage ${S.stage} \u00b7 ${st.maxHp} life \u00b7 \u2620 ${S.skulls.toLocaleString()}`
         : c.blurb,
     };
-  }));
+  }), S.section);
 }
 
 function start() {
@@ -1006,6 +1111,19 @@ function update(dt) {
   if (h.hp > st.maxHp) h.hp = st.maxHp;
   h.maxHp = st.maxHp;
   h.hurt = Math.max(0, h.hurt - dt * 4);
+  // A cast pose outlives the instant that set it, so the eye has time to read
+  // it. Dying drops it — a corpse holding a battle cry is a comic bug — and a
+  // move whose release never came still resolves, because a skill that ate its
+  // cooldown and then did nothing is the worst bug this could have.
+  if (h.act) {
+    h.act.t -= dt;
+    const landed = 1 - Math.max(0, h.act.t) / h.act.hold >= WINDUP;
+    if (h.act.fire && (landed || h.act.t <= 0)) { const f = h.act.fire; h.act.fire = null; f(); }
+    if (h.act.t <= 0 || h.dead) {
+      if (h.act.fire) h.act.fire();
+      h.act = null;
+    }
+  }
   // Renewal ticks wherever the hero is — mid-fight, on the march, watching a
   // coffin fall. Healing that stopped between encounters would be a worse
   // version of Field Dressing rather than a different answer to the same
@@ -1139,6 +1257,10 @@ function fightStep(dt, st) {
     faceTo(h, target.x - h.x, target.y - h.y);
     if (d <= reach && h.atkTimer <= 0 && !h.swing) {
       h.swing = 0.001;
+      // Counted, not timed: a sheet with more than one attack pose alternates
+      // on this, and a fight where every blow is the same frame reads as one
+      // blow repeated rather than a hero working.
+      h.swings = (h.swings || 0) + 1;
       h.pending = target;
       h.atkTimer = st.atkSpeed / (h.buffs.frenzy > 0 ? 2 : 1);
       Audio.sfx.swing();

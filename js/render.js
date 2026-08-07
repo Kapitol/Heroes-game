@@ -10,6 +10,7 @@ import { HALF, VERGE, propAt, decalAt, landmarkAt } from './world.js';
 import { drawActor, drawShadow, drawProp, drawTelegraph, drawChest } from './sprites.js';
 import * as Atlas from './atlas.js';
 import * as Coffin from './coffin.js';
+import * as Rig from './rig.js';
 
 let lightCv = null, lightCtx = null;
 
@@ -218,10 +219,21 @@ function drawTexturedGround(ctx, S, cw, ch) {
     bandPath(ctx, S);
     ctx.clip();
     fillScaled(ctx, road, a.roadScale, l, tp, w, h);
+    // Optional wash over the road only. Two textures cut from the same
+    // material — the inferno's basalt path against its lava field — measure
+    // eight grey levels apart, and at that distance the road stops reading as
+    // a road at all: the hero walks down a band you cannot see. Trodding it
+    // darker is what the eye is looking for anyway. Biomes whose road and
+    // verge already differ (grass against flagstone) leave this off.
+    if (a.roadShade) {
+      ctx.fillStyle = a.roadShade;
+      ctx.fillRect(l - 2, tp - 2, w + 4, h + 4);
+    }
     ctx.restore();
   }
 
-  if (!laidEdges) {
+  if (a.roadShade && a.roadFeather) featherRoadEdge(ctx, S, a);
+  else if (!laidEdges) {
     // No edge art loaded yet: fall back to a worn line so the boundary still
     // reads as something rather than a hard cut.
     ctx.save();
@@ -231,6 +243,39 @@ function drawTexturedGround(ctx, S, cw, ch) {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+/**
+ * Soften the road's edge where there are no transition tiles to lay.
+ *
+ * A clip cuts on a pixel, and against a texture this busy that cut is the one
+ * straight line in the whole frame — the eye finds it immediately and the road
+ * stops being ground and starts being a shape pasted on top. The boneyard
+ * answers that with painted diamonds that carry the blend inside them; the
+ * inferno has no such sheet and does not need one, because here the road is
+ * not a different material. It is the same rock, scorched — and scorching does
+ * not stop on a line.
+ *
+ * So the wash that darkens the road is stroked back along its own edge a few
+ * times, each pass wider and fainter, which walks the shade out into the lava
+ * field instead of ending it. Three strokes of a path that is already built:
+ * cheaper than a single blurred blit, and it reads as burn rather than as
+ * blur.
+ */
+function featherRoadEdge(ctx, S, a) {
+  const reach = a.roadFeather;
+  ctx.save();
+  ctx.strokeStyle = a.roadShade;
+  ctx.lineJoin = 'round';
+  for (let i = 0; i < 3; i++) {
+    // Widest and faintest first. Alpha compounds where the passes overlap, so
+    // the shade is deepest against the road and gone by the outer edge.
+    ctx.globalAlpha = 0.34 + i * 0.1;
+    ctx.lineWidth = reach * (1 - i * 0.3);
+    bandPath(ctx, S);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // Edge tiles are drawn a hundred-odd times a frame, and rescaling a 657px
@@ -269,8 +314,8 @@ function bakedTile(sh, idx, w, h) {
 const CHUNK = 6;
 const ribbons = new Map();
 
-function ribbonChunk(sh, cfg, side, ci) {
-  const key = `${side}:${ci}`;
+function ribbonChunk(sh, cfg, side, ci, biome) {
+  const key = `${biome.key}:${side}:${ci}`;
   let r = ribbons.get(key);
   if (r) return r;
 
@@ -284,7 +329,7 @@ function ribbonChunk(sh, cfg, side, ci) {
   const x0 = ci * CHUNK, x1 = x0 + CHUNK;
   let l = Infinity, t = Infinity, rt = -Infinity, b = -Infinity;
   for (let x = x0; x <= x1; x += 0.5) {
-    const p = toScreen(x, side * roadEdge(x, side));
+    const p = toScreen(x, side * roadEdge(x, side, biome));
     if (p.x < l) l = p.x;
     if (p.x > rt) rt = p.x;
     if (p.y < t) t = p.y;
@@ -298,7 +343,7 @@ function ribbonChunk(sh, cfg, side, ci) {
   const c = cv.getContext('2d');
   const baked = bakedTile(sh, idx, TILE_W, drawnH);
   for (let x = x0; x <= x1; x += 0.5) {
-    const p = toScreen(x, side * roadEdge(x, side));
+    const p = toScreen(x, side * roadEdge(x, side, biome));
     c.drawImage(baked, p.x - l - TILE_W / 2, p.y - t + y0 - drawnH, TILE_W, drawnH);
   }
 
@@ -320,7 +365,7 @@ function drawRoadEdges(ctx, S) {
   for (const side of [-1, 1]) {
     if (!sh.cells[side < 0 ? cfg.minus : cfg.plus]) continue;
     for (let ci = c0; ci <= c1; ci++) {
-      const r = ribbonChunk(sh, cfg, side, ci);
+      const r = ribbonChunk(sh, cfg, side, ci, S.biome);
       ctx.drawImage(r.cv, r.l, r.t);
     }
   }
@@ -360,7 +405,20 @@ function edgeNoise(x, seed) {
 // reads this.
 const EDGE_WOBBLE = 0.85;
 
-export const roadEdge = (x, side) => HALF + edgeNoise(x, side > 0 ? 11 : 907) * EDGE_WOBBLE;
+/**
+ * Where the painted road ends, in tiles from the centre line.
+ *
+ * `art.roadInset` pulls that in without narrowing the walkable band, which is
+ * the only reason the two are separate numbers. The inferno's lava field is
+ * the thing worth looking at and its basalt track is not, so down there the
+ * paint gives most of the width back to the ground and the hero walks a
+ * scorched line through it. The hero's own band never changes: they still have
+ * the full road to fight on, and still stray to the edge of the paint.
+ */
+export const roadEdge = (x, side, biome) => {
+  const inset = (biome && biome.art && biome.art.roadInset) || 0;
+  return HALF - inset + edgeNoise(x, side > 0 ? 11 : 907) * EDGE_WOBBLE;
+};
 
 /**
  * The road as a path, stretched well past the view on both sides.
@@ -378,11 +436,11 @@ function bandPath(ctx, S, grow = 0) {
   const step = 1;
   ctx.beginPath();
   for (let x = x0; x <= x1; x += step) {
-    const p = toScreen(x, -(roadEdge(x, -1) + grow));
+    const p = toScreen(x, -(roadEdge(x, -1, S.biome) + grow));
     if (x === x0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
   }
   for (let x = x1; x >= x0; x -= step) {
-    const p = toScreen(x, roadEdge(x, 1) + grow);
+    const p = toScreen(x, roadEdge(x, 1, S.biome) + grow);
     ctx.lineTo(p.x, p.y);
   }
   ctx.closePath();
@@ -426,7 +484,11 @@ function drawDepthPass(ctx, S, t, painted) {
   const span = Math.ceil(11 / S.cam.zoom) + 9;
 
   const items = [];
-  const sheet = b.art && b.art.props ? Atlas.sheet(b.art.props, b.art.propCols, b.art.propRows) : null;
+  // `propSlice` is optional and per-biome: a sheet that landed on an even
+  // lattice is cut by the grid, one that didn't asks to be cut by its gutters.
+  const sheet = b.art && b.art.props
+    ? Atlas.sheet(b.art.props, b.art.propCols, b.art.propRows, b.art.propSlice)
+    : null;
 
   // Landmarks share the depth pass with everything else, so the hero can walk
   // behind a mausoleum the same way they walk behind a tree.
@@ -504,34 +566,256 @@ function drawFighter(ctx, o, p, t) {
 /**
  * A painted actor, if it has a sheet and that sheet has loaded.
  *
- * Two poses is all the art gives us, so the rest of the life comes from the
- * engine: the idle sways, the walk bobs on the same cycle the vector actors
- * use, and the attack pose is held across the middle of the swing so it lands
- * with the hit. Returns false when there's nothing painted to draw, and the
+ * Two poses is all most of the art gives us, so the rest of the life comes
+ * from the engine: the idle sways, the walk bobs on the same cycle the vector
+ * actors use, and the attack pose is held across the middle of the swing so it
+ * lands with the hit. A sheet that brings real frames — `sprite.anim` — plays
+ * those instead for the states it has them for, and falls back to the poses for
+ * everything else. Returns false when there's nothing painted to draw, and the
  * vector version takes over.
  */
 function drawPaintedFighter(ctx, o, sx, sy, t) {
   if (!o.sprite) return false;
   const sp = o.sprite;
+  const attacking = o.swing > 0.15 && o.swing < 0.85;
+  const bob = o.walk ? Math.abs(Math.sin(o.walk)) * 1.1 : Math.sin(t * 2 + sx * 0.05) * 0.8;
+
+  // The jointed hero, when a run asks for it. Nothing else is rigged yet, so
+  // this is opt-in until the rest of the part art exists — a stick figure in
+  // gauntlets is a thing to develop against, not a thing to ship.
+  if (o.rig) return drawRiggedHero(ctx, o, sx, sy);
+
+  // A skill outranks everything. It is the one thing on screen the player
+  // actually pressed, and a hero who keeps swinging through his own heal is a
+  // hero whose buttons do not appear to do anything.
+  if (drawActionPose(ctx, o, sp, sx, sy)) return true;
+  if (drawAnimFrame(ctx, o, sp, sx, sy, attacking, bob)) return true;
+
   // `sp` doubles as the slicing options, the way projectile art does: the
   // class sheets are sliced by content because their rows grow taller down the
   // sheet, and a lattice would cut the horned helms in half.
   const sh = Atlas.sheet(sp.sheet, sp.cols, sp.rows, sp);
   if (!sh) return false;
 
-  const attacking = o.swing > 0.15 && o.swing < 0.85;
-  const idx = sp.row * sp.cols + (attacking ? 1 : 0);
+  // Column 0 is standing; everything after it is a way of hitting something.
+  // A sheet that drew more than one of those alternates between them per swing,
+  // so a long fight is a hero working rather than one frame played on a loop.
+  const blows = sp.attacks || [1];
+  const idx = sp.row * sp.cols
+    + (attacking ? blows[(o.swings || 0) % blows.length] : 0);
   const cell = sh.cells[idx];
   if (!cell) return false;
 
-  const scale = (sp.h * (o.scale || 1)) / cell.h;
-  const bob = o.walk ? Math.abs(Math.sin(o.walk)) * 2.2 : Math.sin(t * 2 + sx * 0.05) * 0.8;
+  // Scaled off the row's *standing* pose, never off the pose being drawn. Each
+  // cell is trimmed to its own content, so an overhead swing is a third taller
+  // than an idle — fit that to the same height and the hero shrinks by a
+  // quarter every time they raise the sword. One scale per row means the raised
+  // sword does what a raised sword does and reaches above the head.
+  const ref = sh.cells[sp.row * sp.cols] || cell;
+  const scale = (sp.h * (o.scale || 1)) / ref.h;
   // One fixed-strength red copy; the flash reads as on or off, and caching
   // it means no per-frame compositing.
   const src = o.hurt > 0.35 ? Atlas.tinted(sh, 'rgba(255,60,40,.55)') : null;
 
+  // A single pose bounced up and down reads as hopping, not walking — the
+  // whole figure leaves the ground twice a stride and nothing else about it
+  // moves. Real weight goes somewhere: it rocks from one foot to the other.
+  // So the bounce is halved and the body leans with it, on the stride cycle
+  // rather than the footfall cycle, pivoting on the feet — which is where a
+  // walker actually turns. It is still two poses; it just stops denying it.
+  const lean = o.walk ? Math.sin(o.walk / 2) * 0.05 * (o.fx < 0 ? -1 : 1) : 0;
+  if (lean) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(lean);
+    ctx.translate(-sx, -sy);
+  }
   // The art faces right; everything heading the other way is mirrored.
   Atlas.drawSprite(ctx, sh, idx, sx, sy - bob, scale, o.fx < 0, src);
+  if (lean) ctx.restore();
+  return true;
+}
+
+// A stride is one full turn of `o.walk`, which is the same phase the bob and
+// the vector actors' legs run on — so a painted walk lands on the same beat as
+// everything else in the scene rather than drifting against it.
+const TAU = Math.PI * 2;
+
+/**
+ * The pose a skill put the hero in, if one is still holding.
+ *
+ * Each pose names its own sheet and its own frames within a tier row, because
+ * the art arrives that way — a shared sheet of held poses first, then a
+ * dedicated two-frame sheet per action as each one gets drawn. One frame is
+ * held for the whole beat; two are a wind-up and a release, and the cut
+ * between them is the moment the skill happens.
+ *
+ * The wind-up gets the smaller share. A gesture that spends half its life
+ * loading reads as slow, and these are instants — the load is a flicker and
+ * the release is what the eye lands on.
+ *
+ * Scaled off the pose's own sheet, never the combat sheet's: separate
+ * generations do not agree on trimmed height, so borrowing a reference across
+ * them resizes the hero the moment he casts.
+ */
+export const WINDUP = 0.4;
+
+function drawActionPose(ctx, o, sp, sx, sy) {
+  const set = sp.actions;
+  if (!set || !o.act) return false;
+  const a = set[o.act.pose];
+  if (!a) return false;
+
+  const sh = Atlas.sheet(a.sheet, a.cols, a.rows, { auto: true });
+  if (!sh) return false;
+
+  const base = sp.row * a.cols;
+  const frames = a.frames;
+  // `t` counts down, so elapsed is what is left subtracted from the whole.
+  const k = o.act.hold ? 1 - Math.max(0, o.act.t) / o.act.hold : 1;
+  const i = frames.length < 2 ? 0
+    : Math.min(frames.length - 1, Math.floor(k < WINDUP ? 0 : 1 + (frames.length - 2) * ((k - WINDUP) / (1 - WINDUP))));
+  const idx = base + frames[i];
+  const cell = sh.cells[idx];
+  if (!cell) return false;
+
+  const ref = sh.cells[base] || cell;
+  const scale = ((a.h || sp.h) * (o.scale || 1)) / ref.h;
+  const src = o.hurt > 0.35 ? Atlas.tinted(sh, 'rgba(255,60,40,.55)') : null;
+  Atlas.drawSprite(ctx, sh, idx, sx, sy, scale, o.fx < 0, src);
+  return true;
+}
+
+/**
+ * One frame of a real animation, if this actor has frames for what it is doing.
+ *
+ * The poses carry attacking and standing still perfectly well, so an `anim`
+ * sheet only ever has to answer two questions the poses cannot: what this thing
+ * looks like mid-stride, and what it looks like going down. Anything else falls
+ * through and the poses take it.
+ *
+ * Attacking wins over walking. A creature that closes the last half-step while
+ * its swing is already up would otherwise flicker between the two every frame,
+ * which is the one thing worse than not animating at all.
+ */
+function drawAnimFrame(ctx, o, sp, sx, sy, attacking, bob) {
+  const a = sp.anim;
+  if (!a) return false;
+  const dying = o.dead && a.death;
+  const walking = !attacking && o.walk > 0 && a.walk;
+  if (!dying && !walking) return false;
+
+  const sh = Atlas.sheet(a.sheet, a.cols, a.rows, a);
+  if (!sh) return false;
+
+  // A `tiered` strip is one row of frames per armour tier, the same five rungs
+  // the pose sheets use, so the hero cannot change armour by starting to walk.
+  // A flat one is a single creature and ignores the row entirely.
+  const base = a.tiered ? sp.row * a.cols : 0;
+  const frames = dying ? a.death : a.walk;
+  // A collapse plays once and holds on the last frame — it is over, and a body
+  // that loops its own death is a body that gets up again. A stride loops.
+  const i = dying
+    ? Math.min(frames.length - 1, Math.floor((1 - Math.max(0, o.fade)) * frames.length))
+    : Math.floor((o.walk / TAU) * frames.length) % frames.length;
+  const idx = base + frames[i];
+  const cell = sh.cells[idx];
+  if (!cell) return false;
+
+  // The first frame of the cycle is the reference height, for the same reason
+  // the poses use the idle: frames trimmed to their own content differ by a few
+  // per cent, and fitting each one to a fixed height turns that into a pulse
+  // that runs in step with the stride.
+  const ref = sh.cells[base + frames[0]] || cell;
+  const scale = ((a.h || sp.h) * (o.scale || 1)) / ref.h;
+  const src = o.hurt > 0.35 ? Atlas.tinted(sh, 'rgba(255,60,40,.55)') : null;
+  // A drawn stride already lifts the body; the engine's bob on top of it reads
+  // as a limp, so a sheet with real frames gets almost none of it.
+  Atlas.drawSprite(ctx, sh, idx, sx, sy - (dying ? 0 : bob * 0.35), scale, o.fx < 0, src);
+  return true;
+}
+
+// Which sheet dresses which bones. One entry a slot, two cells a design: the
+// sheets are 2 x 5, a column per bone and a row per band.
+//
+// **`legs` binds one cell, not two, and that is not an oversight.** The sheet's
+// second column is a greave — a shin piece, all but identical to column 0 of
+// `art/boots-01.png` — and it was bound to both thighs, so the hero wore the
+// same lion (tier 3) or skull (tier 5) shinguard twice down one leg, once at
+// the thigh and once at the shin. Nothing in the frame gave the rig away
+// faster. A bone wearing the wrong armour is worse than a bone wearing none.
+//
+// **The thigh is a second sheet on the same slot, not a second column.**
+// `art/thigh-02.png` is the cuisse `legs-01.png` never contained, and it is
+// 1 x 5 of its own. It shares the `legs` band because it is the same five
+// designs in the same order — a hero cannot wear a steel faulds over a gold
+// cuisse — so one entry reads the band and both sheets follow it. Two prior
+// generations came back as greaves; a piece described by a bulge at the bottom
+// of a leg is a boot in this style, and the one that worked described a taper
+// with a flat cut instead.
+const RIG_STICK = new URLSearchParams(location.search).has('rigstick');
+
+const RIG_ART = {
+  head:  { src: 'art/hair-helmets.png', cols: 1, bones: [['head']] },
+  chest: { src: 'art/torso-arm.png',  bones: [['spine'], ['upperArmBack', 'upperArmFront']] },
+  legs:  { src: 'art/legs-01.png',   bones: [['pelvis'], []] },
+  thigh: { src: 'art/thigh-02.png', cols: 1, band: 'legs',
+           bones: [['thighBack', 'thighFront']] },
+  // No bone owns the cloth: it is a garment hanging off the pelvis, drawn by
+  // `drawSurcoat` rather than by the bone loop, so its "bone" is a name the
+  // loop never matches and only the surcoat reads.
+  cloth: { src: 'art/cloth-garmets.png', cols: 1, band: 'legs', bones: [['cloth']] },
+  // One row, five columns — the bands run across this sheet, not down it, which
+  // is why it carries `rows`. One blade per band, hung on one bone.
+  weapon: { src: 'art/weapon-03.png', cols: 5, rows: 1, bones: [['weapon']] },
+  hands: { src: 'art/gloves-01.png', bones: [['forearmBack', 'forearmFront'], ['handBack', 'handFront']] },
+  feet:  { src: 'art/more-feet.png',  bones: [['shinBack', 'shinFront'], ['footBack', 'footFront']] },
+};
+
+/**
+ * The hero as a skeleton with equipment hung on it.
+ *
+ * The stride runs on **distance walked, not time**, which is the whole reason
+ * the rig can do what the drawn sheet could not: a stride is a fixed length of
+ * ground, so a slowed hero takes slower steps instead of skating and a hasted
+ * one does not moonwalk. `Rig.STRIDE` is how far one cycle carries the figure
+ * in figure-heights, so the phase is simply how many strides have been walked.
+ */
+function drawRiggedHero(ctx, o, sx, sy) {
+  const h = (o.sprite ? o.sprite.h : 56) * (o.scale || 1);
+  const walked = (o.dist || 0) * TILE_W / h;      // tiles -> figure heights
+  const moving = o.walk > 0;
+  const angles = moving ? Rig.ANIMS.walk(walked / Rig.STRIDE) : Rig.ANIMS.idle(o.dist || 0);
+
+  const art = {};
+  for (const [slot, cfg] of Object.entries(RIG_ART)) {
+    // `band` names which slot's level this sheet follows. It is only ever
+    // different from the sheet's own key when two sheets dress one slot, as the
+    // faulds and the cuisse do.
+    const band = o.rig[cfg.band || slot];
+    if (band === undefined || band < 0) continue;
+    const cols = cfg.cols || 2;
+    const rows = cfg.rows || 5;
+    const sh = Atlas.sheet(cfg.src, cols, rows, { auto: true });
+    if (!sh) continue;
+    cfg.bones.forEach((keys, col) => {
+      // A one-row sheet is five bands laid left to right, so the band *is* the
+      // cell; a five-row sheet is a band per row and a bone per column.
+      const c = sh.cells[rows === 1 ? band : band * cols + col];
+      if (!c) return;
+      for (const k of keys) art[k] = { canvas: sh.canvas, x: c.x, y: c.y, w: c.w, h: c.h };
+    });
+  }
+
+  Rig.drawParts(ctx, sx, sy, h, o.fx < 0, angles, art);
+  // The skeleton shows through wherever a slot has no art yet, which is most of
+  // it — better a visible gap than a body that quietly is not there.
+  // **The skeleton is a diagnostic and must never ship over the art.** It was
+  // drawn unconditionally while most slots were bare, on the argument that a
+  // visible gap beats a body that quietly is not there. Every slot is dressed
+  // now, so the only thing it adds is a lattice of blue joints on top of a
+  // finished figure. `?rigstick` puts it back when a pose needs debugging.
+  if (RIG_STICK) Rig.drawStick(ctx, sx, sy, h, o.fx < 0, angles);
   return true;
 }
 
@@ -630,13 +914,19 @@ function drawLighting(ctx, S, cw, ch, ox, oy, t) {
   const hp = toScreen(S.hero.x, S.hero.y);
   lights.push({ x: hp.x, y: hp.y - 16, r: 330 * flick, warm: 0.55 });
 
-  // Wall sconces along the verge do the rest of the work.
+  // Whatever the biome burns along the verge does the rest of the work: wall
+  // sconces in the crypt, iron braziers in the inferno. A painted biome
+  // scatters those across the whole verge rather than hanging them on a wall,
+  // so the scan runs out to the treeline; off-screen lights are culled below
+  // and cost nothing.
+  const lit = b.lights || ['sconce'];
+  const far = b.art ? VERGE : Math.ceil(HALF) + 1;
   const cx = Math.round(S.cam.x);
   for (let x = cx - 14; x <= cx + 14; x++) {
     for (const side of [-1, 1]) {
-      for (let dy = 0; dy <= 1; dy++) {
-        const y = side * (Math.ceil(HALF) + dy);
-        if (propAt(x, y, b) !== 'sconce') continue;
+      for (let dy = Math.ceil(HALF); dy <= far; dy++) {
+        const y = side * dy;
+        if (!lit.includes(propAt(x, y, b))) continue;
         const p = toScreen(x + 0.5, y + 0.5);
         lights.push({ x: p.x, y: p.y - 46, r: 165 * (0.86 + Math.sin(t * 7 + x) * 0.14), warm: 1 });
       }

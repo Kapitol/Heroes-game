@@ -1,0 +1,136 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Final contact sheet</title>
+<!--
+  The whole matrix in one picture: five tiers down, four strides across, and
+  for every tier the bar's painted row directly above the rig's four frames.
+
+  strip.html does one tier. This does all five, because the question at the end
+  of a gauntlet is not "is this pose right" or even "is this cycle right" but
+  "does the hero re-forge the way the painting does" — and that is only visible
+  when leather, steel, gold, crystal and bone are stacked on one page.
+
+  Labelled, on purpose. This is not a blind lineup (compare.html is); it is the
+  working view a human reads while holding the round records.
+-->
+<style>html,body{margin:0;background:#14100c}canvas{display:block}</style>
+<canvas id="cv"></canvas>
+<script type="module">
+import * as Atlas from '../../js/atlas.js';
+
+const Q = new URLSearchParams(location.search);
+const n = (k, d) => (Q.has(k) ? +Q.get(k) : d);
+const SHEET = Q.get('sheet') || '../../art/warrior-walk.png';
+const COLS = n('cols', 4), ROWS = n('rows', 5);
+const TARGET = n('target', 260), PAD = n('pad', 26), GUT = n('gut', 18);
+// `rigs` is 20 paths in reading order: tier 1 f0..f3, tier 2 f0..f3, ...
+const rigs = (Q.get('rigs') || '').split(',').filter(Boolean).map(s => {
+  const i = new Image(); i.src = s; return i;
+});
+const BANDS = ['leather', 'steel', 'gold', 'crystal', 'bone'];
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function contentBox(img) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let py = 0; py < c.height; py++) for (let px = 0; px < c.width; px++) {
+    if (d[(py * c.width + px) * 4 + 3] < 24) continue;
+    if (px < x0) x0 = px; if (px > x1) x1 = px;
+    if (py < y0) y0 = py; if (py > y1) y1 = py;
+  }
+  return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+function draw() {
+  const sheet = Atlas.sheet(SHEET, COLS, ROWS, { auto: true });
+  if (!sheet) return false;
+  if (rigs.length !== 20) { window.__contact = { ok: false, error: `need 20 rig frames, got ${rigs.length}` }; return true; }
+  if (rigs.some(r => !r.complete || !r.naturalWidth)) return false;
+
+  const cells = [];
+  for (let t = 0; t < 5; t++) for (let c = 0; c < 4; c++) cells.push(sheet.cells[t * COLS + c]);
+  if (cells.some(c => !c)) { window.__contact = { ok: false, error: 'sheet is short a cell' }; return true; }
+  const boxes = rigs.map(contentBox);
+  if (boxes.some(b => !b)) { window.__contact = { ok: false, error: 'a rig frame is blank' }; return true; }
+
+  // ONE scale for every bar cell and ONE for every rig frame — two numbers for
+  // the whole page, each taken from the tallest thing in its own family.
+  //
+  // Not one shared scale: the painted sheet and the rig canvas have no common
+  // pixel size (the bar's cells are a few hundred px, the rig is shot at
+  // fh=560), so a single k renders one family as thumbnails. Not per-cell
+  // either: normalising each figure to the same height erases the bob and the
+  // tier-to-tier growth of the helmets, and those are two of the things being
+  // judged. Per-family is the only choice that matches the two at figure
+  // height while leaving every difference *within* a family readable.
+  const kBar = TARGET / Math.max(...cells.map(c => c.h));
+  const kRig = TARGET / Math.max(...boxes.map(b => b.h));
+  const k = kRig;   // reported; the rig is what the round is about
+  const colW = Math.ceil(Math.max(...cells.map(c => c.w * kBar), ...boxes.map(b => b.w * kRig)) + PAD * 2);
+  const rowH = Math.ceil(TARGET + PAD);
+  const LEFT = 92, TOP = 34;
+
+  cv.width = LEFT + colW * 4; cv.height = TOP + (rowH * 2 + GUT) * 5;
+  ctx.fillStyle = '#14100c'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.textBaseline = 'middle';
+  ctx.font = '13px ui-monospace, Menlo, monospace';
+
+  ctx.fillStyle = 'rgba(224,196,99,.7)';
+  for (let c = 0; c < 4; c++) {
+    ctx.textAlign = 'center';
+    ctx.fillText(`stride ${c}`, LEFT + c * colW + colW / 2, TOP / 2);
+  }
+
+  for (let t = 0; t < 5; t++) {
+    const blockTop = TOP + t * (rowH * 2 + GUT);
+    const barBase = blockTop + rowH;          // ground line of the bar row
+    const rigBase = blockTop + rowH * 2;      // ground line of the rig row
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(224,196,99,.85)';
+    ctx.fillText(`tier ${t + 1}`, 10, blockTop + 16);
+    ctx.fillStyle = 'rgba(203,191,168,.5)';
+    ctx.fillText(BANDS[t], 10, blockTop + 34);
+    ctx.fillStyle = 'rgba(203,191,168,.35)';
+    ctx.fillText('bar', 10, barBase - 12);
+    ctx.fillText('rig', 10, rigBase - 12);
+
+    for (let c = 0; c < 4; c++) {
+      const cell = cells[t * 4 + c], w = cell.w * kBar, h = cell.h * kBar;
+      ctx.drawImage(sheet.canvas, cell.x, cell.y, cell.w, cell.h,
+        LEFT + c * colW + (colW - w) / 2, barBase - h, w, h);
+      const b = boxes[t * 4 + c], rw = b.w * kRig, rh = b.h * kRig;
+      ctx.drawImage(rigs[t * 4 + c], b.x, b.y, b.w, b.h,
+        LEFT + c * colW + (colW - rw) / 2, rigBase - rh, rw, rh);
+    }
+
+    // Shared ground lines: the only way to read a foot that does not reach it.
+    ctx.strokeStyle = 'rgba(224,196,99,.30)';
+    for (const y of [barBase, rigBase]) {
+      ctx.beginPath(); ctx.moveTo(LEFT, y + .5); ctx.lineTo(cv.width, y + .5); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(203,191,168,.10)';
+    ctx.beginPath(); ctx.moveTo(0, blockTop + .5); ctx.lineTo(cv.width, blockTop + .5); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(203,191,168,.10)';
+  for (let c = 1; c < 4; c++) {
+    ctx.beginPath(); ctx.moveTo(LEFT + c * colW, TOP); ctx.lineTo(LEFT + c * colW, cv.height); ctx.stroke();
+  }
+
+  window.__contact = { ok: true, cells: sheet.cells.length, expected: COLS * ROWS,
+    width: cv.width, height: cv.height, scale: k, kBar, kRig };
+  return true;
+}
+
+function tick() {
+  if (draw()) { document.body.dataset.ready = '1'; return; }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>

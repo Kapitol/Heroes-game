@@ -48,6 +48,8 @@ export function init(state, handlers) {
   // Begin does not start the run — it opens the overview, and the map's own
   // button is what puts the hero on the road.
   el.ovBtn.addEventListener('click', () => { el.overlay.classList.add('hidden'); H.overview(); });
+
+  wearLogo();
   // The ✕ goes through the same door as the ⚒ and the ☰. Hiding the panel
   // directly skipped the bookkeeping that resumes the run, so closing a panel
   // that way left the game paused with no PAUSED tag to explain it.
@@ -84,6 +86,43 @@ function applyVolume(pct, muted) {
     localStorage.setItem('cryptheroes.vol', String(pct));
     localStorage.setItem('cryptheroes.mute', muted ? '1' : '0');
   } catch { /* private browsing */ }
+}
+
+/**
+ * Swap the painted wordmark in over the typographic title.
+ *
+ * `art/crypt-heroes-logo-01.png` arrives on magenta like every other cutout, so
+ * it has no URL CSS can use — it has to go through `atlas.js` and come back out
+ * as a data URL, the same trick the card icons use.
+ *
+ * **The text stays until the picture is actually there.** Set straight onto the
+ * element, a sheet that has not decoded blanks the title, and a blank title is
+ * indistinguishable from a broken build. So this polls for the decode and only
+ * then replaces the `<h1>`, exactly like the camp background does.
+ */
+function wearLogo() {
+  const h1 = document.getElementById('ovTitle');
+  if (!h1) return;
+  const tick = () => {
+    // **Not auto-sliced.** The slicer finds cells by looking for empty gutters,
+    // and the gaps between letters are exactly that — asking it for cells
+    // returns thirteen of them and `cells[0]` is the letter C. A wordmark is one
+    // picture; what is wanted here is the keyed canvas whole.
+    const sh = Atlas.sheet('art/crypt-heroes-logo-01.png', 1, 1, { auto: false });
+    if (!sh || !sh.canvas || !sh.canvas.width) return false;
+    const cv = document.createElement('canvas');
+    cv.width = sh.canvas.width; cv.height = sh.canvas.height;
+    cv.getContext('2d').drawImage(sh.canvas, 0, 0);
+    const img = new Image();
+    img.id = 'ovLogo';
+    img.alt = 'Crypt Heroes';
+    img.src = cv.toDataURL();
+    h1.replaceWith(img);
+    return true;
+  };
+  if (tick()) return;
+  const iv = setInterval(() => { if (tick()) clearInterval(iv); }, 120);
+  setTimeout(() => clearInterval(iv), 8000);   // never poll forever
 }
 
 export function showPaused(on) {
@@ -536,8 +575,37 @@ export function showMap(choices, section) {
  *   { name, sub, kit }            someone who is here
  *   { locked: true, sub }         a place at the fire, still empty
  */
-export function showCamp(roster) {
+/**
+ * Dress the camp for the level about to be walked.
+ *
+ * One painted set per area, and the CSS carries the boneyard as the default so
+ * an area whose backdrop has not been drawn yet shows *a* camp rather than a
+ * black box. The swap only happens once the image has actually decoded — set
+ * straight onto the element, a missing file blanks the panel, and the first
+ * thing the player sees on opening the screen is nothing at all.
+ */
+const CAMP_FALLBACK = 'art/camp-boneyard.png';
+let campArt = null;
+
+function dressCamp(section) {
+  const area = (levelAt(section) || {}).area;
+  const src = area ? `art/camp-${area}.png` : CAMP_FALLBACK;
+  if (src === campArt) return;
+  const img = new Image();
+  img.onload = () => {
+    campArt = src;
+    el.campScene.style.backgroundImage = `url("../${src}")`;
+  };
+  img.onerror = () => {
+    campArt = CAMP_FALLBACK;
+    el.campScene.style.backgroundImage = `url("../${CAMP_FALLBACK}")`;
+  };
+  img.src = src;
+}
+
+export function showCamp(roster, section) {
   el.campPanel.classList.toggle('hidden', !roster);
+  if (roster) dressCamp(section);
   // The road's HUD has nothing to say here — no life to watch, no cooldowns to
   // spend — and left up it competes with the one thing this screen is for.
   document.body.classList.toggle('camp', !!roster);

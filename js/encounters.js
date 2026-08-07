@@ -26,6 +26,21 @@ export const SPRITE = {
       arrow: 12,
     },
   },
+  // The ghoul's two sheets are both sliced by content rather than by lattice.
+  // Its reaching pose is half again as wide as its standing one — all claws —
+  // and a grid put that overhang in the neighbouring cell, which cost the
+  // creature its trailing foot and gave the other pose a stray one.
+  ghoul: {
+    sheet: 'art/ghoul-town.png', cols: 2, rows: 1, auto: true, row: 0, h: 58,
+    // Three strides down the left column, three lunges down the right, so the
+    // walk is every other cell in reading order. The lunges are not wired: the
+    // pose sheet's attack already lands on the swing, and two sources for one
+    // action is how they end up disagreeing.
+    anim: {
+      sheet: 'art/ghoul-town-walking.png', cols: 2, rows: 3, auto: true, h: 56,
+      walk: [0, 2, 4],
+    },
+  },
 };
 
 // ai:
@@ -37,7 +52,7 @@ export const MONSTERS = {
   fallen:   { name: 'Fallen One',  kind: 'fallen',   ai: 'melee',    hp: 20,  dmg: 4,  speed: 2.6,  atk: 0.9, range: 0.9, scale: 0.85, skulls: 9,  xp: 5 },
   skeleton: { sprite: SPRITE.skeleton, name: 'Skeleton',    kind: 'skeleton', ai: 'melee',    hp: 34,  dmg: 7,  speed: 2.1,  atk: 1.2, range: 1.0, scale: 1.0,  skulls: 15, xp: 9 },
   archer:   { sprite: SPRITE.archer, name: 'Bone Archer', kind: 'skeleton', ai: 'ranged',   hp: 26,  dmg: 9,  speed: 2.0,  atk: 1.9, range: 6.5, scale: 0.95, skulls: 23, xp: 13, keep: 5.2 },
-  zombie:   { name: 'Rotting Dead',kind: 'zombie',   ai: 'melee',    hp: 74,  dmg: 11, speed: 1.35, atk: 1.6, range: 1.0, scale: 1.05, skulls: 23, xp: 14 },
+  zombie:   { sprite: SPRITE.ghoul, name: 'Rotting Dead',kind: 'zombie',   ai: 'melee',    hp: 74,  dmg: 11, speed: 1.35, atk: 1.6, range: 1.0, scale: 1.05, skulls: 23, xp: 14 },
   imp:      { name: 'Hellspawn',   kind: 'imp',      ai: 'charger',  hp: 30,  dmg: 12, speed: 3.2,  atk: 0.9, range: 0.9, scale: 0.8,  skulls: 25, xp: 15 },
   bloater:  { name: 'Bloated One', kind: 'zombie',   ai: 'exploder', hp: 44,  dmg: 26, speed: 2.3,  atk: 1.2, range: 1.0, scale: 1.1,  skulls: 31, xp: 18 },
   wraith:   { name: 'Wraith',      kind: 'wraith',   ai: 'ranged',   hp: 52,  dmg: 15, speed: 2.4,  atk: 1.6, range: 7.0, scale: 1.0,  skulls: 33, xp: 20, keep: 5.8 },

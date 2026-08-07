@@ -14,6 +14,44 @@ export const VERGE = 9;         // how far past the road we still draw ground
 
 export const BIOMES = [
   {
+    key: 'town', name: 'Outside of a Town', indoors: false,
+    // The first thing anyone sees, and the only stretch drawn in daylight.
+    art: {
+      grass: 'art/grass-town.png',
+      road: 'art/road-town.png',
+      // Sliced by content, and `minCell` earns its keep here: the sheet came
+      // back with a 6x65 sliver of stray paint between two props, which the
+      // gutter finder counted as a thirteenth object and which would have
+      // shifted every slot after it by one. Anything under a tenth of the
+      // median cell is debris, and no real prop on this sheet ever is.
+      props: 'art/props-town.png', propCols: 4, propRows: 3,
+      propSlice: { auto: true, minCell: 0.12 },
+      groundScale: 0.30,
+      roadScale: 0.26,
+      propScale: 0.31,
+      cells: {
+        tree:  [0, 1, 2],
+        grave: [3, 4, 5],
+        bones: [6, 7],
+        rock:  [8, 9],
+        fence: [10],
+        bush:  [11],
+      },
+      decals: {
+        src: 'art/decals-town.png', cols: 4, rows: 3, scale: 0.30,
+        pool: [11, 11, 11, 4, 4, 5, 5, 6, 6, 2, 2, 3, 3, 8, 8, 0, 9, 10, 1, 7],
+      },
+      landmarks: [
+        { src: 'art/landmarks-town.png', cols: 2, rows: 2, scale: 0.30 },
+      ],
+      fill: '#6f6a48',
+    },
+    ground: '#5f6440', groundAlt: '#686d47', path: '#8d7c58', pathAlt: '#9a8862',
+    sky: ['#6f6a48', '#6f6a48'], horizon: '#6f6a48',
+    darkness: 0, tint: 'rgba(255,244,214,.03)', accent: '#e0c463',
+    props: ['tree', 'tree', 'grave', 'bones', 'rock', 'fence', 'bush'],
+  },
+  {
     key: 'boneyard', name: 'The Boneyard Road', indoors: false,
     // Drawn from art: two repeating ground textures plus a sheet of props the
     // engine scatters itself. Keeping the props separate from the ground is
@@ -85,10 +123,57 @@ export const BIOMES = [
   },
   {
     key: 'inferno', name: 'The Inferno', indoors: true,
+    // Painted, like the boneyard, and its sheet is laid out to match: three
+    // uprights, three of the tall thing, two low spills, two boulders, a wall
+    // and a bush. Only the names changed.
+    art: {
+      grass: 'art/grass-inferno.png',
+      road: 'art/road-inferno.png',
+      // Not a lattice. The rows hold 3, 3, 4 and 2 objects, so a uniform grid
+      // cuts the shards in half — this one is sliced by its gutters.
+      props: 'art/props-inferno.png', propCols: 4, propRows: 3,
+      propSlice: { auto: true, minCell: 0.12 },
+      groundScale: 0.30,
+      roadScale: 0.26,
+      roadShade: 'rgba(6,2,0,.42)',
+      roadFeather: 22,    // px the scorch carries past the paint, in world units
+      // Give most of the width back to the lava. The path here is a scorched
+      // line through a burning field, not a highway — and the field is the
+      // half of this biome worth looking at.
+      roadInset: 0.7,
+      propScale: 0.31,
+      cells: {
+        shard:   [0, 1, 2],
+        brazier: [3, 4, 5],
+        slag:    [6],
+        bones:   [7],
+        rock:    [8, 9],
+        wall:    [10],
+        bush:    [11],
+      },
+      // Same reasoning as the boneyard: the quiet marks carry the weight and
+      // anything that glows stays rare, because down here a lit crack in the
+      // road reads as something about to happen.
+      decals: {
+        src: 'art/decals-inferno.png', cols: 4, rows: 3, scale: 0.30,
+        pool: [11, 11, 11, 9, 9, 9, 6, 6, 3, 3, 1, 1, 7, 8, 2, 0, 10, 4, 5],
+      },
+      // No transition tiles for this biome — the road is basalt and the verge
+      // is the same rock lit from inside, so the two meet without a seam worth
+      // hiding. The fallback line in the renderer is enough.
+      landmarks: [
+        { src: 'art/landmarks-inferno.png', cols: 2, rows: 2, scale: 0.30 },
+      ],
+      fill: '#1c0a06',
+    },
     ground: '#3a201a', groundAlt: '#44251d', path: '#5a2f24', pathAlt: '#65362a',
     sky: ['#1a0705', '#3a100a'], horizon: '#1a0705',
     darkness: 0.6, tint: 'rgba(255,120,60,.09)', accent: '#ff6a3a',
-    props: ['wall', 'sconce', 'rubble', 'wall', 'urn'],
+    props: ['shard', 'shard', 'brazier', 'rock', 'slag', 'bones', 'bush'],
+    // The braziers are this biome's sconces: the renderer hangs a warm light on
+    // every one it finds, which is most of what makes the cavern read as lit
+    // rather than merely dark.
+    lights: ['brazier'],
   },
 ];
 
@@ -108,6 +193,11 @@ export const biomeFor = (stage) => BIOMES[Math.min(BIOMES.length - 1, Math.floor
  * reached. The number keeps climbing regardless — "Level 23 · The Inferno" is
  * still a true statement about how far down the hero is.
  *
+ * `area` is the art set the level is dressed from — its ground, its props and
+ * the camp you sit in before walking it. It is a slug rather than a path
+ * because every sheet for an area is `<kind>-<area>.png`, so one word names the
+ * lot and a set can be dropped in without touching anything but this column.
+ *
  * Each level is also a place on `art/world-map.png`, and `at` is where it sits
  * on that image as a fraction of its width and height. Fractions rather than
  * pixels so the map can be drawn at any size — it is shown scaled to fit a
@@ -120,16 +210,16 @@ export const biomeFor = (stage) => BIOMES[Math.min(BIOMES.length - 1, Math.floor
  * list and you are reading the run.
  */
 export const LEVELS = [
-  { name: 'Outside of a Town',  at: [0.805, 0.825] },  // the palisaded village and its windmill
-  { name: 'The Open Road',      at: [0.565, 0.715] },  // the wayside cross and shrine
-  { name: 'The Killing Fields', at: [0.630, 0.555] },  // the drowned field of spears
-  { name: 'Dangerous Cave',     at: [0.622, 0.365] },  // the black mouth in the rock
-  { name: 'The Elder Wood',     at: [0.495, 0.175] },  // the stand of dead white trees
-  { name: 'The Broken Gate',    at: [0.370, 0.435] },  // the split gatehouse towers
-  { name: 'The Sunken Chapel',  at: [0.198, 0.560] },  // the drowned church in the lake
-  { name: 'The Crypt',          at: [0.180, 0.375] },  // the walled graveyard
-  { name: 'The Bone Halls',     at: [0.212, 0.212] },  // the ring of standing stones
-  { name: 'The Inferno',        at: [0.130, 0.070] },  // the crater bleeding lava
+  { name: 'Outside of a Town', area: 'town', at: [0.805, 0.825] },  // the palisaded village and its windmill
+  { name: 'The Open Road', area: 'openroad', at: [0.565, 0.715] },  // the wayside cross and shrine
+  { name: 'The Killing Fields', area: 'fields', at: [0.630, 0.555] },  // the drowned field of spears
+  { name: 'Dangerous Cave', area: 'cave', at: [0.622, 0.365] },  // the black mouth in the rock
+  { name: 'The Elder Wood', area: 'wood', at: [0.495, 0.175] },  // the stand of dead white trees
+  { name: 'The Broken Gate', area: 'gate', at: [0.370, 0.435] },  // the split gatehouse towers
+  { name: 'The Sunken Chapel', area: 'chapel', at: [0.198, 0.560] },  // the drowned church in the lake
+  { name: 'The Crypt', area: 'crypt', at: [0.180, 0.375] },  // the walled graveyard
+  { name: 'The Bone Halls', area: 'bonehalls', at: [0.212, 0.212] },  // the ring of standing stones
+  { name: 'The Inferno', area: 'inferno', at: [0.130, 0.070] },  // the crater bleeding lava
 ];
 
 export const levelAt = (section) =>
@@ -164,7 +254,12 @@ export function propAt(x, y, biome) {
   const h = hash2(x, y);
   const edge = ay < HALF + 1.8;                 // the row right beside the road
 
-  if (biome.indoors) {
+  // Indoors *and unpainted* means a corridor: the vector renderer has a wall
+  // piece and nothing else, so the verge has to be built out of it. A painted
+  // indoor biome brings its own scenery and gets the open scatter instead —
+  // the inferno is a cavern, not a hallway, and walling it in would throw away
+  // eleven of its twelve props.
+  if (biome.indoors && !biome.art) {
     // Indoors the verge is a wall, broken by the occasional sconce or urn.
     if (edge) {
       if (h > 0.93) return 'sconce';
@@ -183,7 +278,10 @@ export function propAt(x, y, biome) {
 /** A flat marking on the road at this tile, or null. */
 export function decalAt(x, y, biome) {
   if (!biome.art || !biome.art.decals) return null;
-  if (Math.abs(y) > HALF + 1.2) return null;          // road and its lip only
+  // Road and its lip only, and it follows the *paint* rather than the walkable
+  // band — a biome that narrows its painted road would otherwise scatter road
+  // marks out across open ground.
+  if (Math.abs(y) > HALF - (biome.art.roadInset || 0) + 1.2) return null;
   const h = hash2(x * 13 + 7, y * 5 + 3);
   if (h < 0.945) return null;
   const pool = biome.art.decals.pool;

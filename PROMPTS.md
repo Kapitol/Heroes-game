@@ -315,6 +315,798 @@ Sheets can be dropped in a class at a time — `cols` is per sheet, so a
 four-column Paladin and a two-column Warrior coexist happily and the two-column
 one simply keeps swinging the one way it knows.
 
+---
+
+## The walk — `art/<class>-walk.png`, 4 columns × 5 rows
+
+**The engine cannot fake a walk and should stop being asked to.** With no drawn
+stride it bounces the standing pose vertically and rocks it a couple of degrees,
+which is a hero hopping on the spot while the ground slides past. There is no
+setting of those two dials that is a walk; see it for yourself at
+`tools/hero.html`, which plays the faked version and a real strip side by side.
+
+Four frames is a full stride and the smallest number that reads as one: contact,
+passing, contact on the other foot, passing. The engine loops them on the same
+phase the bob used to run on, so a walk drawn here lands on the beat everything
+else in the scene already keeps.
+
+| Column | Frame |
+|---|---|
+| 0 | left foot forward, weight landing on it |
+| 1 | legs together, passing, body at its highest |
+| 2 | right foot forward, weight landing on it |
+| 3 | legs together, passing the other way |
+
+Rows are the same five armour tiers in the same order as the combat sheet, so
+the row is `wornTier(equipped)` there and here and the hero never changes
+armour by starting to walk.
+
+The generator was thought to be unable to hold a character across an animation
+strip. `art/ghoul-town-walking.png` disproved that — six poses of one creature,
+consistent. What it cannot do is a *long* strip, so four frames is the ask and
+twelve is not.
+
+### `art/warrior-walk.png` — 4 columns × 5 rows
+
+The Warrior's, filled in. The tier line is copied word for word from
+`art/Pixel-Warrior.png` so the five rungs land in the same order and the same
+materials as the combat sheet already on disk — if that line drifts, the hero
+changes armour the moment he takes a step.
+
+```
+A flat 4-column by 5-row grid of a fantasy warrior on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is the SAME character in a different armour set, in this order top
+to bottom: worn brown leather; dull grey steel plate; ornate gold plate with
+horned helm; blackened plate with glowing blue crystal inlays; pale bone
+armour with a horned skull helm.
+
+Left to right, the four columns are four frames of one walking stride, seen
+from the side, walking to the right:
+1. left foot planted forward, weight coming down onto it, back leg trailing.
+2. legs together mid-step, body at the top of its rise, back foot lifting.
+3. right foot planted forward, weight coming down onto it, other leg trailing.
+4. legs together mid-step again, the opposite leg lifting.
+
+The sword is carried low at his side and the shield is down; the arms swing
+naturally against the legs. It is a walk, not a run and not a charge — the
+body stays upright and the stride is even.
+
+All twenty frames are the same character at the same scale and the same
+height, facing right, seen from a slight elevation, lit identically from the
+upper left, standing on nothing — no ground, no base, no shadow. The figure
+does not travel across its cell: he walks in place, centred in every frame.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+### The template
+
+Replace `COMBATANT` and `SETS` exactly as in the combat sheet above.
+
+```
+A flat 4-column by 5-row grid of COMBATANT on a solid pure magenta background
+(#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is the SAME character in a different armour set, in this order top
+to bottom: SETS.
+
+Left to right, the four columns are four frames of one walking stride, seen
+from the side, walking to the right:
+1. left foot planted forward, weight coming down onto it, back leg trailing.
+2. legs together mid-step, body at the top of its rise, back foot lifting.
+3. right foot planted forward, weight coming down onto it, other leg trailing.
+4. legs together mid-step again, the opposite leg lifting.
+
+The arms swing naturally against the legs and the weapon is carried low and
+ready, not raised. It is a walk, not a run and not a charge — the body stays
+upright and the stride is even.
+
+All twenty frames are the same character at the same scale and the same
+height, facing right, seen from a slight elevation, lit identically from the
+upper left, standing on nothing — no ground, no base, no shadow. The figure
+does not travel across its cell: it walks in place, centred in every frame.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+---
+
+## Actions — superseded
+
+An earlier pass here specified one `<class>-actions.png` of three held poses:
+heal, cast, cry. It is gone, and the reason is worth keeping: **a held pose is
+not an animation.** A single frame shown for half a second is the same still
+image the hero already stands in, tinted by whatever effect the engine paints
+over it — the skill still does not look like anything the hero *did*.
+
+Every action is two frames now, wind-up and release, one small sheet each. See
+*Every action is two frames* under the empty-fist sheets below.
+
+
+---
+
+# Empty-fist sheets — the weapon as a layer
+
+A blade is rigid. It has a grip and an angle and it never bends, which makes it
+the one piece of gear this pipeline can genuinely layer: `icons-weapon.png`
+already holds all five, isolated. What stops it is that the body sheets are
+drawn holding a sword, so a layered blade lands on top of a painted one.
+
+These replace the warrior's sheets with the same tiers and the same character —
+and an empty gripping fist. Generate all of them or none; a hero who loses his
+sword in the walk cycle and finds it again standing still is worse than one who
+never had a layer.
+
+Copy a block whole. Nothing outside the block belongs in it.
+
+### `art/warrior-combat.png` — 4 columns × 5 rows
+
+```
+A flat 4-column by 5-row grid of a fantasy warrior on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is the SAME character in a different armour set, in this order top
+to bottom: worn brown leather; dull grey steel plate; ornate gold plate with
+horned helm; blackened plate with glowing blue crystal inlays; pale bone
+armour with a horned skull helm.
+
+Left to right, the four columns are four poses of that same character:
+1. standing idle, weight settled, both arms down at his sides.
+2. a light attack, right arm swung forward at waist height.
+3. a heavy attack, both arms raised high overhead, body turned into the blow.
+4. braced to take a hit, right arm low and shoulder forward.
+
+His hands are closed into tight fists throughout, gripping empty air as though
+the weapon had been taken out of them. He is completely unarmed: no sword, no
+axe, no mace, no staff, no shield, no weapon or object of any kind, in either
+hand, in any of the twenty cells. Nothing is held, carried, sheathed, strapped
+to his back or hanging from his belt.
+
+All twenty poses are the same character at the same scale and the same
+height, facing right, seen from a slight elevation, lit identically from the
+upper left, standing on nothing — no ground, no base, no shadow. The feet
+stay in the same position in all four poses.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+### `art/warrior-walk.png` — 4 columns × 5 rows
+
+```
+A flat 4-column by 5-row grid of a fantasy warrior on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is the SAME character in a different armour set, in this order top
+to bottom: worn brown leather; dull grey steel plate; ornate gold plate with
+horned helm; blackened plate with glowing blue crystal inlays; pale bone
+armour with a horned skull helm.
+
+Left to right, the four columns are four frames of one walking stride, seen
+from the side, walking to the right:
+1. left foot planted forward, weight coming down onto it, back leg trailing.
+2. legs together mid-step, body at the top of its rise, back foot lifting.
+3. right foot planted forward, weight coming down onto it, other leg trailing.
+4. legs together mid-step again, the opposite leg lifting.
+
+His arms swing naturally against his legs, hands closed into loose fists,
+gripping empty air. He is completely unarmed: no sword, no axe, no mace, no
+staff, no shield, no weapon or object of any kind, in either hand, in any of
+the twenty cells. Nothing is held, carried, sheathed, strapped to his back or
+hanging from his belt.
+
+It is a walk, not a run and not a charge — the body stays upright and the
+stride is even.
+
+All twenty frames are the same character at the same scale and the same
+height, facing right, seen from a slight elevation, lit identically from the
+upper left, standing on nothing — no ground, no base, no shadow. The figure
+does not travel across its cell: he walks in place, centred in every frame.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+### Every action is two frames
+
+A held pose is not an animation. The stomp reads because it is a wind-up and a
+landing with the hit on the cut between them, and every action on the bar wants
+the same shape: **column 0 winds up, column 1 releases**, and the engine fires
+the damage, the sound and the effect on the change of frame.
+
+Ten cells a sheet, which is the safest size this generator has. One sheet per
+action rather than one wide sheet for all of them — a 5x5 grid is past the
+twenty cells it can hold a character across, and a sheet that drifts costs the
+whole set rather than one move.
+
+| Skill | Plays | Sheet |
+|---|---|---|
+| Cleave | a wide level sweep | `warrior-cleave.png` |
+| Firebolt, Volley | a cast | `warrior-cast.png` |
+| Mend, Last Rites | a heal | `warrior-heal.png` |
+| Frenzy | a battle cry | `warrior-cry.png` |
+| Quake | a stomp | `warrior-stomp.png` |
+| Ward | the guard pose, held | `warrior-combat.png`, column 3 |
+
+Ward is the one that gets no sheet of its own. It is a brace, the combat sheet
+already draws a brace, and drawing a second one would be the same pose twice.
+
+### `art/warrior-cast.png` — 2 columns × 5 rows
+
+```
+A flat 2-column by 5-row grid of a fantasy warrior on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is the SAME character in a different armour set, in this order top
+to bottom: worn brown leather; dull grey steel plate; ornate gold plate with
+horned helm; blackened plate with glowing blue crystal inlays; pale bone
+armour with a horned skull helm.
+
+Left column: winding up to cast. Turned side-on, his right arm drawn far back
+behind him with the palm open and the fingers spread, his weight settled onto
+his back foot, his shoulders coiled away from the direction he faces.
+
+Right column: the cast released. That same right arm thrust straight forward
+at full stretch, palm open and fingers spread wide, his weight driven onto his
+front foot, his left arm swept back behind him for balance.
+
+His feet stay planted in exactly the same two spots in both columns — only the
+body and the arms move.
+
+He is completely unarmed: no sword, no axe, no mace, no staff, no shield, no
+weapon or object of any kind, in either hand, in any of the ten cells. Nothing
+is held, carried, sheathed, strapped to his back or hanging from his belt.
+
+His hands are empty of magic: no glow, no flame, no light, no sparks, no
+energy of any kind, nothing summoned or conjured. Just the gesture.
+
+Both poses are the same character at the same scale and the same height,
+facing right, seen from a slight elevation, lit identically from the upper
+left, standing on nothing — no ground, no base, no shadow.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+### `art/warrior-heal.png` — 2 columns × 5 rows
+
+```
+A flat 2-column by 5-row grid of a fantasy warrior on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is the SAME character in a different armour set, in this order top
+to bottom: worn brown leather; dull grey steel plate; ornate gold plate with
+horned helm; blackened plate with glowing blue crystal inlays; pale bone
+armour with a horned skull helm.
+
+Left column: beginning to heal. His head is bowed and his right hand is raised
+open in front of his chest, palm turned inward, held a little away from the
+body, his left arm down at his side.
+
+Right column: the heal taking. That same right hand is pressed flat against
+the centre of his chest, his head bowed lower, his shoulders drawn in and his
+back curved over the hand.
+
+His feet stay planted in exactly the same two spots in both columns — only the
+head, the shoulders and the right arm move.
+
+He is completely unarmed: no sword, no axe, no mace, no staff, no shield, no
+weapon or object of any kind, in either hand, in any of the ten cells. Nothing
+is held, carried, sheathed, strapped to his back or hanging from his belt.
+
+His hands are empty of magic: no glow, no flame, no light, no sparks, no
+energy of any kind, nothing summoned or conjured. Just the gesture.
+
+Both poses are the same character at the same scale and the same height,
+facing right, seen from a slight elevation, lit identically from the upper
+left, standing on nothing — no ground, no base, no shadow.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+### `art/warrior-cry.png` — 2 columns × 5 rows
+
+```
+A flat 2-column by 5-row grid of a fantasy warrior on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is the SAME character in a different armour set, in this order top
+to bottom: worn brown leather; dull grey steel plate; ornate gold plate with
+horned helm; blackened plate with glowing blue crystal inlays; pale bone
+armour with a horned skull helm.
+
+Left column: drawing breath. His head is dropped forward, his shoulders
+hunched up and rolled in, his arms bent and his fists clenched close to his
+sides, the whole body gathered and compressed.
+
+Right column: the battle cry. Both arms drawn back and down behind his body,
+fists clenched, chest thrown out and shoulders rolled back, head tilted back,
+face contorted and mouth wide open in a roar.
+
+His feet stay planted in exactly the same two spots in both columns — only the
+head, the chest and the arms move.
+
+He is completely unarmed: no sword, no axe, no mace, no staff, no shield, no
+weapon or object of any kind, in either hand, in any of the ten cells. Nothing
+is held, carried, sheathed, strapped to his back or hanging from his belt.
+
+Both poses are the same character at the same scale and the same height,
+facing right, seen from a slight elevation, lit identically from the upper
+left, standing on nothing — no ground, no base, no shadow.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+### `art/warrior-cleave.png` — 2 columns × 5 rows
+
+```
+A flat 2-column by 5-row grid of a fantasy warrior on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is the SAME character in a different armour set, in this order top
+to bottom: worn brown leather; dull grey steel plate; ornate gold plate with
+horned helm; blackened plate with glowing blue crystal inlays; pale bone
+armour with a horned skull helm.
+
+Left column: winding up to sweep. His torso is twisted hard away from the
+direction he faces, both fists clenched and drawn across his chest at shoulder
+height, his weight loaded onto his back foot.
+
+Right column: the sweep. His torso is twisted hard the other way, both arms
+swung out and around in front of him, level and fully extended at waist
+height, his weight driven onto his front foot.
+
+His feet stay planted in exactly the same two spots in both columns — only the
+torso and the arms move.
+
+He is completely unarmed: no sword, no axe, no mace, no staff, no shield, no
+weapon or object of any kind, in either hand, in any of the ten cells. Nothing
+is held, carried, sheathed, strapped to his back or hanging from his belt.
+
+Both poses are the same character at the same scale and the same height,
+facing right, seen from a slight elevation, lit identically from the upper
+left, standing on nothing — no ground, no base, no shadow.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+### `art/warrior-stomp.png` — 2 columns × 5 rows
+
+Two frames, not three: the lift and the landing. The engine holds the lift for
+the wind-up, cuts to the landing on the beat, and spawns the shockwave and the
+camera shake on that same frame — so the impact is the cut, and a third
+in-between frame would only soften it.
+
+The standing foot must not move between the two columns. It is the anchor the
+shockwave is drawn from, and a figure that shifts its planted foot drags the
+ring out from under itself.
+
+```
+A flat 2-column by 5-row grid of a fantasy warrior on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is the SAME character in a different armour set, in this order top
+to bottom: worn brown leather; dull grey steel plate; ornate gold plate with
+horned helm; blackened plate with glowing blue crystal inlays; pale bone
+armour with a horned skull helm.
+
+Left column: winding up to stomp. His weight is back on his left leg, his
+right knee is driven high in front of him with the foot raised, his body is
+coiled and leaning back, both fists clenched and pulled back at his sides.
+
+Right column: the stomp landing. That same right foot is slammed flat on the
+ground out in front of him, the knee bent deep under his weight, his body
+dropped low and driven forward over it, both fists punched down at his sides,
+head down, face set in a snarl.
+
+His left foot stays planted in exactly the same spot in both columns — only
+the right leg and the body move.
+
+He is completely unarmed: no sword, no axe, no mace, no staff, no shield, no
+weapon or object of any kind, in either hand, in either column, in any of the
+ten cells. Nothing is held, carried, sheathed, strapped to his back or hanging
+from his belt. There is no dust, no rubble, no cracks, no impact, no shockwave
+and no ground of any kind — only the figure.
+
+Both poses are the same character at the same scale and the same height,
+facing right, seen from a slight elevation, lit identically from the upper
+left, standing on nothing — no ground, no base, no shadow.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+---
+
+# Part art — the rig
+
+The whole-figure sheets above draw the hero with his armour baked in, which is
+why equipment could never show: fifty gloves across five slots and eighteen
+poses is a number nobody is going to generate. `js/rig.js` removes the
+multiplication — the hero is fifteen parts on a skeleton, animation is keyframes
+on the bones, and **a glove is one image of one hand.** Fifty gloves is fifty
+small images and no new animation work at all.
+
+Three things every part sheet must hold, and they are all about the *joint*
+rather than the object:
+
+- **Rest orientation.** The rig's rest pose hangs the arm straight down, so a
+  forearm is drawn vertical with the elbow at the top and the wrist at the
+  bottom. A piece drawn at a jaunty angle rotates about the wrong axis forever.
+- **One scale for every design on the sheet.** The bones scale the art, not the
+  other way round, so a bulkier gauntlet must be *drawn* bulkier at the same
+  canvas size rather than drawn bigger. A design that arrives 20% larger makes
+  the hero's arm grow when you equip it.
+- **The limb, not the garment.** A part is the whole limb: bare skin included
+  where the piece does not cover it. A glove that is only a glove leaves a hole
+  where the arm should be.
+
+The far arm uses the same two images as the near one — the renderer darkens it
+and puts it behind the body. Never ask for a left and a right.
+
+### `art/gloves-01.png` — 2 columns × 5 rows, five designs
+
+The `hands` slot owns four bones: both forearms and both hands. So one design is
+**two cells** — a forearm and a hand — and a sheet of five designs is ten cells,
+which is the size this generator has held a character across all day.
+
+Rows are the five bands in the usual order, so the first sheet doubles as the
+loot ladder and `itemArt` keeps working the way it does for every other slot.
+
+```
+A flat 2-column by 5-row grid of fantasy armour pieces on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is one matching set of arm armour, in this order top to bottom: worn
+brown leather; dull grey steel plate; ornate gold plate; blackened plate with
+glowing blue crystal inlays; pale bone plate.
+
+The two columns are two pieces of that same set:
+1. a right forearm, held vertically with the elbow at the top of the cell and
+   the wrist at the bottom, seen from the outer side. It includes the arm
+   itself — bare skin above the cuff wherever the armour does not cover it.
+2. the matching right hand, held vertically with the wrist at the top of the
+   cell and the knuckles at the bottom, closed into a fist and gripping empty
+   air as though a sword had been taken out of it.
+
+Both pieces are cut off cleanly and squarely at the joint: the forearm ends at
+the wrist, the hand begins at the wrist, and the two would meet edge to edge if
+laid end to end.
+
+All five forearms are exactly the same height on the canvas as each other, and
+all five hands are exactly the same height as each other. A heavier design is
+drawn wider, never taller.
+
+All ten pieces face right, seen from a slight elevation, lit identically from
+the upper left, floating on nothing — no ground, no base, no shadow, no arm
+socket, no shoulder, no body.
+
+Nothing is held: no sword, no weapon, no object of any kind.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+
+### `art/boots-01.png` — 2 columns × 5 rows, five designs
+
+The `feet` slot owns four bones: both shins and both feet. Same shape as the
+gloves — two cells a design, ten to a sheet.
+
+The one thing this cannot copy from the gloves is the foot's orientation. Every
+other part hangs *down* from its joint, so it is drawn vertical. A foot does
+not: it hangs off the ankle and points *forward*. Drawn vertical like a shin it
+would rotate about the toe and the hero would walk on his ankles.
+
+**Say "no foot" about the shin, at length.** The first roll of this sheet came
+back with a sabaton on the end of every greave, because a shin drawn as armour
+is a boot and the generator finishes what it recognises. The separate foot then
+hides it — until the ankle rotates far enough to swing a second toe out from
+underneath, which a stomp does immediately. The gloves sheet needed no such
+warning: a forearm cut at the wrist is not a recognisable object, so there was
+nothing to complete.
+
+```
+A flat 2-column by 5-row grid of fantasy armour pieces on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is one matching set of leg armour, in this order top to bottom: worn
+brown leather; dull grey steel plate; ornate gold plate; blackened plate with
+glowing blue crystal inlays; pale bone plate.
+
+The two columns are two pieces of that same set:
+1. a right shin, held vertically with the knee at the top of the cell and the
+   ankle at the bottom, seen from the outer side. It includes the leg itself —
+   bare skin or cloth above the greave wherever the armour does not cover it.
+   It stops dead at the ankle: there is no foot, no boot, no sabaton, no toe and
+   no heel at its lower end, and it does not taper or curve forward. The bottom
+   edge is a flat horizontal cut across the ankle, as though the foot had been
+   removed.
+2. the matching right foot, seen from the side and lying flat as though standing
+   on the ground: the heel at the left of the cell, the toe pointing right, and
+   the open ankle at the top left. It is a boot from the ankle down and nothing
+   above it — no shin, no greave, no calf.
+
+The two pieces would meet edge to edge at the ankle if laid end to end, and
+neither one repeats any part of the other.
+
+Every shin fills the full height of its own cell: the knee is at the very top
+edge of the cell and the flat ankle cut is at the very bottom edge, with no
+empty space above the knee or below the ankle. Every foot likewise fills its
+cell top to bottom, with the ankle opening at the very top edge and the sole at
+the very bottom edge.
+
+A heavier design is drawn wider or longer, never taller or shorter.
+
+All ten pieces face right, seen from a slight elevation, lit identically from
+the upper left, floating on nothing — no ground, no base, no shadow, no leg
+above the knee, no body.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+
+### `art/chest-01.png` — 2 columns × 5 rows, five designs
+
+The `chest` slot owns three bones: the torso and both upper arms. One design is
+two cells — a torso and one upper arm — and the far arm reuses the near one.
+
+Everything is drawn the way up a person is. The spine bone runs upward through
+the figure, but the renderer turns the art over for it, so nothing here has to
+be drawn on its head.
+
+```
+A flat 2-column by 5-row grid of fantasy armour pieces on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is one matching set of body armour, in this order top to bottom: worn
+brown leather; dull grey steel plate; ornate gold plate; blackened plate with
+glowing blue crystal inlays; pale bone plate.
+
+The two columns are two pieces of that same set:
+1. a torso, upright and seen from the side, facing right. The bare neck stump
+   is at the very top of the cell and the waist is at the very bottom. It is a
+   chest and a belly and nothing else: no head, no neck armour above the collar,
+   no arms, no shoulders, no hips, no legs, no belt below the waist.
+2. the matching right upper arm, hanging straight down, seen from the outer
+   side. The shoulder and its pauldron are at the very top of the cell and the
+   bare elbow is at the very bottom. It is a shoulder and an upper arm and
+   nothing else: no forearm, no hand, no torso.
+
+Both pieces are cut off cleanly and squarely at their joints — the torso at the
+neck and at the waist, the arm at the shoulder and at the elbow — with a flat
+horizontal cut at each, as though the piece had been taken off a body.
+
+Every torso fills the full height of its own cell, from the neck cut at the very
+top edge to the waist cut at the very bottom edge, with no empty space above or
+below. Every upper arm likewise fills its cell top to bottom.
+
+A heavier design is drawn wider, never taller or shorter.
+
+All ten pieces face right, seen from a slight elevation, lit identically from
+the upper left, floating on nothing — no ground, no base, no shadow, no body.
+
+Nothing is held and nothing is worn over the armour: no cloak, no cape, no
+tabard hanging past the waist, no scabbard, no strap crossing to a shoulder
+that is not there.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+
+### `art/helm-01.png` — 1 column × 5 rows, five designs
+
+The `head` slot owns one bone, so a design is one cell and the sheet is a single
+column. Rows are still the five bands, so the row index means the same thing it
+does on every other part sheet.
+
+```
+A flat single column of five fantasy helmets, stacked one above another on a
+solid pure magenta background (#FF00FF), dark-gothic pixel art style, chunky
+readable pixels.
+
+Each is a head wearing a different helmet, in this order top to bottom: worn
+brown leather; dull grey steel plate; ornate gold plate; blackened plate with
+glowing blue crystal inlays; pale bone plate.
+
+Each is a head and a helmet seen from the side, facing right. The top of the
+helmet is at the very top of its cell and the flat cut across the base of the
+neck is at the very bottom, filling the cell top to bottom with no empty space
+above or below. It includes whatever of the face, jaw and neck the helmet does
+not cover.
+
+Each one is cut off cleanly and squarely at the base of the neck, with a flat
+horizontal cut, as though lifted off a body. There are no shoulders, no collar
+below the neck, no chest, no body.
+
+A heavier design is drawn wider, never taller or shorter.
+
+All five face right, seen from a slight elevation, lit identically from the
+upper left, floating on nothing — no ground, no base, no shadow, no stand, no
+pedestal, no hook and no rack.
+
+Very wide empty magenta gutters between the rows.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+
+### `art/legs-01.png` — 2 columns × 5 rows, five designs
+
+The `legs` slot owns three bones: the pelvis and both thighs. One design is two
+cells — a pelvis and one thigh — and the far thigh reuses the near one.
+
+**These are the bridging pieces, and that is what makes them different from the
+other sheets.** Every other part is cut square at both joints and butts against
+its neighbour. A hip and a knee cannot be: they bend furthest and a square cut
+at a bending joint opens a wedge of nothing the moment the leg swings. So the
+pelvis is drawn to *overlap* the tops of both thighs, and the thigh is drawn
+with a knee cap that overhangs the top of the shin. The renderer draws the
+pelvis over the thighs and the thigh over the shin, so the overlap always covers
+the gap however far the joint turns.
+
+Same reasoning applies to the neck, which is why the helm sheet already carries
+the throat and the chest sheet already carries the collar. Nothing extra is
+needed there.
+
+```
+A flat 2-column by 5-row grid of fantasy armour pieces on a solid pure magenta
+background (#FF00FF), dark-gothic pixel art style, chunky readable pixels.
+
+Every row is one matching set of hip and leg armour, in this order top to
+bottom: worn brown leather; dull grey steel plate; ornate gold plate; blackened
+plate with glowing blue crystal inlays; pale bone plate.
+
+The two columns are two pieces of that same set:
+1. a hip piece — a belt and the armoured skirt or tassets hanging from it, seen
+   from the side and facing right. The top of the belt is at the very top of the
+   cell and the lowest hanging edge of the skirt is at the very bottom. It is a
+   belt and what hangs from it and nothing else: no chest, no cuirass above the
+   belt, no legs, no feet.
+2. the matching right thigh, hanging straight down, seen from the outer side.
+   The bare hip joint is at the very top of the cell and the knee is at the very
+   bottom, and the knee is armoured — a rounded cap or poleyn that flares out
+   wider than the leg above it and finishes the piece. It is a thigh and a knee
+   and nothing else: no shin below the knee, no foot, no hip skirt above.
+
+Both pieces fill their cells top to bottom with no empty space above or below.
+
+A heavier design is drawn wider, never taller or shorter.
+
+All ten pieces face right, seen from a slight elevation, lit identically from
+the upper left, floating on nothing — no ground, no base, no shadow, no body.
+
+Very wide empty magenta gutters between every row and column.
+
+No text, letters, numbers or labels. No frames, borders, circles, badges,
+plaques or backing plates behind the objects. No drop shadows, glows, mist
+or particles spilling onto the magenta. No vignette or corner darkening.
+Flat even lighting on a perfectly uniform background.
+```
+
+**Check before generating more.** Five designs is deliberately a test, not a
+first instalment: load the sheet in `tools/rig.html`, swap it onto the hands
+bones, and play the walk. What it is looking for is whether the wrist stays put
+across all five — a design whose wrist sits 10px higher than its neighbour's
+detaches the hand the moment the arm swings, and that is the failure that would
+otherwise be discovered on the fiftieth glove rather than the fifth.
+
+---
+
+# The wordmark — `art/logo.png`
+
+Two of these, because they are two different jobs and only one of them is the
+game.
+
+**In the game**, the title has to obey the north star: a gilded object in a dark
+vault, lit by one low source. That means *carved*, not moulded — no gloss, no
+bevel highlights, no backing plate, and no border. The letters float in the same
+darkness the road does, which is the whole reason the current typographic title
+works. Anything with its own background reads as a sticker laid on the screen
+rather than a thing in it.
+
+**On a thumbnail**, the opposite is true and the loud gold badge already in
+`art/crypt-heroes-logo.png` is the right tool — it has to win at 320px against
+other thumbnails. Keep that one for the channel and the icon; it is not being
+replaced, it is being given its actual job.
+
+One more constraint the badge version breaks: the key. `chroma()` scores
+`(r + b) / 2 - g`, and a rose or pink-tinted gold scores high enough to be eaten
+as background. Warm yellow gold is safe; pink gold is not.
+
+### `art/logo.png` — the in-game title
+
+```
+The words CRYPT HEROES as a game logo on a solid pure magenta background
+(#FF00FF), dark-gothic fantasy, set on two centred lines: CRYPT above,
+HEROES below.
+
+Tall narrow serif capitals with sharp angular wedge serifs, generously wide
+letter-spacing, moderate stroke weight. The letters are carved from tarnished
+antique gold — warm yellow-gold, aged and darkened in the recesses, worn dull
+on the raised edges, as though the piece has sat in a vault for centuries.
+Never pink, never rose, never brass-red.
+
+The lettering is flat and engraved. It is lit faintly from the upper left by
+one weak source, just enough to catch the top edge of each stroke. No gloss,
+no shine, no specular highlights, no reflections, no metallic sheen, no thick
+three-dimensional bevel, no extrusion, no drop shadow, no outer glow.
+
+A single small carved skull sits centred between the two words, the same
+tarnished gold, the same flat treatment, no larger than one capital letter.
+
+The letters and the skull stand alone on the magenta. There is no plaque, no
+shield, no banner, no crest, no frame, no border, no ribbon, no backing panel
+and no ornament behind or around them of any kind. Wide empty magenta margins
+on all four sides.
+
+Clean hard edges against the background. No text other than the words CRYPT
+HEROES. No vignette, no corner darkening, no mist, no particles, no light
+rays. Perfectly uniform background.
+```
+
+---
+
 ## A monster
 
 One sheet per creature. Two poses only — the engine adds the walk bob, the

@@ -67,6 +67,23 @@ And two more:
   their own cells and shifted every index after them. `atlas.js` can discard
   specks (`minCell`), but it is cheaper to ask for objects that hold together.
 
+### The generator obeys the cell, never the sheet
+
+The single most expensive lesson so far, learned three times before it was
+written down. **An instruction a cell can satisfy on its own gets followed. An
+instruction about how cells relate to each other gets ignored**, because each
+one is drawn without reference to its neighbours.
+
+| Fails | Works |
+|---|---|
+| "all five the same height as each other" | "each one fills its cell top to bottom" |
+| "no sword" | "hands closed, gripping empty air" |
+| "cut off at the ankle" | "no foot, no boot, no sabaton, no toe, no heel — a flat horizontal cut" |
+
+Every one of the working forms is absolute, per cell, and describes something
+present rather than something absent. Reach for that shape first and it saves a
+generation.
+
 ---
 
 ## Recipes by asset type
@@ -170,9 +187,21 @@ Very wide empty magenta gutters between them.
 
 ### 5. Creature sheet — `<creature>-<area>.png` — **2 columns × N rows**
 
-**Two poses per row: idle, then attack.** The engine adds the walk bob, the
-facing flip, the hit flash and the death fade. Never ask for a full animation
-sheet — they come back inconsistent between frames.
+**Two poses per row: idle, then attack.** The engine adds the facing flip, the
+hit flash and the death fade.
+
+**A short strip is fine; a long one is not.** The old rule here was never to ask
+for animation at all, on the grounds that frames come back inconsistent.
+`art/ghoul-town-walking.png` settled that: six poses of one creature, held
+perfectly. What breaks is *length*, not motion — a sheet asked to hold a
+character across a dozen frames comes back as a dozen characters. Four frames
+of a stride is the ask, twenty cells is the ceiling, and anything larger should
+be split into a second sheet rather than made taller.
+
+**The walk in particular is worth drawing.** With no strip the engine bounces
+the standing pose and rocks it, and that is a hero hopping on the spot — there
+is no tuning of it that becomes a walk. `tools/hero.html` plays the faked
+version against a real strip if the difference needs settling again.
 
 ```
 A flat 2-column grid of a CREATURE on a solid pure magenta background
@@ -237,6 +266,29 @@ Very wide empty magenta gutters between every row and column.
 Sliced with `{ auto: true }`, never a lattice: the rows grow taller down the
 sheet as the helmets gain horns — 210px at leather, 238px at bone — and a
 uniform grid cuts the tall ones in half.
+
+### 7b. Rig part sheet — `<slot>-NN.png` — **2 columns × 5 rows**
+
+Parts for the jointed hero (`js/rig.js`), and the only asset type where the
+*joint* matters more than the object. One design is one row: two cells, one per
+bone, five designs a sheet.
+
+**Put every joint on an edge of its cell and say so in absolute terms.** The rig
+maps a part's top edge to its joint and its bottom edge to the next one, so a
+piece whose knee floats in the middle of the cell hangs off the leg no matter
+what else is right. Get this and nothing else has to be disciplined — pieces may
+differ in height by a quarter and still line up, because the stretch lands
+between the same two joints either way. Height *variance is not the thing to
+measure*; that was chased for two generations and it measured nothing.
+
+- Draw the limb, not the garment: bare skin inside the cuff, or there is a hole
+  where the arm should be.
+- Rest orientation only. Everything hangs straight down from its joint, except
+  a foot, which hangs off the ankle and points forward.
+- One side only. The far limb reuses the same images — the renderer darkens it
+  and puts it behind the body. Never ask for a left and a right.
+- A heavier design is drawn *wider*, never taller. Width is free; height is the
+  joint span.
 
 ### 8. Loot icons — `icons-<slot>.png` — **one row of 5**
 

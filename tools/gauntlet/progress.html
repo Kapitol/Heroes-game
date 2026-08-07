@@ -1,0 +1,215 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gauntlet · progress</title>
+<!--
+  Every round of the build/critique gauntlet, newest first.
+
+  Served from the project's own server at /tools/gauntlet/progress.html. It has
+  no directory listing to work from — `serve.js` serves files, not indexes — so
+  each round appends its filename to `index.json` and this page reads that.
+
+  **A half-written index must not blank the page.** Rounds are appended by other
+  agents while this is open, so a fetch will sometimes land mid-write and return
+  truncated JSON. The rule here is that the last good render survives everything:
+  a parse failure, a 404, a round file that is itself half-written. Nothing is
+  ever cleared before its replacement has been fully built, and a bad poll only
+  changes the status line at the top.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #cbbfa8; --dim: #7d705a; --faint: #4c4335;
+    --bg: #14100c; --panel: #191410; --line: #2b2419;
+    --win: #7fb069; --loss: #c56a5c; --tie: #b79a56;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.6 "Iowan Old Style", Georgia, serif;
+    padding: 28px clamp(16px, 4vw, 48px) 80px;
+  }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: 24px; }
+  h1 { font-size: 19px; font-weight: normal; letter-spacing: .04em; margin: 0; }
+  #status {
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--dim); margin-top: 6px;
+  }
+  #status.warn { color: var(--tie); }
+
+  .round {
+    border: 1px solid var(--line); background: var(--panel);
+    margin-bottom: 22px; padding: 16px 18px;
+  }
+  .head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: baseline; }
+  .piece { font-size: 16px; }
+  .n {
+    font: 11px/1 ui-monospace, Menlo, monospace; letter-spacing: .1em;
+    color: var(--dim); border: 1px solid var(--line); padding: 4px 7px;
+  }
+  .verdict {
+    font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+    margin-left: auto; padding: 3px 9px; border: 1px solid currentColor;
+  }
+  .verdict.win { color: var(--win); }
+  .verdict.loss { color: var(--loss); }
+  .verdict.tie { color: var(--tie); }
+  .verdict.unknown { color: var(--faint); }
+
+  .gap { margin: 12px 0 0; max-width: 68ch; }
+  .gap b {
+    display: block; font: 11px/1.6 ui-monospace, Menlo, monospace;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--dim); font-weight: normal;
+  }
+  .notes { color: var(--dim); font-size: 13px; margin: 10px 0 0; max-width: 68ch; }
+  figure { margin: 14px 0 0; }
+  figure img {
+    display: block; max-width: 100%; height: auto;
+    border: 1px solid var(--line); background: #0f0c09;
+  }
+  .missing { color: var(--loss); font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+
+  .empty { border: 1px dashed var(--line); padding: 28px; max-width: 74ch; color: var(--dim); }
+  .empty h2 { font-size: 14px; font-weight: normal; color: var(--ink); margin: 0 0 10px; }
+  .empty code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); }
+  .empty pre {
+    font: 11px/1.6 ui-monospace, Menlo, monospace; color: var(--ink);
+    background: #0f0c09; border: 1px solid var(--line); padding: 12px; overflow-x: auto;
+  }
+</style>
+
+<header>
+  <h1>The gauntlet</h1>
+  <div id="status">loading…</div>
+</header>
+<main id="rounds"></main>
+
+<script type="module">
+const POLL = 4000;
+const statusEl = document.getElementById('status');
+const roundsEl = document.getElementById('rounds');
+
+// The last successfully rendered set, as a signature. Re-rendering identical
+// content every four seconds would reload every image and flicker the page.
+let lastSig = null;
+let everRendered = false;
+
+// The last good read of each round file. A round that has rendered once never
+// reverts to a red placeholder because a later poll caught it being rewritten —
+// the card either holds its old content or is replaced by new content, and is
+// never briefly nothing.
+const seen = new Map();
+
+const bust = (u) => u + (u.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+/**
+ * Fetch JSON. Never throws — a bad poll is a normal event here, not an error.
+ *
+ * Returns why it failed as well as that it did. "Not there yet" and "there but
+ * truncated" want different words on the status line: the first is the state
+ * before the first round, the second is a write landing under the read, and
+ * telling a user the file is missing when it is merely mid-write sends them
+ * looking for a bug that is not there.
+ */
+async function grab(url) {
+  let r;
+  try { r = await fetch(bust(url), { cache: 'no-store' }); }
+  catch { return { why: 'missing' }; }
+  if (!r.ok) return { why: 'missing' };
+  // .text() then parse, rather than .json(): a truncated body is a parse
+  // failure and has to be told apart from a 404.
+  try { return { value: JSON.parse(await r.text()) }; }
+  catch { return { why: 'partial' }; }
+}
+
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const VERDICT = {
+  'rig wins': 'win', 'bar wins': 'loss', 'tie': 'tie',
+};
+
+function card(r) {
+  if (!r || !r.ok) {
+    const why = r && r.why === 'partial' ? 'is being written' : 'is named in index.json but not on disk';
+    return `<div class="round"><div class="head"><span class="piece">—</span>
+      <span class="missing">${esc(r ? r.file : '')} ${why}</span></div></div>`;
+  }
+  const d = r.data;
+  const v = String(d.verdict || '').toLowerCase();
+  const cls = VERDICT[v] || 'unknown';
+  const img = d.image
+    ? `<figure><img src="${esc(bust(d.image))}" alt=""></figure>`
+    : `<p class="missing">no comparison image named</p>`;
+  return `<div class="round">
+    <div class="head">
+      <span class="piece">${esc(d.piece || 'unnamed piece')}</span>
+      <span class="n">round ${esc(d.round == null ? '?' : d.round)}</span>
+      <span class="verdict ${cls}">${esc(d.verdict || 'no verdict')}</span>
+    </div>
+    ${img}
+    ${d.gap ? `<p class="gap"><b>the gap</b>${esc(d.gap)}</p>` : ''}
+    ${d.notes ? `<p class="notes">${esc(d.notes)}</p>` : ''}
+  </div>`;
+}
+
+const EMPTY = `<div class="empty">
+  <h2>No rounds yet.</h2>
+  <p>A round is a file <code>round-&lt;piece&gt;-&lt;n&gt;.json</code> in this
+  directory, plus its name appended to <code>index.json</code>. This page reads
+  the index because the dev server lists files for nobody.</p>
+  <pre>{
+  "piece":   "helm",
+  "round":   1,
+  "image":   "compare-t3-f1.png",
+  "verdict": "rig wins" | "bar wins" | "tie",
+  "gap":     "one sentence naming what is still wrong",
+  "notes":   "anything longer"
+}</pre>
+  <p>See <code>README.md</code> for the full contract.</p>
+</div>`;
+
+async function poll() {
+  const got = await grab('index.json');
+
+  if (!Array.isArray(got.value)) {
+    // Missing, truncated, or not an array. If nothing has ever rendered this is
+    // the honest empty state; if something has, it stays on screen untouched.
+    if (!everRendered) { roundsEl.innerHTML = EMPTY; everRendered = true; lastSig = 'empty'; }
+    statusEl.textContent = got.why === 'missing'
+      ? 'no index.json yet — waiting'
+      : 'index.json is mid-write — showing the last good read';
+    statusEl.className = 'warn';
+    return;
+  }
+
+  // Newest first. The index is appended to, so the tail is the newest, and a
+  // name repeated by a rerun collapses to its latest position.
+  const names = [...new Set(got.value.filter(n => typeof n === 'string').reverse())];
+  const rounds = await Promise.all(names.map(async (file) => {
+    const r = await grab(file);
+    if (r.value && typeof r.value === 'object') {
+      seen.set(file, r.value);
+      return { ok: true, file, data: r.value };
+    }
+    if (seen.has(file)) return { ok: true, file, data: seen.get(file), stale: true };
+    return { ok: false, file, why: r.why };
+  }));
+
+  const good = rounds.filter(r => r.ok).length;
+  const sig = JSON.stringify(rounds);
+  if (sig !== lastSig) {
+    roundsEl.innerHTML = rounds.length ? rounds.map(card).join('') : EMPTY;
+    lastSig = sig;
+    everRendered = true;
+  }
+  statusEl.className = '';
+  statusEl.textContent = rounds.length
+    ? `${good} round${good === 1 ? '' : 's'}`
+      + (good < rounds.length ? ` · ${rounds.length - good} unreadable` : '')
+      + ` · refreshed ${new Date().toLocaleTimeString()}`
+    : 'no rounds yet';
+}
+
+poll();
+setInterval(poll, POLL);
+</script>

@@ -1,0 +1,131 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gauntlet comparison</title>
+<!--
+  Two figures at the same height, unlabelled, in an order the page does not
+  choose.
+
+  The bar is `art/warrior-walk.png` and it is sliced here through the project's
+  own `js/atlas.js` — the same chroma key, the same content trim, the same
+  reading order — because a comparison against a differently-cut bar is a
+  comparison against something the game never draws.
+
+  The randomisation happens in `compare.mjs`, not here. The page is told which
+  way round to draw and nothing else, so the truth lives in one file the critic
+  never opens.
+-->
+<style>
+  html, body { margin: 0; background: #14100c; }
+  canvas { display: block; }
+</style>
+<canvas id="cv"></canvas>
+<script type="module">
+import * as Atlas from '../../js/atlas.js';
+
+const Q = new URLSearchParams(location.search);
+const n = (k, d) => (Q.has(k) ? +Q.get(k) : d);
+
+const SHEET = Q.get('sheet') || '../../art/warrior-walk.png';
+const COLS = n('cols', 4), ROWS = n('rows', 5);
+const COL = n('col', 0), ROW = n('row', 0);
+const SWAP = Q.get('swap') === '1';
+const TARGET = n('target', 560);   // figure height both sides are matched to
+const PAD = n('pad', 40);
+const GAP = n('gap', 2);
+const BG = Q.get('bg') || '#14100c';
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const rig = new Image();
+rig.src = Q.get('rig');
+
+/**
+ * The bounding box of what is actually painted.
+ *
+ * The rig writes a transparent PNG on a fixed canvas, so its content sits
+ * somewhere inside a much larger frame. Matching "figure height" means matching
+ * crown to sole, and only the alpha knows where those are — the file's own
+ * dimensions are the camera's, not the hero's.
+ */
+function contentBox(img) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let py = 0; py < c.height; py++) {
+    for (let px = 0; px < c.width; px++) {
+      if (d[(py * c.width + px) * 4 + 3] < 24) continue;
+      if (px < x0) x0 = px; if (px > x1) x1 = px;
+      if (py < y0) y0 = py; if (py > y1) y1 = py;
+    }
+  }
+  if (x1 < 0) return null;
+  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+const report = { ok: false, cells: 0, expected: COLS * ROWS, index: ROW * COLS + COL };
+
+function draw() {
+  const sheet = Atlas.sheet(SHEET, COLS, ROWS, { auto: true });
+  if (!sheet || !rig.complete || !rig.naturalWidth) return false;
+
+  report.cells = sheet.cells.length;
+  const cell = sheet.cells[report.index];
+  const box = contentBox(rig);
+  if (!cell || !box) { report.error = cell ? 'the rig frame is empty' : 'no such cell'; return false; }
+
+  // Both scaled so their painted height is TARGET. This is the whole point of
+  // the exercise: a judge comparing a big figure with a small one is judging
+  // size, which neither side is claiming anything about.
+  const kBar = TARGET / cell.h, kRig = TARGET / box.h;
+  const barW = cell.w * kBar, rigW = box.w * kRig;
+  const panel = Math.ceil(Math.max(barW, rigW) + PAD * 2);
+  const H = Math.ceil(TARGET + PAD * 2);
+
+  cv.width = panel * 2 + GAP;
+  cv.height = H;
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+
+  const paintBar = (ox) => ctx.drawImage(sheet.canvas, cell.x, cell.y, cell.w, cell.h,
+    ox + (panel - barW) / 2, PAD, barW, TARGET);
+  const paintRig = (ox) => ctx.drawImage(rig, box.x, box.y, box.w, box.h,
+    ox + (panel - rigW) / 2, PAD, rigW, TARGET);
+
+  (SWAP ? paintRig : paintBar)(0);
+  (SWAP ? paintBar : paintRig)(panel + GAP);
+
+  // A hairline between the panels. Wider than this and it becomes a frame the
+  // eye reads as part of the composition; absent, the two figures share a
+  // ground and start to look like one scene.
+  ctx.fillStyle = 'rgba(203,191,168,.14)';
+  ctx.fillRect(panel, 0, GAP, cv.height);
+
+  report.ok = true;
+  report.left = SWAP ? 'rig' : 'bar';
+  report.right = SWAP ? 'bar' : 'rig';
+  report.width = cv.width;
+  report.height = cv.height;
+  return true;
+}
+
+function tick() {
+  if (draw()) {
+    window.__compare = report;
+    document.body.dataset.ready = '1';
+    return;
+  }
+  // Fail loudly rather than spinning: a slicer that returns the wrong cell
+  // count should stop the round, not hang it.
+  if (report.error) {
+    window.__compare = report;
+    document.body.dataset.ready = 'error';
+    return;
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
