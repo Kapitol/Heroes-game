@@ -14,7 +14,7 @@
   <!-- Top bar -->
   <div id="top">
     <div id="topLeft">
-      <button id="minimap" title="The world map"><span id="minimapPin"></span></button>
+      <button id="minimap" title="The world map" aria-label="The world map"><span id="minimapPin"></span></button>
       <div id="depthPlate">
         <div id="stageName">The Green Road</div>
         <div id="stageSub">Stage 1</div>
@@ -26,8 +26,8 @@
     </div>
     <div id="purse">
       <div class="skullCount">☠ <span id="skullText">0</span></div>
-      <button id="btnPause" class="plate" title="Pause (P or Space)">⏸</button>
-      <button id="btnMenu" class="plate">☰</button>
+      <button id="btnPause" class="plate" title="Pause (P or Space)" aria-label="Pause">⏸</button>
+      <button id="btnMenu" class="plate" title="Menu (Esc)" aria-label="Menu">☰</button>
     </div>
   </div>
 
@@ -49,13 +49,13 @@
 
     <div class="globe" id="xpGlobe">
       <div class="fluid rage"><i></i></div>
-      <button class="globeBtn" id="btnGear">⚒</button>
+      <button class="globeBtn" id="btnGear" title="Armoury (E)" aria-label="Armoury">⚒</button>
     </div>
   </div>
 
   <!-- Gear / upgrades -->
   <div id="gearPanel" class="panel hidden">
-    <div class="panelHead"><h2>Armoury</h2><button class="x" data-close>✕</button></div>
+    <div class="panelHead"><h2>Armoury</h2><button class="x" data-close aria-label="Close">✕</button></div>
     <div id="paperdoll">
       <div class="slotCol" id="slotsLeft"></div>
       <div id="dollFigure">
@@ -71,17 +71,13 @@
     <div class="secHead"><h3>The Bag</h3><span id="bagCount"></span></div>
     <div id="bagList"></div>
 
-    <div class="secHead"><h3>Forge</h3></div>
-    <p class="panelSub">Skulls reforge the blade and the plate — and you can see it on them.</p>
-    <div id="gearList"></div>
-
     <div class="secHead"><h3>Drafted</h3></div>
     <div id="perkList"></div>
   </div>
 
   <!-- Menu -->
   <div id="menuPanel" class="panel hidden">
-    <div class="panelHead"><h2>Crypt Heroes</h2><button class="x" data-close>✕</button></div>
+    <div class="panelHead"><h2>Crypt Heroes</h2><button class="x" data-close aria-label="Close">✕</button></div>
     <div class="menuBody">
       <p class="help">
         Your hero walks the road and fights on their own. You choose when to
@@ -94,7 +90,7 @@
       </p>
       <div class="secHead"><h3>Sound</h3></div>
       <div class="volRow">
-        <button id="btnMute" class="plate" title="Mute">🔊</button>
+        <button id="btnMute" class="plate" title="Mute" aria-label="Mute">🔊</button>
         <input id="volSlider" type="range" min="0" max="100" value="50" aria-label="Volume">
         <span id="volValue">50</span>
       </div>
@@ -129,11 +125,29 @@
     </div>
   </div>
 
+  <!-- The camp: who is going down the road, and the places still empty.
+       Shown between the title and the first step. -->
+  <div id="campPanel" class="overlay hidden">
+    <div class="campInner">
+      <div id="campScene">
+        <canvas id="campCanvas"></canvas>
+        <div id="campSlots"></div>
+      </div>
+      <div id="campPlate">
+        <div id="campName"></div>
+        <div id="campLevel"></div>
+        <p id="campSub"></p>
+      </div>
+      <button id="campStart">Take the road</button>
+    </div>
+  </div>
+
   <!-- Death -->
   <div id="deathOverlay" class="overlay hidden">
     <div class="overlayInner">
       <h1 class="dead">YOU HAVE DIED</h1>
       <p id="deathText">The dark keeps a tithe of your skulls.</p>
+      <p id="reviveLabel">Back on your feet in</p>
       <div id="reviveRing"><span id="reviveNum">3</span></div>
     </div>
   </div>

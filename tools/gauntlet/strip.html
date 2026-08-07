@@ -1,0 +1,95 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Phase strip</title>
+<!--
+  Four phases as a set: the bar's four strides on the top row, the rig's four
+  frames underneath, same figure height, same ground line, columns aligned.
+
+  Judging one frame against one cell tells you about a pose. The walk is a
+  *cycle*, and the thing that betrays a rig is the set — an even, narrow
+  four-beat where the bar has reach, pass, contact, reach. This is the
+  instrument for that, and it is deliberately labelled, because unlike
+  compare.html it is not a blind lineup: it is the working view.
+-->
+<style>html,body{margin:0;background:#14100c}canvas{display:block}</style>
+<canvas id="cv"></canvas>
+<script type="module">
+import * as Atlas from '../../js/atlas.js';
+
+const Q = new URLSearchParams(location.search);
+const n = (k, d) => (Q.has(k) ? +Q.get(k) : d);
+const SHEET = Q.get('sheet') || '../../art/warrior-walk.png';
+const COLS = n('cols', 4), ROWS = n('rows', 5), ROW = n('row', 2);
+const TARGET = n('target', 320), PAD = n('pad', 24);
+const rigs = (Q.get('rigs') || '').split(',').filter(Boolean).map(s => {
+  const i = new Image(); i.src = s; return i;
+});
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function contentBox(img) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let py = 0; py < c.height; py++) for (let px = 0; px < c.width; px++) {
+    if (d[(py * c.width + px) * 4 + 3] < 24) continue;
+    if (px < x0) x0 = px; if (px > x1) x1 = px;
+    if (py < y0) y0 = py; if (py > y1) y1 = py;
+  }
+  return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+function draw() {
+  const sheet = Atlas.sheet(SHEET, COLS, ROWS, { auto: true });
+  if (!sheet) return false;
+  if (rigs.some(r => !r.complete || !r.naturalWidth)) return false;
+
+  const cells = [];
+  for (let c = 0; c < 4; c++) cells.push(sheet.cells[ROW * COLS + c]);
+  if (cells.some(c => !c)) { window.__strip = { ok: false, error: 'no cell' }; return true; }
+  const boxes = rigs.map(contentBox);
+
+  // One scale for the whole bar row and one for the whole rig row, taken from
+  // the tallest cell — scaling each cell to the same height would erase the
+  // bob, which is exactly what is being judged.
+  const barH = Math.max(...cells.map(c => c.h));
+  const rigH = Math.max(...boxes.map(b => b ? b.h : 1));
+  const kBar = TARGET / barH, kRig = TARGET / rigH;
+  const colW = Math.ceil(Math.max(
+    ...cells.map(c => c.w * kBar), ...boxes.map(b => b.w * kRig)) + PAD * 2);
+  const rowH = Math.ceil(TARGET + PAD * 2);
+
+  cv.width = colW * 4; cv.height = rowH * 2;
+  ctx.fillStyle = '#14100c'; ctx.fillRect(0, 0, cv.width, cv.height);
+
+  const ground = (r) => r * rowH + rowH - PAD;
+  for (let c = 0; c < 4; c++) {
+    const cell = cells[c], w = cell.w * kBar, h = cell.h * kBar;
+    ctx.drawImage(sheet.canvas, cell.x, cell.y, cell.w, cell.h,
+      c * colW + (colW - w) / 2, ground(0) - h, w, h);
+    const b = boxes[c], rw = b.w * kRig, rh = b.h * kRig;
+    ctx.drawImage(rigs[c], b.x, b.y, b.w, b.h,
+      c * colW + (colW - rw) / 2, ground(1) - rh, rw, rh);
+  }
+  ctx.strokeStyle = 'rgba(224,196,99,.35)';
+  for (let r = 0; r < 2; r++) {
+    ctx.beginPath(); ctx.moveTo(0, ground(r) + .5); ctx.lineTo(cv.width, ground(r) + .5); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(203,191,168,.16)';
+  for (let c = 1; c < 4; c++) { ctx.beginPath(); ctx.moveTo(c * colW, 0); ctx.lineTo(c * colW, cv.height); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(0, rowH + .5); ctx.lineTo(cv.width, rowH + .5); ctx.stroke();
+
+  window.__strip = { ok: true, cells: sheet.cells.length, width: cv.width, height: cv.height };
+  return true;
+}
+
+function tick() {
+  if (draw()) { document.body.dataset.ready = '1'; return; }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>

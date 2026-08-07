@@ -11,9 +11,25 @@
   --blood-lit:#d6352a;
   --mana:#2b4d8e;
   --rage:#b8801e;
+  /* The five rarity bands. DESIGN.md has declared these since the system was
+     written and the stylesheet never defined them, so every `var(--band)` in
+     the tier ladder resolved to nothing: the lit pips had no colour, the next
+     pip had no outline, and the ladder that is supposed to read gray-to-gold
+     was five identical dashes on every card in the game. */
+  --band-gray:#9a9184;
+  --band-green:#5fa860;
+  --band-blue:#4f86c6;
+  --band-purple:#9a5fc0;
+  --band-gold:#d8b45c;
 }
 
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+/* One serif, no exceptions. Buttons and inputs do not inherit type by default,
+   so seven controls — the runes, the minimap, both panel closes, the gear
+   globe, the volume slider — were rendering in Arial against a design rule
+   that says there is never a sans anywhere. */
+button, input, select, textarea { font:inherit; color:inherit; }
 
 html, body {
   margin:0; padding:0; height:100%; overflow:hidden;
@@ -35,9 +51,19 @@ html, body {
 /* ---------- top bar ---------- */
 #top {
   position:absolute; top:0; left:0; right:0;
-  display:flex; align-items:flex-start; gap:8px;
+  display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap;
   padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 0;
   pointer-events:none;
+}
+/* The bar needed 407px and would not wrap, so on a phone the purse and the ☰
+   were clipped past the right edge — and `pointer-events:none` on the bar
+   meant the lost strip had no fallback hit area at all. The wave readout takes
+   its own row below the two ends instead of squeezing them out of the frame. */
+@media (max-width:620px) {
+  #waveWrap { order:3; flex:1 0 100%; max-width:none; margin-top:6px; padding:4px 10px 6px; }
+  #waveText { font-size:10px; }
+  #depthPlate { min-width:0; }
+  #purse { margin-left:auto; }
 }
 #top > * { pointer-events:auto; }
 
@@ -56,7 +82,13 @@ html, body {
 
 #purse { display:flex; align-items:center; gap:8px; }
 .skullCount { padding:6px 12px; border-radius:3px; font-size:15px; color:var(--gild); white-space:nowrap; }
-.plate { border-radius:3px; color:var(--parch); font:inherit; font-size:17px; padding:6px 11px; cursor:pointer; }
+.plate {
+  border-radius:3px; color:var(--parch); font:inherit; font-size:17px;
+  padding:6px 11px; cursor:pointer;
+  /* Thumb-sized. These two were 35x38 and 39x38 — under the 44px floor, and
+     they are the first controls a confused player reaches for. */
+  min-width:44px; min-height:44px;
+}
 .plate:active { transform:translateY(1px); }
 
 /* ---------- toast + banner ---------- */
@@ -115,8 +147,8 @@ html, body {
 }
 .globeBtn {
   position:absolute; inset:0; z-index:2; background:none; border:0;
-  color:#1c1206; font-size:clamp(24px,6vw,32px); cursor:pointer;
-  text-shadow:0 1px 0 rgba(255,255,255,.25);
+  color:#120c04; font-size:clamp(24px,6vw,32px); cursor:pointer;
+  text-shadow:0 1px 0 rgba(255,255,255,.35);
 }
 .globeBtn:active { transform:translateY(1px); }
 #xpGlobe.ready { animation:pulseGild 1.4s ease-in-out infinite; }
@@ -138,7 +170,9 @@ html, body {
 #xpText {
   position:absolute; inset:0; display:grid; place-items:center;
   font-size:10px; letter-spacing:.14em; text-transform:uppercase;
-  text-shadow:0 1px 2px #000;
+  /* The strip fills with a light blue behind this text; parchment on that
+     measured 1.37:1. The plate behind the glyphs travels with them. */
+  text-shadow:0 1px 2px #000, 0 0 6px rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.9);
 }
 
 #skills { display:flex; gap:clamp(6px,2vw,12px); }
@@ -156,11 +190,11 @@ html, body {
   background:rgba(4,3,2,.82); transition:height .1s linear; pointer-events:none;
 }
 .rune .key {
-  position:absolute; top:2px; left:4px; font-size:9px; opacity:.45;
-  color:var(--parch); text-shadow:none;
+  position:absolute; top:2px; left:4px; font-size:9px; opacity:.75;
+  color:var(--parch); text-shadow:0 1px 2px #000;
 }
 .rune.ready { border-color:var(--gild-dim); }
-.rune.cooling { color:#6b5c3e; text-shadow:none; }
+.rune.cooling { color:#8f7c56; text-shadow:none; }   /* was 2.4:1 on its own plate */
 .rune:active { transform:translateY(1px); }
 .rune.fire { animation:runeFire .35s ease; }
 @keyframes runeFire { 0%{ box-shadow:0 0 0 0 rgba(200,162,74,.7);} 100%{ box-shadow:0 0 0 16px rgba(200,162,74,0);} }
@@ -176,7 +210,10 @@ html, body {
 .panel.hidden, .hidden { display:none !important; }
 .panelHead { display:flex; align-items:center; justify-content:space-between; }
 .panelHead h2 { margin:0; font-size:20px; letter-spacing:.1em; color:var(--gild); font-weight:normal; }
-.x { background:none; border:0; color:var(--parch); font-size:18px; cursor:pointer; opacity:.6; padding:4px 6px; }
+.x {
+  background:none; border:0; color:var(--parch); font:inherit; font-size:18px;
+  cursor:pointer; opacity:.6; padding:4px 6px; min-width:44px; min-height:44px;
+}
 .panelSub { margin:4px 0 12px; font-size:12px; opacity:.55; font-style:italic; }
 .secHead { display:flex; align-items:center; justify-content:space-between; margin:16px 0 8px; border-top:1px solid #2b2219; padding-top:10px; }
 .secHead h3 { margin:0; font-size:12px; letter-spacing:.16em; text-transform:uppercase; opacity:.6; font-weight:normal; }
@@ -206,7 +243,10 @@ html, body {
 
 #statList { display:grid; grid-template-columns:1fr 1fr; gap:5px 14px; font-size:12.5px; }
 #statList div { display:flex; justify-content:space-between; border-bottom:1px dotted #2b2219; padding-bottom:3px; }
-#statList span { color:var(--gild); }
+/* Read-outs, not actions. Gold on a stat table put nineteen inert elements in
+   the colour reserved for things you can act on, and left the runes and the
+   card costs competing with them. Hierarchy comes from tracking and weight. */
+#statList span { color:var(--parch); }
 
 .menuBody { padding-top:8px; }
 .help { font-size:13px; line-height:1.65; opacity:.8; }
@@ -229,6 +269,15 @@ button.wide:active { transform:translateY(1px); }
   padding:24px; text-align:center;
 }
 .overlayInner { max-width:440px; }
+/* The painted wordmark, once it has decoded. Sized off the panel rather than
+   the viewport so it cannot outgrow the copy beneath it, and given the same
+   warm bloom the typographic title carried. */
+#ovLogo {
+  display: block; width: min(80%, 460px); height: auto; margin: 0 auto 6px;
+  image-rendering: auto;
+  filter: drop-shadow(0 0 26px rgba(200,162,74,.30)) drop-shadow(0 4px 0 rgba(0,0,0,.55));
+}
+
 #ovTitle {
   margin:0 0 4px; font-size:min(13vw,58px); letter-spacing:.14em; font-weight:normal;
   color:var(--gild); text-shadow:0 0 30px rgba(200,162,74,.35), 0 6px 0 #000;
@@ -241,6 +290,10 @@ h1.dead {
   color:var(--blood-lit); text-shadow:0 0 26px rgba(214,53,42,.5);
 }
 #deathText { font-size:13px; opacity:.7; margin-bottom:22px; }
+#reviveLabel {
+  margin:14px 0 0; font-size:10.5px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--parch); opacity:.6;
+}
 #reviveRing {
   width:88px; height:88px; margin:0 auto; border-radius:50%;
   border:2px solid var(--blood); display:grid; place-items:center;
@@ -371,12 +424,12 @@ h1.dead {
   font-size:11.5px; padding:4px 9px; border-radius:20px;
   border:1px solid #3d3025; background:#171210;
 }
-.perkChip b { color:var(--gild); font-weight:normal; }
+.perkChip b { color:var(--parch); font-weight:normal; opacity:.8; }
 .perkChip.attack  { border-color:#5d2a20; }
 .perkChip.defense { border-color:#24405d; }
 .perkChip.utility { border-color:#4a4320; }
 .perkChip.healing { border-color:#25503a; }
-.perkChip.none { opacity:.4; border-style:dashed; }
+.perkChip.none { opacity:.62; border-style:dashed; }
 
 .gearName i { font-style:normal; font-size:11px; opacity:.5; }
 
@@ -404,25 +457,31 @@ h1.dead {
   display:grid; grid-template-columns:repeat(var(--tiers,5),1fr);
   gap:5px; width:100%; margin-top:10px;
 }
-.tierRow i {
-  height:6px; border-radius:1px;
-  background:#241d16; border:1px solid #3d3025;
-}
-/* The five bands. `--band` is the colour a tier becomes once it is yours; it
-   also tints the outline of the one you are being offered. */
-.tierRow i.gray   { --band:#9a9184; }
-.tierRow i.green  { --band:#5fa860; }
-.tierRow i.blue   { --band:#4f86c6; }
-.tierRow i.purple { --band:#9a5fc0; }
-.tierRow i.gold   { --band:#d8b45c; }
+/* Each pip carries its own band, which is what `--band` below reads. */
+.tierRow i.gray   { --band:var(--band-gray); }
+.tierRow i.green  { --band:var(--band-green); }
+.tierRow i.blue   { --band:var(--band-blue); }
+.tierRow i.purple { --band:var(--band-purple); }
+.tierRow i.gold   { --band:var(--band-gold); }
 
-/* Tiers already bought, lit in their own colour. */
+.tierRow i {
+  flex:1; height:6px; border-radius:1px;
+  /* Unlit pips used to be one grey for all five bands, so a fresh card showed
+     five identical dashes carrying nothing — while DESIGN claims the ladder is
+     painted in its band colour. A faint wash of the band it will become lets
+     the ladder read gray-to-gold before a single tier is owned. */
+  background:color-mix(in srgb, var(--band) 14%, #241d16);
+  border:1px solid #3d3025;
+}
 .tierRow i.on {
   background:var(--band); border-color:var(--band);
   box-shadow:0 0 6px color-mix(in srgb, var(--band) 55%, transparent);
 }
 /* The one this card would buy: outlined in what it will become, not yet lit. */
 .tierRow i.next {
+  /* Non-colour carrier: the next tier is the tall one. Colour alone was the
+     only thing marking it, on a 37x6px bar. */
+  height:10px; margin-top:-2px;
   background:#2c2318;
   border-color:color-mix(in srgb, var(--band) 70%, #3d3025);
   box-shadow:inset 0 0 5px color-mix(in srgb, var(--band) 45%, transparent);
@@ -437,11 +496,28 @@ h1.dead {
   background:none; border-color:#4a4238; color:#9a9184;
   letter-spacing:.16em; text-transform:uppercase; font-size:11px;
 }
-.card.broke { opacity:.5; cursor:not-allowed; }
-.card.broke:hover { transform:none; border-color:#3d3025; }
+/* Out of reach, and still readable — this is a card you are being asked to
+   want, so it cannot be the dimmest thing on the screen. Half opacity took its
+   text to 1.9:1 against the panel; the card is dimmed by its own darker ground
+   instead and every string keeps its own contrast. */
+.card.broke {
+  cursor:not-allowed;
+  background:linear-gradient(180deg,#1c1712,#0d0a08);
+  border-color:#2b2219;
+}
+.card.broke:hover { transform:none; border-color:#2b2219; }
+.card.broke .cardName { color:#a2947c; }
+.card.broke .cardDesc { opacity:.62; }
+.card.broke .cardIcon { opacity:.55; }
 .card.broke .cardCost {
   background:linear-gradient(180deg,#2a231c,#181310);
-  color:#8a7358; border-color:#3d3025;
+  color:#b9a583; border-color:#4a3a29;
+}
+/* What it would take. The shortfall is the whole point of the card: it turns
+   the purse from a total into a target. */
+.cardShort {
+  margin-top:5px; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--gild-dim);
 }
 #draftSkip, #draftReroll {
   margin:18px auto 0; padding:9px 20px; display:block; cursor:pointer;
@@ -450,6 +526,32 @@ h1.dead {
   border:1px solid #3d3025; border-radius:3px;
 }
 #draftSkip:hover, #draftReroll:hover:not(:disabled) { border-color:var(--gild-dim); }
+
+/* Three tall cards plus a reroll and a walk-on came to 939px on an 812px
+   phone: the third card was cut by the viewport edge, which reads as the
+   bottom of the screen rather than as a fold, and two of the five controls
+   were unreachable. Below the fold-width the card turns on its side — the same
+   information, laid out along the axis the phone actually has. */
+@media (max-width:700px) {
+  .card {
+    display:grid; min-height:0; padding:10px 12px; text-align:left;
+    grid-template-columns:44px minmax(0,1fr) auto;
+    grid-template-areas:
+      "icon kind  cost"
+      "icon name  cost"
+      "icon desc  short"
+      "tier tier  tier";
+    align-items:center; gap:1px 10px;
+  }
+  .card .cardIcon { grid-area:icon; width:44px; height:44px; margin:0; font-size:26px; align-self:center; }
+  .card .cardKind { grid-area:kind; text-align:left; }
+  .card .cardName { grid-area:name; margin:0; }
+  .card .cardDesc { grid-area:desc; margin:0; }
+  .card .cardCost { grid-area:cost; margin:0; align-self:center; }
+  .card .cardShort { grid-area:short; margin:0; text-align:right; align-self:center; }
+  .card .tierRow { grid-area:tier; margin-top:7px; }
+}
+}
 /* The reroll leads — it is the one that costs something — so it sits directly
    under the cards and carries its price on its face. */
 #draftReroll { margin-top:22px; border-color:#4a3a22; }
@@ -487,6 +589,10 @@ h1.dead {
 body.minigame #top,
 body.minigame #belt,
 body.minigame #toast { opacity:0; pointer-events:none; }
+/* Same argument at the camp: no life to watch and no cooldown to spend, so the
+   road's HUD is only competition for the one thing on screen. */
+body.camp #top,
+body.camp #belt { opacity:0; pointer-events:none; }
 
 /* ---------- armoury: the paperdoll ---------- */
 /* Wider than the other panels — this one has three columns to hold. */
@@ -517,8 +623,8 @@ body.minigame #toast { opacity:0; pointer-events:none; }
   border:1px solid #3d3025; border-radius:4px;
 }
 #dollLevel { margin-top:6px; text-align:center; line-height:1.1; }
-#dollLevel b { display:block; font-size:22px; font-weight:normal; color:var(--gild); }
-#dollLevel span { font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; opacity:.5; }
+#dollLevel b { display:block; font-size:22px; font-weight:normal; color:var(--parch); }
+#dollLevel span { font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; opacity:.7; }
 
 /* ---------- armoury: the bag ---------- */
 #bagList { display:flex; flex-direction:column; gap:6px; }
@@ -558,7 +664,10 @@ body.minigame #toast { opacity:0; pointer-events:none; }
 /* No clipping here. The road cards hang below the map on purpose, and an
    `overflow` on this box slices off the part that sticks out — which is exactly
    the part carrying the level names. The overlay scrolls instead. */
-.mapInner { width:min(1180px,97vw); overflow:visible; text-align:center; }
+/* `100%` of the overlay's content box, not a slice of the viewport: the overlay
+   pads 24px a side, so a vw-based width is that much too wide and pushes the
+   map off the right edge on a phone. */
+.mapInner { width:min(1180px,100%); overflow:visible; text-align:center; }
 .mapInner h2 {
   margin:0 0 2px; font-size:19px; font-weight:normal; letter-spacing:.16em;
   color:var(--gild); text-transform:uppercase;
@@ -600,6 +709,115 @@ body.minigame #toast { opacity:0; pointer-events:none; }
 .mapChoice.deep .mcName { color:#e0a06a; }
 .mapChoice.hold { border-color:#24405d; }
 .mapChoice.hold .mcName { color:#9fc0e6; }
+
+/* ---------- the camp ---------- */
+/* No frame, no plate, no card: the camp is a place, and the only way a place
+   reads as one is if nothing is drawn around it. The scene fades into the
+   overlay's own dark instead of ending at a border. */
+/* Opaque, unlike the other overlays: the road is still painted on the canvas
+   underneath, and a lit strip of pavement showing through the camp's own dark
+   ground is the one thing that breaks the place completely. */
+#campPanel {
+  background:radial-gradient(ellipse at 50% 74%, #140e08, #060504 62%);
+  background-color:#060504;
+}
+.campInner { width:min(1240px,100%); text-align:center; }
+/* 16/9, not 16/7: the set needs sky to stand against, and the shallower
+   box left the top quarter of the frame as dead black. */
+#campScene {
+  position:relative; width:100%; aspect-ratio:3/2; max-height:66vh;
+  background:url("../art/camp-boneyard.png") center / cover no-repeat;
+}
+#campCanvas { position:absolute; inset:0; width:100%; height:100%; }
+
+/* The hit areas over the figures. Each is a column the width of one place at
+   the fire, so a click anywhere on or near a hero picks them. */
+#campSlots { position:absolute; inset:0; }
+.campSlot {
+  position:absolute; bottom:0; transform:translateX(-50%);
+  padding:0; border:0; background:none; font:inherit; color:var(--parch);
+  cursor:pointer; display:flex; align-items:flex-start; justify-content:center;
+}
+/* The name plate rides above the figure's head, as it does over the hero on
+   the road — the same convention, so the camp needs no explaining. */
+.csPlate { display:flex; flex-direction:column; gap:2px; pointer-events:none; }
+.csPlate b {
+  font-weight:normal; font-size:15px; letter-spacing:.06em; color:var(--parch);
+  text-shadow:0 1px 3px #000, 0 0 10px #000;
+}
+.csPlate i {
+  font-style:normal; font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+  opacity:.5; text-shadow:0 1px 3px #000;
+}
+.campSlot.sel .csPlate b {
+  color:var(--gild); text-shadow:0 1px 3px #000, 0 0 16px rgba(200,162,74,.5);
+  border-bottom:1px solid var(--gild-dim); padding-bottom:3px;
+}
+.campSlot.sel .csPlate i { opacity:.72; }
+/* Everyone who is not selected steps back, so the lit one is lit by contrast
+   and not only by being slightly warmer. */
+.campSlot:not(.sel):not(.locked) .csPlate b { opacity:.6; }
+.campSlot:not(.sel):not(.locked):hover .csPlate b { opacity:1; }
+/* An empty place is legible but never competes: its name sits quiet until
+   there is somebody standing under it. */
+.campSlot.locked .csPlate b { color:#6b5c3e; }
+.campSlot.locked .csPlate i { opacity:.32; }
+.campSlot:hover .csPlate b { color:var(--gild); }
+
+/* Who is selected, said once and plainly. The plates over the figures name
+   everyone at the fire; this is the one that answers "and which of them am I
+   looking at" — so it is an object with a lit edge, like everything else in
+   this game that the player is meant to act on. */
+#campPlate {
+  width:min(340px,86%); margin:-30px auto 0; position:relative; z-index:2;
+  padding:11px 18px 13px; border-radius:4px;
+  background:linear-gradient(180deg,rgba(34,27,22,.97),rgba(16,12,9,.97));
+  border:1px solid #3d3025;
+  box-shadow:inset 0 1px 0 rgba(200,162,74,.18), 0 10px 30px rgba(0,0,0,.8);
+}
+#campName {
+  margin:0; font-size:21px; letter-spacing:.12em; color:var(--gild);
+  text-transform:uppercase; text-shadow:0 0 26px rgba(200,162,74,.3);
+}
+#campLevel {
+  margin:3px 0 0; font-size:11px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--parch); opacity:.75;
+}
+#campSub { margin:7px 0 0; font-size:10px; letter-spacing:.1em; text-transform:uppercase; opacity:.42; }
+/* Reading an empty place is allowed, and the plate says what it is: the gold
+   goes, because gold here means a hero you can actually march as. */
+/* Reading a class you cannot take this run is allowed, and the plate says so:
+   the gold goes, because gold here means a road you can actually walk. */
+#campPlate.empty { border-color:#2b2219; }
+#campPlate.empty #campName { color:#7d6a45; text-shadow:none; }
+#campPlate.empty #campLevel { opacity:.45; }
+#campStart {
+  margin:20px auto 0; padding:11px 34px; display:block; cursor:pointer;
+  font:inherit; font-size:14px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--gild); background:linear-gradient(180deg,#241d17,#120e0b);
+  border:1px solid var(--gild-dim); border-radius:3px;
+}
+#campStart:hover:not(:disabled) { color:#f0d89a; border-color:var(--gild); }
+#campStart:disabled { color:#5d5040; border-color:#2b2219; cursor:default; }
+
+/* A plate is one line or it is nothing: wrapped onto three, four of them
+   collide with each other and print across the faces underneath. */
+.csPlate b, .csPlate i { white-space:nowrap; }
+
+@media (max-width:620px) {
+  #campScene { aspect-ratio:1/1; max-height:56vh; }
+  /* Four names across a phone collided: each slot is ~45px wide and the plates
+     were 65px, so "Warrior / Level 2" printed across "Paladin / Not this run".
+     They shrink and wrap inside their own slot instead. */
+  .csPlate { max-width:100%; }
+  .csPlate b { font-size:9.5px; letter-spacing:.02em; }
+  .csPlate i { font-size:7.5px; letter-spacing:.04em; line-height:1.25; }
+  .csPlate b, .csPlate i { white-space:normal; overflow-wrap:anywhere; }
+  /* The status line stays. Hiding it left colour as the only thing saying a
+     class is locked, which is the one carrier the design rules forbid. */
+  #campName { font-size:18px; }
+  #campSub { font-size:9.5px; letter-spacing:.08em; }
+}
 
 /* ---------- the map: pins on the overworld ---------- */
 /* The image sets the box's shape and the pins are placed inside it by
@@ -672,6 +890,18 @@ body.minigame #toast { opacity:0; pointer-events:none; }
 .pin.choice:hover .pinName { opacity:1; color:var(--gild); }
 
 @media (prefers-reduced-motion:reduce) { .pin.here .pinDot { animation:none; } }
+
+/* The rest of the motion. Four blocks already covered the card smoke, the loot
+   pulse and the two map pins; these were not covered, and one of them —
+   the gold "you can afford something" pulse — runs for ever. */
+@media (prefers-reduced-motion:reduce) {
+  #banner.show { animation:none; opacity:1; transform:none; }
+  #xpGlobe.ready { animation:none; }
+  .rune.fire { animation:none; }
+  .card, #waveBar i, #xpStrip i, .fluid i, #toast, .pinName, .mapChoice, .campSlot .csPlate b {
+    transition:none;
+  }
+}
 
 /* ---------- the corner minimap ---------- */
 #topLeft { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }

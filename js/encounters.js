@@ -26,6 +26,21 @@ export const SPRITE = {
       arrow: 12,
     },
   },
+  // The ghoul's two sheets are both sliced by content rather than by lattice.
+  // Its reaching pose is half again as wide as its standing one — all claws —
+  // and a grid put that overhang in the neighbouring cell, which cost the
+  // creature its trailing foot and gave the other pose a stray one.
+  ghoul: {
+    sheet: 'art/ghoul-town.png', cols: 2, rows: 1, auto: true, row: 0, h: 58,
+    // Three strides down the left column, three lunges down the right, so the
+    // walk is every other cell in reading order. The lunges are not wired: the
+    // pose sheet's attack already lands on the swing, and two sources for one
+    // action is how they end up disagreeing.
+    anim: {
+      sheet: 'art/ghoul-town-walking.png', cols: 2, rows: 3, auto: true, h: 56,
+      walk: [0, 2, 4],
+    },
+  },
 };
 
 // ai:
@@ -37,7 +52,7 @@ export const MONSTERS = {
   fallen:   { name: 'Fallen One',  kind: 'fallen',   ai: 'melee',    hp: 20,  dmg: 4,  speed: 2.6,  atk: 0.9, range: 0.9, scale: 0.85, skulls: 9,  xp: 5 },
   skeleton: { sprite: SPRITE.skeleton, name: 'Skeleton',    kind: 'skeleton', ai: 'melee',    hp: 34,  dmg: 7,  speed: 2.1,  atk: 1.2, range: 1.0, scale: 1.0,  skulls: 15, xp: 9 },
   archer:   { sprite: SPRITE.archer, name: 'Bone Archer', kind: 'skeleton', ai: 'ranged',   hp: 26,  dmg: 9,  speed: 2.0,  atk: 1.9, range: 6.5, scale: 0.95, skulls: 23, xp: 13, keep: 5.2 },
-  zombie:   { name: 'Rotting Dead',kind: 'zombie',   ai: 'melee',    hp: 74,  dmg: 11, speed: 1.35, atk: 1.6, range: 1.0, scale: 1.05, skulls: 23, xp: 14 },
+  zombie:   { sprite: SPRITE.ghoul, name: 'Rotting Dead',kind: 'zombie',   ai: 'melee',    hp: 74,  dmg: 11, speed: 1.35, atk: 1.6, range: 1.0, scale: 1.05, skulls: 23, xp: 14 },
   imp:      { name: 'Hellspawn',   kind: 'imp',      ai: 'charger',  hp: 30,  dmg: 12, speed: 3.2,  atk: 0.9, range: 0.9, scale: 0.8,  skulls: 25, xp: 15 },
   bloater:  { name: 'Bloated One', kind: 'zombie',   ai: 'exploder', hp: 44,  dmg: 26, speed: 2.3,  atk: 1.2, range: 1.0, scale: 1.1,  skulls: 31, xp: 18 },
   wraith:   { name: 'Wraith',      kind: 'wraith',   ai: 'ranged',   hp: 52,  dmg: 15, speed: 2.4,  atk: 1.6, range: 7.0, scale: 1.0,  skulls: 33, xp: 20, keep: 5.8 },
@@ -75,7 +90,17 @@ export const BOSSES = [
   },
 ];
 
-export const bossFor = (stage) => BOSSES[(Math.floor(stage / BOSS_EVERY) - 1) % BOSSES.length];
+/**
+ * Which boss stands in the road.
+ *
+ * Clamped at the bottom on purpose: the boss is *triggered* by a count of waves
+ * and *chosen* by the stage, and those two can disagree. A run that loses waves
+ * to deaths can reach its twelfth encounter still under stage 8, which indexed
+ * `BOSSES[-1]` — undefined — and threw inside the render loop, killing the
+ * frame and freezing the game on the last thing it had drawn.
+ */
+export const bossFor = (stage) =>
+  BOSSES[Math.max(0, Math.floor(stage / BOSS_EVERY) - 1) % BOSSES.length];
 
 export const BOSS_EVERY = 8;
 export const isBossStage = (stage) => stage % BOSS_EVERY === 0;
@@ -131,13 +156,18 @@ export const stageScale = (stage) => ({
   xp: Math.pow(1.17, stage - 1),
 });
 
-export function makeMonster(key, stage, pos, champion) {
+export function makeMonster(key, stage, pos, champion, threat) {
   const t = MONSTERS[key];
-  const s = stageScale(stage);
+  // `threat` is the hero-relative scaling — see `threat()` in game.js. Absent,
+  // the old stage-only curve stands, which is what the dev hooks want.
+  const s = threat ? { ...stageScale(stage), hp: threat.hp, dmg: threat.dmg } : stageScale(stage);
   const boost = champion ? 3.4 : 1;
   const hp = Math.round(t.hp * s.hp * boost);
   return {
     ...t, key, x: pos.x, y: pos.y,
+    // Where it was placed. A shooter is allowed to back away from the hero,
+    // but not indefinitely — see rangedAI.
+    home: { x: pos.x, y: pos.y },
     hp, maxHp: hp,
     dmg: Math.round(t.dmg * s.dmg * (champion ? 1.5 : 1)),
     skulls: Math.round(t.skulls * s.skulls * (champion ? 4 : 1)),
@@ -151,9 +181,13 @@ export function makeMonster(key, stage, pos, champion) {
   };
 }
 
-export function makeBoss(stage, pos) {
+export function makeBoss(stage, pos, threat) {
   const b = bossFor(stage);
-  const s = stageScale(stage);
+  const base = stageScale(stage);
+  // A boss is a wall on purpose, but a wall measured against the hero who
+  // walked up to it: three times a normal body's health, not three times an
+  // imaginary one's.
+  const s = threat ? { ...base, hp: threat.hp * 3.2, dmg: threat.dmg * 1.35 } : base;
   const hp = Math.round(b.hp * s.hp);
   return {
     ...b, key: b.key, ai: 'boss', boss: true,

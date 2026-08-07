@@ -1,0 +1,562 @@
+// A jointed hero, instead of a drawn one.
+//
+// Every character sheet in this project draws the whole hero with the armour
+// baked in, one image per pose. That model cannot show equipment: fifty gloves
+// across five slots and eighteen poses is a number nobody is going to generate.
+// The cost is in the multiplication, so this removes it — the hero is a
+// skeleton, art hangs off the bones, and animation is keyframes rather than
+// pictures of the result. A glove is one image of one hand. A new animation
+// costs no art at all.
+//
+// The camera never moves and the hero is only ever seen from one angle,
+// mirrored for facing, so none of the usual skeletal machinery is needed: no
+// skinning, no meshes, no inverse kinematics. Parented rotations and a draw
+// order are the whole system.
+//
+// **The skeleton owns proportion; art owns appearance, and neither is allowed
+// to be the other.** The first version of this file described bones as boxes
+// cut out of an existing sprite, which made one table responsible for both —
+// and a box drawn slightly wrong silently became a limb of the wrong length.
+// It declared a foot 14% of the figure against a shin's 16%, so good boot art
+// faithfully filled a box the size of a calf. Lengths live here now, in figure
+// heights, and can be judged as a stick figure with no art loaded at all.
+
+/**
+ * The skeleton, in fractions of the figure's total height.
+ *
+ * `z` runs strictly back to front: far leg, far arm, near leg, then the pelvis
+ * over both thigh tops, then the torso over the pelvis, then the head and the
+ * near arm. The pelvis has to sit above both legs and below the cuirass, which
+ * is the order a real harness is worn in — tassets hang under the breastplate
+ * and over the thighs — and getting it wrong hides the exact joint it exists to
+ * bridge.
+ *
+ * **Within an arm it runs the other way: hand, then forearm, then shoulder.** A
+ * child normally wants to be in front of its parent, and that is what the arms
+ * had, and it put the bare wrist and the bare elbow the art is drawn with right
+ * on top of the plate that should be hiding them. `art/gloves-01.png` paints a
+ * tab of skin above both the vambrace and the gauntlet — every cell of it does
+ * — while `art/chest-01.png` ends its sleeve in clean metal. So the piece that
+ * has a tidy edge goes on top and the piece with skin at its collar goes under
+ * it, which is also how the arm is actually strapped: rerebrace over vambrace,
+ * vambrace over gauntlet cuff.
+ *
+ * `length` is how long the bone is. `at` is how far along its parent it hangs,
+ * 0 at the parent's root and 1 at its tip — so an elbow is at 1 of the upper
+ * arm, and a shoulder is near the top of the spine rather than at its end.
+ *
+ * `rest` is the bone's angle in the rest pose, in turns, measured from
+ * straight down and positive towards the direction the hero faces. Everything
+ * hangs down at 0 except the spine, which stands up, and the feet, which point
+ * forward — which is exactly the distinction that has to be got right, because
+ * a foot drawn as though it hung downwards rotates about its toe.
+ *
+ * `thick` is how wide the limb is, also in figure-heights, and it is here for
+ * the same reason `length` is: **the art may not decide proportion.** Width was
+ * taken from the picture's own aspect ratio, so a generously drawn greave came
+ * out 0.134 wide against a human calf's 0.075 — the shins looked like tree
+ * trunks and no amount of redrawing would have fixed it, because the next
+ * design would have been whatever width it happened to be. The picture is
+ * squeezed to the limb now, not the other way round.
+ *
+ * `slot` is the equipment slot that owns the bone, and it is the whole design
+ * in one column: a slot is visible precisely when it owns bones.
+ *
+ * `invert` is for bones that point *up*. Art is drawn from a bone's root
+ * towards its tip, so a torso on the upward-running spine would have to be
+ * drawn hips-at-the-top — which is an absurd thing to ask anyone to draw, and
+ * exactly the kind of instruction a generator quietly ignores. The flag turns
+ * the image over instead, so every sheet can be drawn the way up a person is.
+ *
+ * `under`, `over` and `bleed` are the fit: how far past its own bone a piece is
+ * drawn, as a fraction of that bone's length (`under` back towards the parent,
+ * `over` on past the tip) and of its own width (`bleed`).
+ *
+ * **A joint is a hole unless something overlaps it.** Every piece was drawn
+ * exactly root-to-tip, so two pieces met edge to edge at every hinge and the
+ * hero wore a bare band of flesh at the throat, the waist, both shoulders, both
+ * elbows, both wrists, both knees and both ankles — nine gaps, and they open
+ * wider the moment the joint bends. Real harness is built the other way: the
+ * gorget goes under the helm, the couter over the vambrace, the boot over the
+ * greave. So a piece is drawn slightly longer than its bone and the *outer* one
+ * of the pair is drawn later — the fit is `under`/`over` plus `z`, and neither
+ * half works alone. This does not invent armour for a slot that has none: a
+ * piece can only reach past its own ends, so a bone with no art still shows a
+ * hole and the hole is still the honest answer.
+ *
+ * `shade` darkens a piece. The far arm and the far leg are the same images as
+ * the near ones — they have to be, that is the whole saving — so with nothing
+ * else to tell them apart the figure reads as four limbs printed on one sheet
+ * of glass. One number per bone is all it takes to put two of them behind the
+ * body. It is not a light model and does not want to be: the camera never moves
+ * and the light never moves, so the answer is a constant.
+ */
+// How high the hips sit above the ground. This is not a free number: it has to
+// equal thigh + shin plus the height of the ankle, or the figure floats above
+// the ground line or sinks through it. Thigh 0.215 + shin 0.185 leaves the
+// ankle at 0.03, which is where an ankle is — the sole below it is the foot
+// art's thickness, not a bone.
+//
+// **0.50 was the anatomy textbook's answer and the wrong one.** A real adult is
+// half legs, and a figure built that way stood next to `art/warrior-walk.png`
+// as a tall narrow eight-head mannequin while the bar was a stocky low-slung
+// hero — and that one difference picked the rig out of a blind lineup in under
+// a second, before the armour was even in focus. Measured off the bar's own
+// silhouette (tier 1, stride 0, matched height): its crotch sits at 0.43-0.45
+// of the figure and its shoulder line at 0.80, against 0.50 and 0.82 here. The
+// reference is the painting, not the skeleton inside a person.
+//
+// **Every length and width in the table below moved with it, as one set.** The
+// figure is now five and a half heads, not eight: legs 0.43, trunk 0.39, head
+// 0.18, crown still exactly 1.000 — head and trunk take back precisely what the
+// legs gave up, so nothing downstream of the height has to be re-derived. And
+// the widths went up with them, because a stocky figure that is merely short is
+// a dwarf rather than a hero: chest 0.23 → 0.28, thigh 0.105 → 0.135, shin
+// 0.078 → 0.108, upper arm 0.078 → 0.100, forearm 0.066 → 0.090, fist 0.052 →
+// 0.074, boot 0.15 → 0.18 long. Measured, not guessed: the bar's silhouette at
+// matched height runs 0.26–0.33 across the chest where the rig ran 0.19.
+//
+// The old numbers were each within a few percent of a real human's, which is
+// exactly how the rig ended up wrong — every bone was defensible on its own and
+// the assembled figure was a mannequin. `thick` in particular is a *box*, not a
+// painted width: a piece is squeezed into it and its own transparent margin
+// comes off, so the drawn limb measures about 0.85 of the number here. Widths
+// were set by rendering and measuring the silhouette, not by arithmetic.
+export const HIP = 0.43;
+
+export const BONES = [
+  { key: 'spine',         parent: null,            at: 0,    length: 0.39, rest: 0.50, z: 10, thick: 0.28, slot: 'chest', invert: true, under: 0.05, over: 0.06 },
+  // Rest 0, not another half turn: angles are relative to the parent and the
+  // spine already points up, so half a turn more folded the head down over the
+  // chest. It was invisible on the stick figure — a short line inside a long
+  // one — and would have arrived as a helmet worn on the stomach.
+  { key: 'head',          parent: 'spine',         at: 1,    length: 0.18, rest: 0,    z: 11, thick: 0.17, slot: 'head', invert: true, under: 0.10 },
+
+  // Half a turn, because these hang off the spine and the spine points up: at
+  // rest 0 an arm inherits that and grows upward out of the shoulder, straight
+  // through the head. The head is the one bone that *does* want to continue the
+  // spine — everything else hanging from it has to turn back down.
+  { key: 'upperArmBack',  parent: 'spine',         at: 0.92, length: 0.17, rest: 0.50, z: 5,  thick: 0.100, slot: 'chest', under: 0.18, over: 0.12, bleed: 0.06, shade: 0.58 },
+  { key: 'forearmBack',   parent: 'upperArmBack',  at: 1,    length: 0.155, rest: 0,   z: 4,  thick: 0.090, slot: 'hands', under: 0.12, over: 0.12, bleed: 0.06, shade: 0.58 },
+  { key: 'handBack',      parent: 'forearmBack',   at: 1,    length: 0.115, rest: 0,   z: 3,  thick: 0.074, slot: 'hands', under: 0.14, bleed: 0.06, shade: 0.58 },
+
+  { key: 'upperArmFront', parent: 'spine',         at: 0.92, length: 0.17, rest: 0.50, z: 14, thick: 0.100, slot: 'chest', under: 0.18, over: 0.12, bleed: 0.06 },
+  { key: 'forearmFront',  parent: 'upperArmFront', at: 1,    length: 0.155, rest: 0,   z: 13, thick: 0.090, slot: 'hands', under: 0.12, over: 0.12, bleed: 0.06 },
+  { key: 'handFront',     parent: 'forearmFront',  at: 1,    length: 0.115, rest: 0,   z: 12, thick: 0.074, slot: 'hands', under: 0.14, bleed: 0.06 },
+
+  // The hips are a *point* the spine and both thighs hang from, so nothing was
+  // ever drawn there and the figure came apart at the waist. The pelvis is an
+  // overlay rather than a link in the chain: it hangs from the same point and
+  // draws over the top of both thighs, which is how a paperdoll bridges a joint
+  // — the piece above overlaps the piece below, so a rotation opens no wedge.
+  // Made a link instead, every length below it would have to be re-derived.
+  { key: 'pelvis',        parent: null,            at: 0,    length: 0.10, rest: 0,    z: 9,  thick: 0.215, slot: 'legs', over: 1.0, bleed: 0.14 },
+  { key: 'thighBack',     parent: null,            at: 0,    length: 0.215, rest: 0,   z: 0,  thick: 0.135, slot: 'legs', shade: 0.66 },
+  { key: 'shinBack',      parent: 'thighBack',     at: 1,    length: 0.185, rest: 0,   z: 1,  thick: 0.108, slot: 'feet', under: 0.24, bleed: 0.05, shade: 0.66 },
+  // `sideways` because a foot is the one part not drawn hanging down. It is
+  // drawn heel-left and toe-right, so its *width* is the length of the bone and
+  // its height is the depth from ankle to sole. Stretched the usual way round,
+  // the toe ends up pointing along the bone and the boot stands on its heel.
+  { key: 'footBack',      parent: 'shinBack',      at: 1,    length: 0.18, rest: 0.25, z: 2,  thick: 0.075, slot: 'feet', sideways: true, bleed: 0.34, shade: 0.66 },
+
+  { key: 'thighFront',    parent: null,            at: 0,    length: 0.215, rest: 0,   z: 6,  thick: 0.135, slot: 'legs' },
+  { key: 'shinFront',     parent: 'thighFront',    at: 1,    length: 0.185, rest: 0,   z: 7,  thick: 0.108, slot: 'feet', under: 0.24, bleed: 0.05 },
+  { key: 'footFront',     parent: 'shinFront',     at: 1,    length: 0.18, rest: 0.25, z: 8,  thick: 0.075, slot: 'feet', sideways: true, bleed: 0.34 },
+];
+
+const byKey = Object.fromEntries(BONES.map(b => [b.key, b]));
+
+// The two legs and the two arms hang from the same joint; they are told apart
+// by how far across the body they start, not by the skeleton.
+//
+// This has to apply to parented bones as well as roots. It did not, and the
+// arms — which hang off the spine rather than off nothing — both attached at
+// dead centre and drew exactly on top of each other, a single strip down the
+// middle of the chest with no near arm and no far one.
+//
+// The arm numbers are not a guess: they are derived from the torso width, and
+// they move whenever it does. The chest box is 0.28 of the figure wide
+// *including its shoulders*, so the shoulder edges sit at ±0.14. An arm is 0.10
+// wide, so its centre has to sit half of that inboard of the edge: ±0.09. Hang
+// them any closer and they dangle out of the middle of the chest, which is what
+// ±0.03 did — and leaving them at the ±0.070 that a 0.236-wide torso wanted
+// would have re-opened the same gap the moment the shoulders were broadened.
+//
+// The arms are the other way round from the legs on purpose. The chest art is a
+// side view whose near armhole is the one *away* from the direction of travel,
+// so the arm drawn in front has to sit on that side or the body reads as
+// twisted — one shoulder leading in the walk and the other leading in the
+// armour.
+// The legs move the same way and for the same reason — a 0.215-wide pelvis puts
+// its edges at ±0.1075 and a 0.135-wide thigh half of that inboard, ±0.040 —
+// but they are held deliberately tighter than the derivation allows. This axis
+// is the *walking* axis in a side view, so leg spread is a permanent fore-aft
+// offset rather than a sideways one, and pushing it out is a stance the animation
+// then has to work against.
+const SPREAD = { thighBack: -0.038, thighFront: 0.038, upperArmBack: 0.090, upperArmFront: -0.090 };
+
+const TURN = Math.PI * 2;
+
+/**
+ * Every joint's position, in figure-height units with the feet at y = 0 and up
+ * being negative.
+ *
+ * Returns each bone's root and tip, which is all a stick figure needs and all
+ * a piece of art needs: art is stretched between the two, so a bone's length
+ * is what decides how big the armour on it is drawn. Nothing else does.
+ */
+export function solve(angles = {}) {
+  const out = {};
+  const place = (b) => {
+    if (out[b.key]) return out[b.key];
+    let x, y;
+    if (b.parent) {
+      const p = place(byKey[b.parent]);
+      x = p.x + (p.tx - p.x) * b.at + (SPREAD[b.key] || 0);
+      y = p.y + (p.ty - p.y) * b.at;
+      var base = p.angle;
+    } else {
+      x = SPREAD[b.key] || 0;
+      y = -HIP;
+      base = 0;
+    }
+    // A child inherits its parent's direction, so bending an elbow carries the
+    // hand with it and nothing has to be re-stated per frame.
+    const angle = base + (b.rest + (angles[b.key] || 0)) * TURN;
+    out[b.key] = {
+      x, y, angle,
+      tx: x + Math.sin(angle) * b.length,
+      ty: y + Math.cos(angle) * b.length,
+    };
+    return out[b.key];
+  };
+  for (const b of BONES) place(b);
+  return out;
+}
+
+/**
+ * A walk, as a table instead of a drawing.
+ *
+ * Angles are in turns, so 0.1 is a tenth of a full rotation — small numbers,
+ * and readable as "how far round" rather than as radians nobody can picture.
+ *
+ * Knees bend only while the leg is swinging forward and straighten to land, and
+ * the trailing foot points as it leaves the ground. Those two are most of what
+ * separates a walk from a pair of scissors opening and closing.
+ *
+ * The knee's *timing* is load-bearing, not just its direction. The thigh swings
+ * as a sine, so the foot is on the ground through the half-cycle where that
+ * sine is falling and in the air through the half where it rises. Bend the knee
+ * on the wrong half and the planted foot travels backwards and then forwards
+ * again within a single stance — a pendulum rather than a step — and the figure
+ * covers no ground at all. It measured as a stride of -0.07: walking backwards,
+ * slowly.
+ *
+ * **Nothing here sets the hip height.** It used to, as a sine that rose twice a
+ * cycle — which is the right shape and still wrong, because it was running
+ * alongside the legs rather than being caused by them. Measured over a stride
+ * the planted sole wandered between 0.03 and 0.124 above the ground: the figure
+ * bounced through its own feet and walked on air for most of the cycle. `plant`
+ * derives the height from the legs instead, so the bob is whatever the stride
+ * makes it and the foot that is down stays down.
+ */
+// Angles are measured from straight down, positive towards the way the hero
+// faces. **A knee is therefore always negative**: it is the one joint in the
+// body that bends only backwards, and a positive value swings the shin out in
+// front of the thigh, which is a leg breaking rather than a leg walking. The
+// ankle goes the same way — the toe drops behind on push-off, it does not lift.
+function leg(a) {
+  const thigh = Math.sin(a) * 0.075;
+  const knee = -Math.max(0, Math.cos(a)) * 0.13;
+  return {
+    thigh,
+    knee,
+    // **The ankle cancels everything above it.** Angles are inherited, so a
+    // knee bent 47 degrees swings the whole boot toe-down with it — which is
+    // why the bent leg measured *lower* than the straight one and the wrong
+    // foot kept taking the weight. A real ankle holds the sole parallel to the
+    // ground through the whole stride; the only deliberate deviation is the toe
+    // dropping as it pushes off.
+    ankle: -(thigh + knee) - Math.max(0, -Math.sin(a)) * 0.04,
+  };
+}
+
+/**
+ * Drop the figure until the lower foot rests on the ground.
+ *
+ * Solved once with the hips at rest, then offset by however far the lowest sole
+ * is from the floor. Both ends of both feet are measured, because a foot that
+ * has rotated puts its toe below its ankle and the toe is then what is standing
+ * on the ground.
+ *
+ * This is what makes a walk read: the hips rise and fall because the legs are
+ * doing something, and a leg that reaches further drops the body further. It
+ * also means the bob comes free with every future animation — a stomp lands
+ * without anyone writing a landing.
+ */
+export function plant(angles) {
+  const j = solve({ ...angles, lift: 0 });
+  let lowest = Infinity;
+  for (const k of ['footBack', 'footFront']) {
+    lowest = Math.min(lowest, -j[k].y, -j[k].ty);
+  }
+  return { ...angles, lift: -lowest };
+}
+
+export const ANIMS = {
+  idle: (p) => {
+    const a = p * TURN;
+    return plant({
+      spine: Math.sin(a) * 0.002,
+      head: -Math.sin(a) * 0.004,
+      upperArmBack: 0.02 + Math.sin(a) * 0.005,
+      upperArmFront: 0.02 - Math.sin(a) * 0.005,
+      forearmBack: 0.01, forearmFront: 0.01,
+    });
+  },
+  walk: (p) => plant({ ...walkAngles(p), shift: travelAt(p) }),
+};
+
+/** The walk's joint angles alone, with nothing derived from them yet. */
+function walkAngles(p) {
+  const a = p * TURN;
+  const back = leg(a), front = leg(a + Math.PI);
+  return {
+    thighBack: back.thigh, shinBack: back.knee, footBack: back.ankle,
+    thighFront: front.thigh, shinFront: front.knee, footFront: front.ankle,
+    // Arms counter the legs, and the elbow trails the shoulder — an arm that
+    // bends in step with its own swing looks mechanical.
+    upperArmBack: -Math.sin(a) * 0.055,
+    forearmBack: 0.02 + Math.max(0, Math.sin(a - 1.2)) * 0.06,
+    upperArmFront: Math.sin(a) * 0.055,
+    forearmFront: 0.02 + Math.max(0, Math.sin(a + Math.PI - 1.2)) * 0.06,
+    spine: 0.006 + Math.sin(a * 2) * 0.003,
+    head: -0.006,
+  };
+}
+
+/**
+ * How far the body slides forward across the stride, and how far one cycle
+ * carries it.
+ *
+ * A figure that walks *in place* must skate: if the hips do not travel, the
+ * planted foot has to slide backwards under them, because the leg is swinging
+ * and something has to give. So the body travels, and the amount is not a
+ * number anyone invents — it is whatever keeps the planted foot still.
+ *
+ * Measured once, by walking the cycle and accumulating how far the standing
+ * foot would have slipped. The frame where weight changes feet is skipped:
+ * across it the two ankles are in different places and the difference is the
+ * step itself, not a slip.
+ *
+ * `STRIDE` is the payoff. It is how far the hero moves in figure-heights per
+ * cycle, so the game drives the phase from **distance covered rather than time
+ * elapsed** — which is the only way feet and ground ever agree, at any speed.
+ *
+ * What `shift` carries is the *residual*: the accumulated travel minus the
+ * steady advance the body is already making. That distinction is the whole
+ * thing. Handing over the raw total makes an animation that creeps forward and
+ * then snaps back a full stride every cycle, which measures as a foot slipping
+ * 0.37 of the figure in one frame. The residual is periodic — zero at both ends
+ * of the cycle — so it loops, and the walking is done by the hero's position.
+ */
+const SAMPLES = 240;
+const TRAVEL = [];
+export let STRIDE = 0;
+
+(function measureTravel() {
+  let sum = 0, prevFoot = null, prevX = 0;
+  for (let i = 0; i <= SAMPLES; i++) {
+    const p = i / SAMPLES;
+    const a = walkAngles(p);
+    const j = solve({ ...a, lift: 0 });
+    const low = ['footBack', 'footFront']
+      .map(k => ({ k, h: Math.min(-j[k].y, -j[k].ty) }))
+      .sort((m, n) => m.h - n.h)[0].k;
+    const x = j[low].x;
+    if (prevFoot === low) sum += -(x - prevX);
+    prevFoot = low; prevX = x;
+    TRAVEL.push(sum);
+  }
+  STRIDE = sum;
+})();
+
+function travelAt(p) {
+  const w = ((p % 1) + 1) % 1;
+  const t = w * SAMPLES;
+  const i = Math.floor(t), f = t - i;
+  const total = TRAVEL[i] + (TRAVEL[i + 1] - TRAVEL[i]) * f;
+  return total - STRIDE * w;
+}
+
+/**
+ * The skeleton itself, drawn as a stick figure.
+ *
+ * This is the thing to look at when the walk is wrong. With no art loaded there
+ * is nothing to blame but the angles, and a stride that reads here reads with
+ * armour on it — the art cannot fix a limp and cannot cause one either.
+ */
+export function drawStick(ctx, sx, sy, h, flip, angles = {}, opts = {}) {
+  const j = solve(angles);
+  const lift = (angles.lift || 0) * h;
+  const shift = (angles.shift || 0) * h;
+  const px = (v) => sx + (flip ? -1 : 1) * (v * h + shift);
+  const py = (v) => sy + v * h - lift;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (const b of [...BONES].sort((p, q) => p.z - q.z)) {
+    const s = j[b.key];
+    const lit = opts.sel === b.key;
+    ctx.strokeStyle = lit ? 'rgba(255,140,60,.95)' : 'rgba(203,191,168,.55)';
+    ctx.lineWidth = lit ? 4 : (b.key === 'spine' ? 5 : 3);
+    ctx.beginPath();
+    ctx.moveTo(px(s.x), py(s.y));
+    ctx.lineTo(px(s.tx), py(s.ty));
+    ctx.stroke();
+  }
+  // Joints on top, so the skeleton reads as hinges rather than as a scribble.
+  for (const b of BONES) {
+    const s = j[b.key];
+    ctx.fillStyle = opts.sel === b.key ? 'rgba(255,140,60,.95)' : 'rgba(120,200,255,.7)';
+    ctx.beginPath();
+    ctx.arc(px(s.x), py(s.y), 3, 0, TURN);
+    ctx.fill();
+  }
+  // The ground, because a rig that sinks or floats is the most common way for
+  // the lengths to be wrong and the hardest to see without a line to check.
+  ctx.strokeStyle = 'rgba(224,196,99,.18)';
+  ctx.beginPath();
+  ctx.moveTo(sx - h * 0.4, sy + 0.5);
+  ctx.lineTo(sx + h * 0.4, sy + 0.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Art hung on the bones.
+ *
+ * A piece is stretched between its bone's root and tip and rotated to match, so
+ * the *bone* decides how long the armour is and the art decides only what it
+ * looks like. `across` is how wide the piece is drawn relative to its own
+ * aspect — 1 keeps the art's proportions, which is what a well-drawn part wants.
+ *
+ * `art` maps a bone key to `{ canvas, x, y, w, h }`. Anything without art is
+ * skipped rather than substituted, so a half-equipped hero shows a half-built
+ * figure instead of a wrong one. **A bone with no art draws nothing, and no
+ * neighbour is stretched to cover for it.** `art/legs-01.png` has a faulds and
+ * a greave in it and no thigh, and the thigh was fed the greave — so the hero
+ * wore the identical lion (or skull) shinguard twice down one leg, which is the
+ * single most damning thing a side-by-side judge can be shown. The thigh is a
+ * hole now. A hole is a thing to draw; a duplicate is a thing to disbelieve.
+ *
+ * Three things happen here that a plain paste of the art does not do, and all
+ * three are the difference between a body and a stack of stickers:
+ *
+ *   **Overlap.** `under` / `over` / `bleed` let a piece run past its own bone,
+ *   so the gorget reaches into the helm and the boot swallows the ankle. See
+ *   `BONES`.
+ *
+ *   **A far side.** `shade` darkens the limbs behind the body. The two arms and
+ *   the two legs are the same picture drawn twice, and without this the eye is
+ *   given nothing to sort them by.
+ *
+ *   **A shadow.** The figure sits on a patch of dark on the ground line, which
+ *   is what stops it hovering. It is drawn from where the feet actually are —
+ *   it stretches as the stride opens and tightens as it closes, for free.
+ */
+export function drawParts(ctx, sx, sy, h, flip, angles = {}, art = {}, opts = {}) {
+  const j = solve(angles);
+  const lift = (angles.lift || 0) * h;
+
+  ctx.save();
+  ctx.translate(sx, sy - lift);
+  if (flip) ctx.scale(-1, 1);
+  ctx.translate((angles.shift || 0) * h, 0);
+
+  // The ground first, under everything. `lift` is how far the body was raised
+  // to stand on its lower sole, so adding it back is exactly the floor — the
+  // shadow must not rise and fall with the hips, it is what they rise off.
+  if (opts.shadow !== false) {
+    let lo = Infinity, hi = -Infinity;
+    for (const k of ['footBack', 'footFront']) {
+      lo = Math.min(lo, j[k].x, j[k].tx);
+      hi = Math.max(hi, j[k].x, j[k].tx);
+    }
+    const rx = ((hi - lo) / 2 + 0.10) * h;
+    ctx.save();
+    ctx.translate((lo + hi) / 2 * h, lift);
+    ctx.scale(1, 0.20);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+    g.addColorStop(0, 'rgba(0,0,0,0.46)');
+    g.addColorStop(0.55, 'rgba(0,0,0,0.24)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, rx, 0, TURN);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  for (const b of [...BONES].sort((p, q) => p.z - q.z)) {
+    if (opts.hide && opts.hide[b.slot]) continue;
+    const piece = art[b.key];
+    if (!piece) continue;
+    const s = j[b.key];
+    const len = b.length * h;
+    // How far past each end of the bone the picture is drawn. Fractions of the
+    // bone's own length, so a piece keeps its fit whatever the skeleton's
+    // proportions are re-tuned to.
+    const back = (b.under || 0) * len;
+    const past = (b.over || 0) * len;
+    const span = len + back + past;
+
+    ctx.save();
+    ctx.translate(s.x * h, s.y * h);
+    ctx.rotate(-s.angle);            // canvas turns the other way from the maths
+    // One constant per bone, not a light model: the camera and the light are
+    // both nailed down, so the far side of the body is a fixed multiplier.
+    if (b.shade && opts.shade !== false) ctx.filter = `brightness(${b.shade})`;
+    if (b.sideways) {
+      // Turn the art a quarter so its width runs along the bone, and hang it
+      // *below* the bone rather than centred on it — the bone is the ankle line
+      // and everything in the picture is under it.
+      //
+      // A boot therefore bleeds *upwards* only. Grown evenly it would sink its
+      // sole through the floor, which is the one direction a foot may not go,
+      // and the whole point of the bleed here is the top of the boot closing
+      // over the bottom of the greave.
+      const across = (b.thick || 0.06) * h;
+      const rise = (b.bleed || 0) * across;
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(piece.canvas, piece.x, piece.y, piece.w, piece.h,
+        -back, -rise, span, across + rise);
+    } else {
+      const wide = (b.thick || 0.08) * h * (1 + (b.bleed || 0));
+      if (b.invert) {
+        // Turn the frame back the other half, and draw *upwards* from the root
+        // rather than reflecting the art.
+        //
+        // The first version used `scale(1, -1)`, which is a reflection, and a
+        // reflection composed with the bone's own half turn is a horizontal
+        // mirror — so the cuirass and the helmet faced left while every limb
+        // faced right, and the whole figure read as walking backwards.
+        //
+        // The frame is upside down here, so `over` — past the tip — is the
+        // *negative* end and `under` is the positive one. Getting that pair the
+        // wrong way round hangs the cuirass off the chin.
+        ctx.rotate(Math.PI);
+        ctx.drawImage(piece.canvas, piece.x, piece.y, piece.w, piece.h,
+          -wide / 2, -len - past, wide, span);
+      } else {
+        ctx.drawImage(piece.canvas, piece.x, piece.y, piece.w, piece.h,
+          -wide / 2, -back, wide, span);
+      }
+    }
+    ctx.filter = 'none';
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+export const REST = {};

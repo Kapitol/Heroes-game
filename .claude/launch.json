@@ -4,8 +4,8 @@
     {
       "name": "crypt-heroes",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["serve.js", "8124"],
-      "port": 8124
+      "runtimeArgs": ["serve.js", "8137"],
+      "port": 8137
     }
   ]
 }

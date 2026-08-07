@@ -2,6 +2,58 @@
 
 import { equippedBonuses } from './items.js';
 
+/**
+ * The four, and the order they stand around the fire.
+ *
+ * **One character to a run.** The camp is a choosing screen, not a party: the
+ * class picked there is the class the whole run is walked as, and it cannot be
+ * changed once the road has been started — which is why the camp only offers
+ * the choice while a run is still untouched.
+ *
+ * `ready` is whether the class can be played at all yet, which today means
+ * whether its art exists. A class that is not ready still stands named at the
+ * fire, because "Warlock, yet to be found" is a promise and an anonymous gap is
+ * only an absence.
+ *
+ * `sheet` is a tier sheet: one row per armour tier, and a column per pose with
+ * idle first and the attacks after it. Two columns is the baseline shape
+ * (`art/Pixel-Paladin.png`); `cols` and `attacks` are how a sheet that drew
+ * more poses says so.
+ */
+export const CLASSES = [
+  // Four poses, not two: idle, a thrust, an overhead swing, and a shield guard.
+  // The guard is deliberately unwired — there is no blocking state for it to
+  // mean anything, and a pose that appears for no reason reads as a glitch.
+  { key: 'warrior', name: 'Warrior', sheet: 'art/warrior-combat.png', ready: true,
+    cols: 4, attacks: [1, 2],
+    // A drawn stride, four frames, five tiers. `tiered` is what says the rows
+    // are armour rather than more frames — the ghoul's strip is neither.
+    anim: { sheet: 'art/warrior-walk.png', cols: 4, rows: 5, auto: true,
+      tiered: true, walk: [0, 1, 2, 3] },
+    // One entry per thing that is not swinging, each with its own sheet: a
+    // wind-up column and a release column, and the engine puts the damage on
+    // the cut between them. Frames are columns within the tier row, so the row
+    // index carries across every sheet and the hero cannot change armour to
+    // cast a spell. `warrior-actions.png` was the first pass of three *held*
+    // poses and is now unused — kept on disk, not referenced.
+    actions: {
+      heal: { sheet: 'art/warrior-heal.png', cols: 2, rows: 5, frames: [0, 1] },
+      cast: { sheet: 'art/warrior-cast.png', cols: 2, rows: 5, frames: [0, 1] },
+      cry:  { sheet: 'art/warrior-cry.png', cols: 2, rows: 5, frames: [0, 1] },
+      stomp: { sheet: 'art/warrior-stomp.png', cols: 2, rows: 5, frames: [0, 1] },
+      cleave: { sheet: 'art/warrior-cleave.png', cols: 2, rows: 5, frames: [0, 1] },
+    },
+    blurb: 'Walks in front and stays there.' },
+  { key: 'paladin', name: 'Paladin', sheet: 'art/Pixel-Paladin.png', ready: true,
+    blurb: 'Holds the line and mends it.' },
+  { key: 'warlock', name: 'Warlock', sheet: 'art/Pixel-Warlock.png',
+    blurb: 'Spends life to spend the dead.' },
+  { key: 'druid',   name: 'Druid',   sheet: 'art/Pixel-Druid.png',
+    blurb: 'Brings the wood in with them.' },
+];
+
+export const classByKey = (k) => CLASSES.find(c => c.key === k) || CLASSES[0];
+
 export const MONSTERS = {
   fallen:   { name: 'Fallen One', kind: 'fallen',   hp: 20, dmg: 4,  speed: 2.6, atk: 0.9, range: 0.9, scale: 0.85, skulls: 4,  xp: 5 },
   skeleton: { name: 'Skeleton',   kind: 'skeleton', hp: 34, dmg: 7,  speed: 2.1, atk: 1.2, range: 1.0, scale: 1.0,  skulls: 7,  xp: 9 },
@@ -46,6 +98,8 @@ export function makeMonster(key, depth, pos) {
 
 export function makeHero() {
   return {
+    // Which of CLASSES this hero is. Only the warrior exists so far.
+    class: 'warrior',
     kind: 'hero', name: 'Hero',
     x: 0, y: 0, scale: 1,
     level: 1, xp: 0, xpNext: 60,
@@ -61,6 +115,12 @@ export function makeHero() {
 
 // Derived hero stats. Gear levels and drafted perks both fold in here, so the
 // panel, the cards and the combat code can never disagree about the numbers.
+// How much innate armour a level is worth. Sweepable from the balance harness,
+// which is where the number came from.
+export const ARMOR_PER_LEVEL =
+  (typeof process !== 'undefined' && process.env && process.env.ARMOR_PER_LEVEL !== undefined)
+    ? Number(process.env.ARMOR_PER_LEVEL) : 1.6;
+
 export function heroStats(h, gear, perks, equipped) {
   const p = perks || {};
   const n = (k) => p[k] || 0;
@@ -79,7 +139,15 @@ export function heroStats(h, gear, perks, equipped) {
     maxHp,
     // Rounded, not raw: an item rolls a fractional armour value and this number
     // is read by the damage maths as well as the panel.
-    armor: Math.round(gear.armor * 3 + n('plate') * 6 + i('armor')),
+    //
+    // The level term is the hole the Forge left. Armour used to come almost
+    // entirely from bought plate — `gear.armor * 3` — and with the Forge gone a
+    // hero stood in single digits for the whole run, which is 3% mitigation and
+    // may as well be none. Damage and life already scale with level; toughness
+    // does now too, so growing up is worth something on the axis that decides
+    // whether a wave kills you.
+    armor: Math.round(h.baseArmor + (h.level - 1) * ARMOR_PER_LEVEL
+      + gear.armor * 3 + n('plate') * 6 + i('armor')),
     crit: Math.min(0.65, h.critChance + gear.ring * 0.025 + n('keen') * 0.04 + i('crit')),
     critMult: h.critMult + gear.ring * 0.06 + n('brutal') * 0.3 + i('critMult'),
     lifesteal: gear.amulet * 0.012 + n('leech') * 0.015 + i('lifesteal'),
@@ -118,6 +186,10 @@ export function moveToward(e, tx, ty, dt, map, speedMul = 1) {
   }
 
   e.walk += dt * 11;
+  // Ground covered, in tiles. The drawn walk runs on a timer, but a *rigged*
+  // one has to run on distance or its feet skate — a stride is a fixed length
+  // and a hero who moves slower must take slower steps, not smaller ones.
+  e.dist = (e.dist || 0) + Math.min(sp, d);
   faceTo(e, dx, dy);
   return d;
 }

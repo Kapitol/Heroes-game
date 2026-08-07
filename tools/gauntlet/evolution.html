@@ -1,0 +1,217 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gauntlet · evolution</title>
+<!--
+  The same rounds progress.html shows, turned ninety degrees.
+
+  progress.html answers "what just happened" — every round, newest first, one
+  column. This answers "is it getting better" — one row per piece, rounds left
+  to right in the order they were judged, so a piece's whole history is one
+  horizontal read and the improvement (or the lack of it) is visible without
+  scrolling back through a feed.
+
+  It reads exactly the same `index.json` and `round-*.json` files, with the same
+  rule: the last good render survives a truncated read, a 404, or a round file
+  caught mid-write. Nothing is cleared before its replacement is built.
+
+  Rounds are grouped by `piece` and sorted by `round`. A piece that has only
+  ever run once still gets a row — a row of one is the honest picture of a piece
+  that has not been re-judged yet.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #cbbfa8; --dim: #7d705a; --faint: #4c4335;
+    --bg: #14100c; --panel: #191410; --line: #2b2419;
+    --win: #7fb069; --loss: #c56a5c; --tie: #b79a56;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.6 "Iowan Old Style", Georgia, serif;
+    padding: 28px clamp(16px, 4vw, 48px) 80px;
+  }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: 24px; }
+  h1 { font-size: 19px; font-weight: normal; letter-spacing: .04em; margin: 0; }
+  #status {
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--dim); margin-top: 6px;
+  }
+  #status.warn { color: var(--tie); }
+  nav { margin-top: 8px; font-size: 12px; }
+  nav a { color: var(--dim); }
+
+  .piece { margin-bottom: 34px; }
+  .pname {
+    display: flex; align-items: baseline; gap: 12px;
+    border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 14px;
+  }
+  .pname h2 { font-size: 16px; font-weight: normal; margin: 0; letter-spacing: .02em; }
+  .arc { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+
+  /* Rounds run left to right. Wide histories scroll inside their own row rather
+     than pushing the page sideways. */
+  .track { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start; }
+  .round {
+    flex: 0 0 clamp(260px, 32vw, 420px);
+    border: 1px solid var(--line); background: var(--panel); padding: 14px 15px;
+  }
+  .head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; margin-bottom: 10px; }
+  .n {
+    font: 11px/1 ui-monospace, Menlo, monospace; letter-spacing: .1em;
+    color: var(--dim); border: 1px solid var(--line); padding: 4px 7px;
+  }
+  .verdict {
+    font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+    margin-left: auto; padding: 3px 9px; border: 1px solid currentColor;
+  }
+  .verdict.win { color: var(--win); }
+  .verdict.loss { color: var(--loss); }
+  .verdict.tie { color: var(--tie); }
+  .verdict.unknown { color: var(--faint); }
+
+  figure { margin: 0 0 10px; }
+  figure img {
+    display: block; width: 100%; height: auto;
+    border: 1px solid var(--line); background: #0f0c09;
+  }
+  .gap { margin: 0; font-size: 13px; }
+  .gap b {
+    display: block; font: 10px/1.6 ui-monospace, Menlo, monospace;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--dim); font-weight: normal;
+  }
+  .missing { color: var(--loss); font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+
+  .empty { border: 1px dashed var(--line); padding: 28px; max-width: 74ch; color: var(--dim); }
+  .empty h2 { font-size: 14px; font-weight: normal; color: var(--ink); margin: 0 0 10px; }
+  .empty code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink); }
+</style>
+
+<header>
+  <h1>The gauntlet, round by round</h1>
+  <div id="status">loading…</div>
+  <nav><a href="progress.html">← the feed, newest first</a></nav>
+</header>
+<main id="pieces"></main>
+
+<script type="module">
+const POLL = 4000;
+const statusEl = document.getElementById('status');
+const piecesEl = document.getElementById('pieces');
+
+let lastSig = null;
+let everRendered = false;
+const seen = new Map();
+
+const bust = (u) => u + (u.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+async function grab(url) {
+  let r;
+  try { r = await fetch(bust(url), { cache: 'no-store' }); }
+  catch { return { why: 'missing' }; }
+  if (!r.ok) return { why: 'missing' };
+  try { return { value: JSON.parse(await r.text()) }; }
+  catch { return { why: 'partial' }; }
+}
+
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const VERDICT = { 'rig wins': 'win', 'bar wins': 'loss', 'tie': 'tie' };
+const RANK = { 'bar wins': 0, 'tie': 1, 'rig wins': 2 };
+
+/** One round, as a column in its piece's track. */
+function card(d) {
+  const v = String(d.verdict || '').toLowerCase();
+  const cls = VERDICT[v] || 'unknown';
+  return `<div class="round">
+    <div class="head">
+      <span class="n">round ${esc(d.round == null ? '?' : d.round)}</span>
+      <span class="verdict ${cls}">${esc(d.verdict || 'no verdict')}</span>
+    </div>
+    ${d.image
+      ? `<figure><img src="${esc(bust(d.image))}" alt="blind comparison, round ${esc(d.round)}"></figure>`
+      : `<p class="missing">no comparison image named</p>`}
+    ${d.gap ? `<p class="gap"><b>the gap</b>${esc(d.gap)}</p>` : ''}
+  </div>`;
+}
+
+/**
+ * The one-line story of a piece: where it started and where it got to.
+ *
+ * Deliberately says "no better" rather than "worse" when the verdict slips —
+ * a later round is judged against a changed figure, so a slip is not proof of
+ * regression and should not be reported as one.
+ */
+function arc(rounds) {
+  if (rounds.length < 2) return `${rounds.length} round`;
+  const a = RANK[String(rounds[0].verdict || '').toLowerCase()];
+  const b = RANK[String(rounds[rounds.length - 1].verdict || '').toLowerCase()];
+  const word = a == null || b == null ? 'judged'
+    : b > a ? 'improved' : b === a ? 'held' : 'no better';
+  return `${rounds.length} rounds · ${word}`;
+}
+
+const EMPTY = `<div class="empty">
+  <h2>No rounds yet.</h2>
+  <p>This page fills in as critics write <code>round-&lt;piece&gt;-&lt;n&gt;.json</code>.
+  Each piece gets a row, and its rounds run left to right in the order they were
+  judged, so improvement reads horizontally.</p>
+</div>`;
+
+// Which index to read. Defaults to the live one; `?index=other.json` points the
+// same page at any other list of rounds, which is how the layout gets checked
+// against real data without writing anything into the live index a critic is
+// appending to.
+const INDEX = new URLSearchParams(location.search).get('index') || 'index.json';
+
+async function poll() {
+  const got = await grab(INDEX);
+
+  if (!Array.isArray(got.value)) {
+    if (!everRendered) { piecesEl.innerHTML = EMPTY; everRendered = true; lastSig = 'empty'; }
+    statusEl.textContent = got.why === 'missing'
+      ? 'no index.json yet — waiting'
+      : 'index.json is mid-write — showing the last good read';
+    statusEl.className = 'warn';
+    return;
+  }
+
+  const names = [...new Set(got.value.filter(n => typeof n === 'string'))];
+  const rounds = (await Promise.all(names.map(async (file) => {
+    const r = await grab(file);
+    if (r.value && typeof r.value === 'object') { seen.set(file, r.value); return r.value; }
+    return seen.get(file) || null;    // a mid-write file holds its last good read
+  }))).filter(Boolean);
+
+  // Group by piece, each piece's rounds in judged order.
+  const byPiece = new Map();
+  for (const d of rounds) {
+    const k = d.piece || 'unnamed piece';
+    if (!byPiece.has(k)) byPiece.set(k, []);
+    byPiece.get(k).push(d);
+  }
+  for (const list of byPiece.values()) list.sort((x, y) => (x.round || 0) - (y.round || 0));
+
+  const sig = JSON.stringify([...byPiece]);
+  if (sig !== lastSig) {
+    piecesEl.innerHTML = byPiece.size
+      ? [...byPiece].map(([name, list]) => `<section class="piece">
+          <div class="pname"><h2>${esc(name)}</h2><span class="arc">${esc(arc(list))}</span></div>
+          <div class="track">${list.map(card).join('')}</div>
+        </section>`).join('')
+      : EMPTY;
+    lastSig = sig;
+    everRendered = true;
+  }
+
+  statusEl.className = '';
+  statusEl.textContent = byPiece.size
+    ? `${byPiece.size} piece${byPiece.size === 1 ? '' : 's'} · ${rounds.length} round${rounds.length === 1 ? '' : 's'}`
+      + ` · refreshed ${new Date().toLocaleTimeString()}`
+    : 'no rounds yet';
+}
+
+poll();
+setInterval(poll, POLL);
+</script>

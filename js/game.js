@@ -5,18 +5,21 @@
 // three cards decide what the hero becomes. The player's hands are on the
 // skills, the drop and the cards — never on the walking.
 
-import { biomeFor, levelFor, ROAD, onRoad, HALF, MARCH } from './world.js';
-import { toWorld, clamp, lerp } from './iso.js';
-import { makeHero, heroStats, moveToward, faceTo, separate, nearestFoe } from './entities.js';
+import { BIOMES, biomeFor, levelFor, ROAD, onRoad, HALF, MARCH } from './world.js';
+import { toWorld, toScreen, clamp, lerp } from './iso.js';
+import { makeHero, heroStats, moveToward, faceTo, separate, nearestFoe, CLASSES, classByKey } from './entities.js';
 import {
   MONSTERS, makeMonster, makeBoss, rosterFor, formationFor, isBossStage, bossFor,
 } from './encounters.js';
-import { makeCamera, render, fitZoom } from './render.js';
+import { makeCamera, render, fitZoom, WINDUP } from './render.js';
 import { SKILLS, skillById, rollDraft, applyCard, MAX_SKILLS } from './perks.js';
 import * as UI from './ui.js';
 import * as Audio from './audio.js';
 import * as Coffin from './coffin.js';
-import { rollBossLoot, bossSkullBonus } from './items.js';
+import { rollBossLoot, bossSkullBonus, wornTier, startingKit, bandIndex } from './items.js';
+// The difficulty curve lives in its own module so the simulator in tools/ can
+// tune the same formula the game runs on — see js/balance.js.
+import { threat as threatFor, MAX_HIT_FRACTION, waveSize } from './balance.js';
 
 const SAVE_KEY = 'cryptheroes.v3';
 
@@ -32,7 +35,36 @@ const DEV_SPAWN = new URLSearchParams(location.search).get('spawn');
 const DEV_DROP = new URLSearchParams(location.search).has('drop')
   ? Math.max(1, Number(new URLSearchParams(location.search).get('drop')) || 250)
   : null;
+// Dev hook: ?camp opens the camp straight away, skipping the title. The screen
+// is otherwise one click deep and gone for the rest of the session, which makes
+// tuning its layout a reload-and-click each time; this is a reload and nothing
+// else. `?overview` is the same door under its old name.
+const DEV_CAMP = new URLSearchParams(location.search).has('camp')
+  || new URLSearchParams(location.search).has('overview');
+
+// Dev hook: ?biome=inferno pins the palette and the art set for the whole run,
+// whatever section you are in. A biome is six sections deep — the inferno is
+// twenty-five stages of fighting away — so without this, looking at its art
+// means either surviving to it or hand-editing state in the console, and
+// neither is something you want to do twice. Ignored unless the key names a
+// real biome. Nothing else changes: the fights, the loot and the level names
+// are still whatever the section says they are.
+const DEV_BIOME = new URLSearchParams(location.search).get('biome');
+
+// Dev hook: ?rig draws the hero as the jointed figure from `js/rig.js` instead
+// of the painted sheets. Opt-in because only gloves and boots have part art so
+// far — everything else shows as the bare skeleton, which is a thing to develop
+// against and not a thing to ship. It is the only way to judge the rig at the
+// real scale, under the real lighting, driven by the real hero.
+const DEV_RIG = new URLSearchParams(location.search).has('rig');
+const pinnedBiome = () => (DEV_BIOME ? BIOMES.find((b) => b.key === DEV_BIOME) : null);
+
 const LEASH = 1.9;          // how far the hero will step off their mark
+
+// The beat between the last body dropping and whatever comes next. Long enough
+// to read as "that is over" and short enough that it never feels like waiting —
+// the old loop cut straight from a kill to a coffin and the two ran together.
+const LULL = 1.0;
 
 // How many waves the hero clears between one set of cards and the next. A card
 // after every single drop made every wave the same shape and left nothing to
@@ -65,7 +97,7 @@ const ctx = cv.getContext('2d');
 
 const S = {
   dpr: 1, cam: makeCamera(), view: null,
-  biome: biomeFor(1),
+  biome: pinnedBiome() || biomeFor(1),
   hero: makeHero(),
   monsters: [], projectiles: [], effects: [], floats: [], stains: [],
   drop: null,
@@ -82,9 +114,9 @@ const S = {
   stage: 1, section: 1, wave: 1, wavesInSection: 3,
   phase: 'march', phaseT: 0,
   queue: [], spawnTimer: 0, waveTotal: 0, formation: null,
-  marchTo: 0, draft: null, draftAfter: null, lastDrop: 0,
+  marchTo: 0, markX: 0, camSnap: true, draft: null, draftAfter: null, lastDrop: 0,
   wavesSinceDraft: 0, wavesSinceBoss: 0, wavesSinceDrop: 0, pot: 0,
-  roads: null, pendingMap: false, mapPaused: false,
+  roads: null, pendingMap: false, mapPaused: false, chest: null,
   openingPicks: 0, openingDone: false,
   kills: 0, earned: 0, deaths: 0, best: 1,
   running: false, paused: false, reviveTimer: 0, time: 0,
@@ -102,15 +134,24 @@ window.addEventListener('resize', resize);
 resize();
 
 UI.init(S, {
-  start() {
+  // Begin does not put the hero on the road — it opens the camp. Audio has to
+  // be woken here regardless: this is the click, and a browser will only start
+  // a context from inside the gesture that asked for it.
+  overview() {
     Audio.init(); Audio.resume();
-    S.running = true;
-    UI.banner(levelFor(S.section));
-    // A fresh run opens on the cards rather than a fight.
-    if (!S.openingDone) { S.openingPicks = OPENING_PICKS; openDraft('opening'); }
+    showCamp();
+  },
+  // …and the camp's own button is what actually starts the march.
+  // The class in the plate is the class the run is walked as, so it is set
+  // here rather than at selection time — up to this button nothing is decided.
+  campStart(key) {
+    if (key) S.hero.class = key;
+    syncHeroSprite();
+    UI.showCamp(null);
+    save();
+    start();
   },
   skill: castSkill,
-  buy: buyGear,
   draftPick: takeCard,
   draftSkip: skipDraft,
   draftReroll: rerollDraft,
@@ -139,9 +180,72 @@ UI.init(S, {
 });
 
 load();
+syncHeroSprite();
 enterStage(S.stage, true);
 UI.rebuildRunes();
 UI.refreshPanels();
+
+const threat = () => threatFor(stats(), S.stage);
+
+/**
+ * The chest a boss leaves: it falls, it lands hard, it opens, and then it waits.
+ *
+ * Waiting is the point. Skulls buy cards and nothing else, so armour only ever
+ * arrives this way — and a pile that emptied itself into the bag with a line of
+ * toast was the least eventful thing in the game. Now the loop will not move on
+ * until it has been opened, because it is the reward.
+ */
+function updateChest(dt) {
+  const c = S.chest;
+  c.t += dt;
+  if (c.state === 'fall') {
+    c.vz -= 78 * dt;
+    c.z += c.vz * dt;
+    if (c.z <= 0) {
+      c.z = 0;
+      c.state = 'shut';
+      c.t = 0;
+      // It lands like something heavy: the ground jumps, dust goes up, and the
+      // road keeps the mark.
+      S.cam.shake = Math.max(S.cam.shake, 0.9);
+      effect('boom', c.x, c.y, 2.2, 0.45);
+      S.stains.push({ x: c.x, y: c.y, r: 1.5, a: 0.5 });
+      Audio.sfx.boom();
+    }
+    return;
+  }
+  if (c.state === 'shut') {
+    // A beat on the ground before the lid gives — the impact needs to land
+    // before the reward does.
+    if (c.t > 0.4) { c.state = 'open'; c.t = 0; Audio.sfx.bank(); UI.toast('Something in the chest', 2.2); }
+    c.open = 0;
+    return;
+  }
+  if (c.state === 'open') c.open = Math.min(1, (c.open || 0) + dt * 3.2);
+}
+
+/** Take what is in it. The only way armour ever enters the game. */
+function openChest() {
+  const c = S.chest;
+  if (!c || c.state !== 'open' || c.open < 0.9) return;
+  S.bag.push(...c.loot);
+  S.newLoot += c.loot.length;
+  UI.flashBag();
+  UI.toast(`${c.loot.length} pieces taken from the chest`, 3);
+  Audio.sfx.buy();
+  S.chest = null;
+  UI.refreshPanels();
+  save();
+}
+
+// Dev hook: ?debug hands the whole state to the console. Read-only in spirit —
+// it exists because a stuck run cannot be diagnosed from the HUD alone, and
+// guessing at it from screenshots costs more than one line of exposure.
+if (new URLSearchParams(location.search).has('debug')) window.__S = S;
+
+// Screens that are waiting on the player rather than running: the coffin, the
+// cards, the fork in the road.
+const choosing = () => S.phase === 'drop' || S.phase === 'draft' || S.phase === 'map';
 
 window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
@@ -149,8 +253,22 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'e') UI.togglePanel('gearPanel');
   else if (S.phase === 'drop' && S.drop && (k === 'a' || e.code === 'ArrowLeft')) { e.preventDefault(); Coffin.nudge(S.drop, -1); }
   else if (S.phase === 'drop' && S.drop && (k === 'd' || e.code === 'ArrowRight')) { e.preventDefault(); Coffin.nudge(S.drop, 1); }
-  else if (e.code === 'Space' && S.phase === 'drop' && S.drop) { e.preventDefault(); Coffin.release(S.drop); }
-  else if (k === 'p' || e.code === 'Space') { e.preventDefault(); togglePause(); }
+  // Space belongs to the coffin for the whole of the drop, not only while there
+  // is still one to steer. Releasing and landing are a beat apart, and a player
+  // tapping it as the coffin hits was falling through to the pause below and
+  // freezing the game they had just won.
+  else if (e.code === 'Space' && S.phase === 'drop') {
+    e.preventDefault();
+    if (S.drop) Coffin.release(S.drop);
+  }
+  // Pausing is a thing you do to a running game. On a screen that is waiting on
+  // a decision — cards, the fork, the camp — there is no clock to stop, and
+  // stopping it anyway left the run paused the moment it resumed.
+  else if ((k === 'p' || e.code === 'Space') && S.running && !choosing()) {
+    e.preventDefault();
+    togglePause();
+  }
+  else if (e.code === 'Space') e.preventDefault();   // never scroll the page
   else if (k === 'escape') UI.togglePanel('menuPanel');
 });
 
@@ -159,7 +277,16 @@ window.addEventListener('keydown', (e) => {
 const dropX = (e) => e.clientX - cv.getBoundingClientRect().left;
 cv.addEventListener('pointerdown', (e) => {
   Audio.resume();
-  if (S.phase === 'drop' && S.drop) Coffin.aim(S.drop, dropX(e));
+  if (S.phase === 'drop' && S.drop) { Coffin.aim(S.drop, dropX(e)); return; }
+  // The chest is the one thing on the road you click. Generous hit box: it is a
+  // reward, not a test of aim.
+  if (S.chest && S.chest.state === 'open' && S.view) {
+    const r = cv.getBoundingClientRect();
+    const w = toScreen(S.chest.x, S.chest.y);
+    const px = S.view.ox + w.x * S.view.zoom;
+    const py = S.view.oy + w.y * S.view.zoom;
+    if (Math.hypot(e.clientX - r.left - px, e.clientY - r.top - py) < 80) openChest();
+  }
 });
 cv.addEventListener('pointermove', (e) => {
   if (S.phase === 'drop' && S.drop && e.buttons) Coffin.aim(S.drop, dropX(e));
@@ -182,13 +309,27 @@ function togglePause(force) {
 
 // --- stages -----------------------------------------------------------------
 
+/**
+ * Load a map: the hero walks in from the top and stops on the mark.
+ *
+ * The road used to scroll forever with the camera glued to the hero, so every
+ * wave arrived in the same nowhere. A map instead is a *place*: the camera
+ * holds on the mark, the hero walks down into frame from off the top edge, and
+ * every wave after the first spawns on that same ground. Walking in is what
+ * makes the fight somewhere you arrived at rather than somewhere you were
+ * always standing.
+ */
 function enterStage(stage, silent) {
   const prevBiome = S.biome;
-  S.biome = biomeFor(S.section);
+  S.biome = pinnedBiome() || biomeFor(S.section);
   S.best = Math.max(S.best, S.section);
-  S.phase = 'march';
+  S.phase = 'enter';
   S.phaseT = 0;
-  S.marchTo = S.hero.x + MARCH;
+  // The mark is where the fight happens and where the camera sits; the hero is
+  // a march behind it, which at this zoom is off the top of the screen.
+  S.markX = S.hero.x + MARCH;
+  S.camSnap = true;
+  S.marchTo = S.markX;
   S.monsters.length = 0;
   S.projectiles.length = 0;
   S.queue.length = 0;
@@ -222,8 +363,7 @@ function beginEncounter() {
   S.formation = f;
   const roster = rosterFor(S.stage);
   const pool = DEV_SPAWN && MONSTERS[DEV_SPAWN] ? [DEV_SPAWN] : f.pick(roster);
-  const base = 3 + Math.floor(S.stage * 0.45);
-  const n = Math.max(2, Math.round(base * f.count));
+  const n = waveSize(S.stage, f.count);
 
   for (let i = 0; i < n; i++) {
     S.queue.push({
@@ -247,7 +387,8 @@ function pumpSpawns(dt) {
     x: S.hero.x + ahead * (8.5 + Math.random() * 3),
     y: (Math.random() - 0.5) * (HALF * 1.7),
   });
-  const m = spec.boss ? makeBoss(S.stage, pos) : makeMonster(spec.key, S.stage, pos, spec.champion);
+  const m = spec.boss ? makeBoss(S.stage, pos, threat())
+                      : makeMonster(spec.key, S.stage, pos, spec.champion, threat());
   if (spec.champion) UI.toast('A champion!');
   S.monsters.push(m);
   S.spawnTimer = S.formation.gap || 0.75;
@@ -333,10 +474,15 @@ function hurtHero(amount) {
   const h = S.hero;
   if (h.dead) return;
   const st = stats();
-  const dealt = Math.max(1, amount
+  const raw = amount
     * (1 - st.armor / (st.armor + 55))
     * st.mitigate
-    * (h.buffs.ward > 0 ? 0.5 : 1));
+    * (h.buffs.ward > 0 ? 0.5 : 1);
+  // Hard, never hopeless. Whatever the arithmetic says, one blow cannot take
+  // more than half of a full pool — so there is always a hit to survive, a
+  // cooldown to answer with, and a decision to have made differently. A run
+  // should be lost to a bad draft, not to a number nobody could have seen.
+  const dealt = Math.max(1, Math.min(raw, st.maxHp * MAX_HIT_FRACTION));
   h.hp -= dealt;
   h.hurt = 1;
   float(h.x, h.y, `−${Math.round(dealt)}`, '#ff7a68');
@@ -390,6 +536,64 @@ function revive() {
 
 // --- skills -----------------------------------------------------------------
 
+/**
+ * Which pose a skill puts the hero in, and for how long.
+ *
+ * Only the moves that look like something. Cleave has no entry because it *is*
+ * a swing and the combat sheet already draws two of those — posing it would
+ * take the sword out of the arc it is cutting. Quake waits on its stomp sheet:
+ * a stomp drawn as a shout would be worse than the shout it already isn't.
+ */
+const SKILL_POSE = {
+  mend:   { pose: 'heal', hold: 0.55 },
+  fire:   { pose: 'cast', hold: 0.44 },
+  volley: { pose: 'cast', hold: 0.55 },
+  frenzy: { pose: 'cry',  hold: 0.68 },
+  ward:   { pose: 'cast', hold: 0.45 },
+  quake:  { pose: 'stomp', hold: 0.62 },
+  cleave: { pose: 'cleave', hold: 0.50 },
+};
+
+/**
+ * Run something on the frame a two-frame pose cuts to its release.
+ *
+ * The renderer swaps frames at `WINDUP` through the hold, so that fraction is
+ * the moment the blow actually lands and not one before it. Tied to the pose
+ * rather than to a timer of its own, because the two must not be able to drift
+ * apart — a stomp whose shockwave arrives while the knee is still up is worse
+ * than one with no wind-up at all.
+ *
+ * Falls through and fires immediately if there is no pose to wait for, which is
+ * what happens for a class whose art has not been drawn yet.
+ */
+function onRelease(h, fn) {
+  if (h.act && h.act.hold) h.act.fire = fn;
+  else fn();
+}
+
+/** Quake, at the moment the boot hits. */
+function quakeLands(h, st, foes) {
+  // The ring is thrown a little forward of the hero, because the stomping foot
+  // is out in front of him — centred on the body it reads as something he is
+  // standing in rather than something he did. The *damage* stays on the body:
+  // nothing gameplay-facing should move because a sprite's leg does.
+  effect('quake', h.x + (h.fx < 0 ? -0.45 : 0.45), h.y + 0.2, 4.4, 0.6);
+  Audio.sfx.cleave();
+  S.cam.shake = 0.6;
+  for (const m of foes()) {
+    if (Math.hypot(m.x - h.x, m.y - h.y) > 4.4) continue;
+    hurtMonster(m, st.dmg * 1.8);
+    m.slow = 3;
+    // Quake is the answer to anything winding up: it breaks a charger's
+    // dash outright and knocks a boss back down its cast bar.
+    if (m.state === 'charge' || m.state === 'wind') { m.state = 'approach'; m.stateT = 0; }
+    if (m.casting) {
+      m.castT = Math.max(0, m.castT - 1.1);
+      float(m.x, m.y, 'staggered', '#a8c8ff');
+    }
+  }
+}
+
 function castSkill(slot) {
   if (!S.running || S.hero.dead || S.phase === 'draft') return;
   const id = S.loadout[slot];
@@ -400,87 +604,121 @@ function castSkill(slot) {
   S.cd[slot] = def.cd * (1 - st.cdr);
   UI.fireRune(slot);
 
+  // The pose is set before the skill resolves, so the frame the damage lands
+  // on is already the frame that threw it.
+  const p = SKILL_POSE[id];
+  if (p) h.act = { pose: p.pose, t: p.hold, hold: p.hold };
+
   const foes = () => S.monsters.filter(m => !m.dead);
 
   switch (id) {
     case 'cleave': {
-      effect('cleave', h.x, h.y, 3.2, 0.45);
-      Audio.sfx.cleave();
-      S.cam.shake = 0.4;
-      let hit = 0;
-      for (const m of foes()) if (Math.hypot(m.x - h.x, m.y - h.y) <= 3.2) { hurtMonster(m, st.dmg * 2.2); hit++; }
-      if (!hit) float(h.x, h.y, 'whiff', '#9a8f7a');
+      onRelease(h, () => {
+        effect('cleave', h.x, h.y, 3.2, 0.45);
+        Audio.sfx.cleave();
+        S.cam.shake = 0.4;
+        let hit = 0;
+        for (const m of foes()) if (Math.hypot(m.x - h.x, m.y - h.y) <= 3.2) { hurtMonster(m, st.dmg * 2.2); hit++; }
+        if (!hit) float(h.x, h.y, 'whiff', '#9a8f7a');
+      });
       break;
     }
     case 'quake': {
-      effect('quake', h.x, h.y, 4.4, 0.6);
-      Audio.sfx.cleave();
-      S.cam.shake = 0.6;
-      for (const m of foes()) {
-        if (Math.hypot(m.x - h.x, m.y - h.y) > 4.4) continue;
-        hurtMonster(m, st.dmg * 1.8);
-        m.slow = 3;
-        // Quake is the answer to anything winding up: it breaks a charger's
-        // dash outright and knocks a boss back down its cast bar.
-        if (m.state === 'charge' || m.state === 'wind') { m.state = 'approach'; m.stateT = 0; }
-        if (m.casting) {
-          m.castT = Math.max(0, m.castT - 1.1);
-          float(m.x, m.y, 'staggered', '#a8c8ff');
-        }
-      }
+      // Everything this move does happens when the foot lands, not when the
+      // button is pressed. The leg is already up by then and the shockwave
+      // comes out from under the boot — which is the whole difference between
+      // a stomp and a noise the hero makes while standing there.
+      onRelease(h, () => quakeLands(h, st, foes));
       break;
     }
     case 'fire': {
-      const t = h.target && !h.target.dead ? h.target : nearestFoe(h, S.monsters, 22);
-      if (!t) { float(h.x, h.y, 'no target', '#9a8f7a'); S.cd[slot] = 0.4; return; }
-      S.projectiles.push({ proj: true, x: h.x, y: h.y, vx: 0, vy: 0, target: t, speed: 10, dmg: st.dmg * 2.8, splash: 2.6, life: 3, mine: true });
-      Audio.sfx.fire();
+      // The target is checked now — an empty field has to refund the cooldown
+      // immediately, not half a second later — but the bolt leaves on the
+      // release, and re-picks if the mark died while the arm was still back.
+      if (!(h.target && !h.target.dead ? h.target : nearestFoe(h, S.monsters, 22))) {
+        float(h.x, h.y, 'no target', '#9a8f7a'); S.cd[slot] = 0.4; h.act = null; return;
+      }
+      onRelease(h, () => {
+        const t = h.target && !h.target.dead ? h.target : nearestFoe(h, S.monsters, 22);
+        if (!t) return;
+        S.projectiles.push({ proj: true, x: h.x, y: h.y, vx: 0, vy: 0, target: t, speed: 10, dmg: st.dmg * 2.8, splash: 2.6, life: 3, mine: true });
+        Audio.sfx.fire();
+      });
       break;
     }
     case 'volley': {
-      const list = foes();
-      if (!list.length) { float(h.x, h.y, 'no target', '#9a8f7a'); S.cd[slot] = 0.4; return; }
-      for (let i = 0; i < 5; i++) {
-        const t = list[Math.floor(Math.random() * list.length)];
-        S.projectiles.push({ proj: true, x: h.x, y: h.y, vx: 0, vy: 0, target: t, speed: 12, dmg: st.dmg * 0.9, splash: 1.1, life: 3, mine: true, delay: i * 0.09 });
-      }
-      Audio.sfx.fire();
+      if (!foes().length) { float(h.x, h.y, 'no target', '#9a8f7a'); S.cd[slot] = 0.4; h.act = null; return; }
+      onRelease(h, () => {
+        const list = foes();
+        if (!list.length) return;
+        for (let i = 0; i < 5; i++) {
+          const t = list[Math.floor(Math.random() * list.length)];
+          S.projectiles.push({ proj: true, x: h.x, y: h.y, vx: 0, vy: 0, target: t, speed: 12, dmg: st.dmg * 0.9, splash: 1.1, life: 3, mine: true, delay: i * 0.09 });
+        }
+        Audio.sfx.fire();
+      });
       break;
     }
     case 'mend': {
-      const heal = st.maxHp * 0.4;
-      h.hp = Math.min(st.maxHp, h.hp + heal);
-      effect('heal', h.x, h.y, 1, 0.9);
-      float(h.x, h.y, `+${Math.round(heal)}`, '#8ce8a0', true);
-      Audio.sfx.heal();
+      onRelease(h, () => {
+        const heal = st.maxHp * 0.4;
+        h.hp = Math.min(st.maxHp, h.hp + heal);
+        effect('heal', h.x, h.y, 1, 0.9);
+        float(h.x, h.y, `+${Math.round(heal)}`, '#8ce8a0', true);
+        Audio.sfx.heal();
+      });
       break;
     }
     case 'frenzy':
-      h.buffs.frenzy = 7;
-      float(h.x, h.y, 'FRENZY', '#ffb84a', true);
-      Audio.sfx.buff();
+      onRelease(h, () => {
+        h.buffs.frenzy = 7;
+        float(h.x, h.y, 'FRENZY', '#ffb84a', true);
+        Audio.sfx.buff();
+      });
       break;
     case 'ward':
-      h.buffs.ward = 6;
-      effect('ward', h.x, h.y, 1, 0.9);
-      float(h.x, h.y, 'WARDED', '#9fc0ff', true);
-      Audio.sfx.buff();
+      onRelease(h, () => {
+        h.buffs.ward = 6;
+        effect('ward', h.x, h.y, 1, 0.9);
+        float(h.x, h.y, 'WARDED', '#9fc0ff', true);
+        Audio.sfx.buff();
+      });
       break;
   }
 }
 
 // --- economy ----------------------------------------------------------------
 
-function buyGear(key) {
-  const cost = UI.gearCost(S.gear, key);
-  if (S.skulls < cost) { Audio.sfx.deny(); UI.toast('Not enough skulls'); return; }
-  S.skulls -= cost;
-  S.gear[key]++;
-  if (key === 'armor') S.hero.hp = Math.min(stats().maxHp, S.hero.hp + 18);
-  if (key === 'weapon' || key === 'armor') UI.toast(`${key === 'weapon' ? 'Blade' : 'Armour'} reforged`);
-  Audio.sfx.buy();
-  UI.refreshPanels();
-  save();
+/**
+ * Point the hero at the right cell of the right class sheet.
+ *
+ * Two things move it: the class, chosen once at the camp, and the armour tier,
+ * which climbs as the plate is bought — so the figure on the road re-forges on
+ * the same purchase that re-forged the vector one. Called wherever either can
+ * change rather than rebuilt per frame; it is a descriptor, not a draw.
+ *
+ * A class with no art yet gets no sprite, and `drawPaintedFighter` falls
+ * straight back to the vector hero.
+ */
+function syncHeroSprite() {
+  const c = classByKey(S.hero.class);
+  S.hero.sprite = c.ready
+    ? { sheet: c.sheet, cols: c.cols || 2, rows: 5, auto: true, attacks: c.attacks,
+        anim: c.anim, actions: c.actions, row: wornTier(S.equipped) - 1, h: 56 }
+    : null;
+  // What the rig wears, a band per slot. This is the thing the whole rewrite
+  // was for: the piece in the slot is the piece on the hero, with no averaging
+  // and nothing hidden.
+  S.hero.rig = DEV_RIG ? {
+    head: bandIndex(S.equipped && S.equipped.head),
+    chest: bandIndex(S.equipped && S.equipped.chest),
+    legs: bandIndex(S.equipped && S.equipped.chest),
+    hands: bandIndex(S.equipped && S.equipped.hands),
+    feet: bandIndex(S.equipped && S.equipped.feet),
+    // Falls back to the glove band so the hero is never empty-handed while the
+    // weapon slot is still being wired through the bag.
+    weapon: bandIndex(S.equipped && (S.equipped.weapon || S.equipped.hands)),
+  } : null;
 }
 
 function takeCard(i) {
@@ -495,7 +733,10 @@ function takeCard(i) {
   applyCard(S, card);
   // A remedy acts now rather than changing the sheet, and the hero's maximum
   // is only known here — it is built from gear and perks together.
-  if (card.type === 'remedy' && card.id === 'fullheal') S.hero.hp = stats().maxHp;
+  if (card.type === 'remedy' && card.id === 'fullheal') {
+    S.hero.hp = stats().maxHp;
+    S.hero.act = { pose: 'heal', t: 0.7, hold: 0.7 };
+  }
   Audio.sfx.levelUp();
   UI.toast(card.type === 'skill' ? `${card.name} learned`
          : card.type === 'remedy' ? `${card.name} — made whole`
@@ -542,6 +783,56 @@ function openMap() {
   S.phase = 'map';
   S.roads = rollRoads();
   UI.showMap(S.roads, S.section);
+}
+
+/**
+ * The camp: the screen a run opens on, between Begin and the first step.
+ *
+ * A choosing screen. One place at the fire per class, and the one that is
+ * standing lit is the class this run is walked as — **one character to a run**,
+ * so the choice is only offered while a run is still untouched. Once the road
+ * has been started, the other three can be read but not taken, and the run has
+ * to end before the choice comes back.
+ *
+ * Nothing here touches the run. `S.running` stays false, so the clock does not
+ * start until the button is pressed.
+ */
+function showCamp() {
+  const st = heroStats(S.hero, S.gear, S.perks, S.equipped);
+  // A run nobody has walked a step of yet. Stage 1, no opening cards taken —
+  // the same test `start()` uses to decide whether to deal them.
+  const fresh = S.stage === 1 && S.section === 1 && !S.openingDone;
+
+  UI.showCamp(CLASSES.map((c) => {
+    const mine = c.key === S.hero.class;
+    return {
+      key: c.key,
+      name: c.name,
+      sheet: c.sheet,
+      // Not ready yet: no body is drawn, only the worn ground of a place.
+      locked: !c.ready,
+      // Takeable is what the button reads: this run can only be walked by the
+      // class it was started as, unless it has not been started at all.
+      takeable: !!c.ready && (fresh || mine),
+      // Their own kit only if they are the one carrying this run's gear.
+      // What they are wearing, which is now the only thing that sets the look.
+      tier: mine ? wornTier(S.equipped) : 1,
+      kit: mine ? UI.heroKitFor(S.gear) : null,
+      sub: !c.ready ? 'Yet to be found'
+        : mine ? `Level ${S.hero.level}`
+        : fresh ? 'Ready to walk' : 'Not this run',
+      detail: mine
+        ? `${levelFor(S.section)} \u00b7 Stage ${S.stage} \u00b7 ${st.maxHp} life \u00b7 \u2620 ${S.skulls.toLocaleString()}`
+        : c.blurb,
+    };
+  }), S.section);
+}
+
+function start() {
+  S.running = true;
+  UI.banner(levelFor(S.section));
+  // A fresh run opens on the cards rather than a fight.
+  if (!S.openingDone) { S.openingPicks = OPENING_PICKS; openDraft('opening'); }
 }
 
 function chooseRoad(i) {
@@ -598,7 +889,7 @@ function startDrop(forcedPot) {
   const pot = forcedPot || S.pot;
   S.pot = 0;
   clearBattlefield();
-  if (pot <= 0) { S.drop = null; S.lastDrop = 0; afterWave(); return; }
+  if (pot <= 0) { S.drop = null; S.lastDrop = 0; openDraft('map'); return; }
   S.drop = Coffin.start(pot);
   Audio.sfx.descend();
 }
@@ -627,24 +918,57 @@ function endWave() {
     const level = S.section;
     const bonus = Math.round(bossSkullBonus(level) * mul);
     S.pot += bonus;
-    const loot = rollBossLoot(level);
-    S.bag.push(...loot);
-    S.newLoot += loot.length;
-    UI.flashBag();
-    UI.toast(`${loot.length} pieces taken from the body · ☠ ${bonus} more`, 3);
+    // The pile is a thing that lands, not a line of text. It falls where the
+    // boss stood, cracks the ground, and waits to be opened — armour is the
+    // only thing skulls cannot buy, so taking it should be an act.
+    S.chest = {
+      x: S.hero.x + 1.6, y: 0, z: 22, vz: 0, t: 0,
+      state: 'fall', loot: rollBossLoot(level),
+    };
+    UI.toast(`☠ ${bonus} more from the body`, 2.4);
     // A boss ends the level. The map waits until its drop and cards are done —
     // choosing a road is the last beat, not an interruption of the reward.
     S.pendingMap = true;
   }
 
-  if (++S.wavesSinceDrop >= WAVES_PER_DROP) {
+  // Nothing follows immediately. The lull is the beat, and `afterLull` decides
+  // what the beat is followed by.
+  S.phase = 'lull';
+  S.phaseT = 0;
+}
+
+/**
+ * How many waves fill a coffin.
+ *
+ * Three, except on the very first map of a run, which sends one — a new player
+ * should see the whole loop (fight, coffin, cards, a fresh map) inside their
+ * first minute rather than three fights in.
+ */
+const wavesPerDrop = () => (S.stage <= 1 ? 1 : WAVES_PER_DROP);
+
+/**
+ * What follows a won wave.
+ *
+ * Either another set of enemies on the same ground — the hero does not walk in
+ * again, they are already standing there — or the coffin, which ends the map
+ * and hands over to the cards and then to a new one.
+ */
+function afterLull() {
+  clearBattlefield();
+  if (S.formation && S.formation.id === 'boss') S.wavesSinceBoss = 0;
+  else S.wavesSinceBoss++;
+
+  if (++S.wavesSinceDrop >= wavesPerDrop()) {
     S.wavesSinceDrop = 0;
     startDrop();
     return;
   }
-  clearBattlefield();
+
   UI.toast(`☠ ${S.pot.toLocaleString()} into the coffin`);
-  afterWave();
+  S.wave++;
+  S.stage++;
+  beginEncounter();
+  save();
 }
 
 function updateDrop(dt) {
@@ -660,34 +984,23 @@ function updateDrop(dt) {
     Audio.sfx.bank();
     UI.toast(`☠ ${won.toLocaleString()} recovered`);
     S.drop = null;
-    afterWave();
+    // The cards come straight off the coffin — the skulls it just brought up
+    // are what buys them, and asking what to spend them on while the number is
+    // still on screen is the whole beat.
+    openDraft('map');
   }
 }
 
-// Runs at the end of every wave, whether or not a coffin went down the shaft.
-// This is where the two counters that pace the game are kept — the one towards
-// the next set of cards and the one towards the next boss — and where the road
-// is told to move on. What differs is only where it moves to: mid-section that
-// is the next wave, at the end of one it is the next section.
-function afterWave() {
-  const after = S.wave < S.wavesInSection ? 'wave' : 'section';
-  // A boss resets the count towards the next one; every other wave adds to it.
-  if (S.formation && S.formation.id === 'boss') S.wavesSinceBoss = 0;
-  else S.wavesSinceBoss++;
-
-  if (++S.wavesSinceDraft >= WAVES_PER_DRAFT) {
-    S.wavesSinceDraft = 0;
-    openDraft(after);
-    return;
-  }
-  advance(after);
-}
-
-// Where the road goes once the cards are done with — or straight away, on the
-// four waves out of five that have no cards at all.
-function advance(after) {
-  if (S.pendingMap) { openMap(); return; }
-  if (after === 'section') nextSection();
+/**
+ * Where the road goes once the cards are done with.
+ *
+ * A fresh map every time: the hero walks in from the top again. Which map it is
+ * depends on where the last one left the section — mid-section it is the next
+ * wave along, at the end of one it is a new Level.
+ */
+function loadNextMap() {
+  if (S.pendingMap) { openMap(); return; }   // a boss fork is chosen first
+  if (S.wave >= S.wavesInSection) nextSection();
   else nextWave();
 }
 
@@ -757,7 +1070,7 @@ function closeDraft() {
   if (after === 'opening') {
     if (--S.openingPicks > 0) { openDraft('opening'); return; }
     S.openingDone = true;
-    S.phase = 'march';
+    S.phase = 'enter';
     save();
     return;
   }
@@ -765,7 +1078,7 @@ function closeDraft() {
   // The dev loop covers drop *and* cards, since the cards are now part of the
   // same beat and picking one is what ends it.
   if (DEV_DROP) { startDrop(DEV_DROP); return; }
-  advance(after);
+  loadNextMap();
 }
 
 // Advance past the section boundary. Everything that resets per section —
@@ -798,6 +1111,19 @@ function update(dt) {
   if (h.hp > st.maxHp) h.hp = st.maxHp;
   h.maxHp = st.maxHp;
   h.hurt = Math.max(0, h.hurt - dt * 4);
+  // A cast pose outlives the instant that set it, so the eye has time to read
+  // it. Dying drops it — a corpse holding a battle cry is a comic bug — and a
+  // move whose release never came still resolves, because a skill that ate its
+  // cooldown and then did nothing is the worst bug this could have.
+  if (h.act) {
+    h.act.t -= dt;
+    const landed = 1 - Math.max(0, h.act.t) / h.act.hold >= WINDUP;
+    if (h.act.fire && (landed || h.act.t <= 0)) { const f = h.act.fire; h.act.fire = null; f(); }
+    if (h.act.t <= 0 || h.dead) {
+      if (h.act.fire) h.act.fire();
+      h.act = null;
+    }
+  }
   // Renewal ticks wherever the hero is — mid-fight, on the march, watching a
   // coffin fall. Healing that stopped between encounters would be a worse
   // version of Field Dressing rather than a different answer to the same
@@ -810,8 +1136,13 @@ function update(dt) {
     S.reviveTimer -= dt;
     UI.showDeath(true, Math.max(0, S.reviveTimer));
     if (S.reviveTimer <= 0) revive();
-  } else if (S.phase === 'march') {
-    marchStep(dt);
+  } else if (S.phase === 'enter') {
+    enterStep(dt);
+  } else if (S.phase === 'lull') {
+    // The beat after a wave. The hero stands in it and catches their breath.
+    idleStep(dt, st);
+    S.phaseT += dt;
+    if (S.phaseT >= LULL && !S.chest) afterLull();
   } else if (S.phase === 'fight') {
     fightStep(dt, st);
   } else if (S.phase === 'drop') {
@@ -821,6 +1152,7 @@ function update(dt) {
     idleStep(dt, st);   // the hero waits, for as long as the choice takes
   }
 
+  if (S.chest) updateChest(dt);
   if (S.phase === 'fight' && !h.dead) pumpSpawns(dt);
   updateMonsters(dt);
   updateProjectiles(dt);
@@ -835,15 +1167,28 @@ function update(dt) {
     if (m.dead) { m.fade -= dt * 0.85; if (m.fade <= 0 && S.phase !== 'fight') S.monsters.splice(i, 1); }
   }
 
-  // The camera sits a little ahead of the hero, looking down the road.
-  S.cam.x = lerp(S.cam.x, h.x + 1.1, Math.min(1, dt * 4));
-  S.cam.y = lerp(S.cam.y, h.y * 0.4 - 0.6, Math.min(1, dt * 4));
+  // The camera holds on the mark for as long as the map is being fought over,
+  // so the hero walks into a still frame instead of dragging the world behind
+  // them. Only the coffin and the cards let it off the mark.
+  const held = S.phase === 'enter' || S.phase === 'fight' || S.phase === 'lull';
+  // The mark, not the hero — but the mark can walk forward when the only thing
+  // left to fight is a shooter holding its distance, and the camera has to go
+  // with it or the hero fights their way off the side of the screen.
+  const mark = held && h.anchor && S.phase !== 'enter' ? h.anchor.x : S.markX;
+  const tx = (held ? mark : h.x) + 1.1;
+  const ty = (held ? 0 : h.y * 0.4) - 0.6;
+  if (S.camSnap) { S.cam.x = tx; S.cam.y = ty; S.camSnap = false; }
+  else {
+    S.cam.x = lerp(S.cam.x, tx, Math.min(1, dt * 4));
+    S.cam.y = lerp(S.cam.y, ty, Math.min(1, dt * 4));
+  }
 }
 
-function marchStep(dt) {
+// Walking in. Ends on the mark, which is where the camera has been waiting.
+function enterStep(dt) {
   const h = S.hero;
-  moveToward(h, S.marchTo, 0, dt, ROAD);
-  if (h.x >= S.marchTo - 0.15) beginEncounter();
+  moveToward(h, S.markX, 0, dt, ROAD);
+  if (h.x >= S.markX - 0.15) beginEncounter();
 }
 
 // Out of combat the hero stands easy and closes up small wounds.
@@ -878,15 +1223,30 @@ function fightStep(dt, st) {
     return;
   }
 
+  const d = Math.hypot(target.x - h.x, target.y - h.y);
+  const reach = h.range + (target.scale || 1) * 0.35;
+
+  // Holding the mark is the rule, but it cannot be allowed to deadlock the
+  // game. An archer keeps five tiles between itself and the hero, and the hero
+  // is leashed to two from the mark — so a wave of nothing but shooters could
+  // never be reached, never be killed, and never end. When the only thing left
+  // to fight has been out of reach for a moment, the *mark itself* walks
+  // forward. The hero still never chases: their ground moves up instead.
+  if (d > reach + 0.1) {
+    h.stuck = (h.stuck || 0) + dt;
+    if (h.stuck > 0.6) {
+      const k = Math.min(1, dt * 1.1);
+      a.x += (target.x - a.x) * k;
+      a.y += (target.y - a.y) * k;
+    }
+  } else h.stuck = 0;
+
   let gx = target.x, gy = target.y;
   const ad = Math.hypot(gx - a.x, gy - a.y);
   if (ad > LEASH) {                     // hold the mark; never chase
     gx = a.x + (gx - a.x) / ad * LEASH;
     gy = a.y + (gy - a.y) / ad * LEASH;
   }
-
-  const d = Math.hypot(target.x - h.x, target.y - h.y);
-  const reach = h.range + (target.scale || 1) * 0.35;
   const speedMul = h.buffs.frenzy > 0 ? 1.15 : 1;
 
   if (d > reach && Math.hypot(gx - h.x, gy - h.y) > 0.15) {
@@ -897,6 +1257,10 @@ function fightStep(dt, st) {
     faceTo(h, target.x - h.x, target.y - h.y);
     if (d <= reach && h.atkTimer <= 0 && !h.swing) {
       h.swing = 0.001;
+      // Counted, not timed: a sheet with more than one attack pose alternates
+      // on this, and a fight where every blow is the same frame reads as one
+      // blow repeated rather than a hero working.
+      h.swings = (h.swings || 0) + 1;
       h.pending = target;
       h.atkTimer = st.atkSpeed / (h.buffs.frenzy > 0 ? 2 : 1);
       Audio.sfx.swing();
@@ -975,8 +1339,12 @@ function meleeAI(m, h, d, dt) {
 // Archers and wraiths hold their distance and shoot; walk them down or eat it.
 function rangedAI(m, h, d, dt) {
   const keep = m.keep || 5;
+  // How far it has already given ground. A shooter that retreats every time the
+  // hero steps forward can be walked down the road for ever, and the wave never
+  // ends — so it gives ground once and then stands and fights.
+  const given = m.home ? Math.hypot(m.x - m.home.x, m.y - m.home.y) : 0;
   if (d > keep + 0.8) moveToward(m, h.x, h.y, dt, ROAD);
-  else if (d < keep - 1.2) {
+  else if (d < keep - 1.2 && given < 2.5) {
     const ux = (m.x - h.x) / (d || 1), uy = (m.y - h.y) / (d || 1);
     moveToward(m, m.x + ux * 2, m.y + uy * 2, dt, ROAD, 0.9);
   } else m.walk = 0;
@@ -1067,7 +1435,7 @@ function resolveBossMove(m, mv, h) {
       const key = mv.adds[i % mv.adds.length];
       S.monsters.push(makeMonster(key, S.stage, onRoad({
         x: m.x + (Math.random() - 0.5) * 4, y: (Math.random() - 0.5) * HALF * 1.6,
-      })));
+      }), false, threat()));
     }
     effect('ward', m.x, m.y, 1, 0.8);
     Audio.sfx.bones();
@@ -1131,6 +1499,7 @@ function save() {
       stage: S.stage, section: S.section, wave: S.wave, wavesInSection: S.wavesInSection, best: S.best,
       wavesSinceDraft: S.wavesSinceDraft, wavesSinceBoss: S.wavesSinceBoss,
       wavesSinceDrop: S.wavesSinceDrop, pot: S.pot, openingDone: S.openingDone,
+      class: S.hero.class,
       pendingMap: S.pendingMap,
       level: S.hero.level, xp: S.hero.xp, xpNext: S.hero.xpNext,
       kills: S.kills, earned: S.earned, deaths: S.deaths,
@@ -1141,13 +1510,21 @@ function save() {
 function load() {
   let d;
   try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch { d = null; }
-  if (!d) return;
+  // A run that has never been played starts kitted: one Gray piece in every
+  // slot, weapon included. Nobody walks the road empty-handed.
+  if (!d) { S.equipped = startingKit(); return; }
   // Saves written before skulls became the only currency carry `gold`; the two
   // were the same numbers under different names, so an old purse converts 1:1.
   S.skulls = (d.skulls ?? d.gold) | 0;
   Object.assign(S.gear, d.gear || {});
   S.perks = d.perks || {};
   S.equipped = d.equipped || {};
+  // Saves from before the starting kit were written by a game that sold armour
+  // in the armoury. There is no armoury now, so a hero who has nothing on and
+  // nothing in the bag would have no way back — hand them the same Gray set.
+  if (!Object.keys(S.equipped).length && !(Array.isArray(d.bag) && d.bag.length)) {
+    S.equipped = startingKit();
+  }
   S.bag = Array.isArray(d.bag) ? d.bag : [];
   S.newLoot = Math.max(0, d.newLoot | 0);
   if (Array.isArray(d.loadout) && d.loadout.length) S.loadout = d.loadout.slice(0, MAX_SKILLS);
@@ -1164,6 +1541,8 @@ function load() {
   S.openingDone = d.openingDone !== undefined ? !!d.openingDone : true;
   S.best = Math.max(1, d.best | 0 || 1);
   S.kills = d.kills | 0; S.earned = d.earned | 0; S.deaths = d.deaths | 0;
+  // Saves from before the choosing screen were all walked by the warrior.
+  S.hero.class = d.class || 'warrior';
   S.hero.level = Math.max(1, d.level | 0 || 1);
   S.hero.xp = d.xp || 0;
   S.hero.xpNext = d.xpNext || 60;
@@ -1193,14 +1572,40 @@ if (DEV_DROP) {
   startDrop(DEV_DROP);
 }
 
+// Straight to the camp, with no run started behind it — pressing the button
+// from here marches exactly as it would have from the title.
+if (DEV_CAMP && !DEV_DROP) {
+  document.getElementById('overlay').classList.add('hidden');
+  showCamp();
+}
+
 let last = performance.now();
+let frameErrors = 0;
+
+/**
+ * One frame — and it always asks for the next one.
+ *
+ * The `requestAnimationFrame` used to sit at the end of the body, so a single
+ * thrown frame ended the session: no more rAF was ever queued, the canvas
+ * froze on whatever it had last drawn, and the HUD kept its final values. It
+ * looked exactly like a hang, which is the worst way for a bug to present —
+ * twice this happened and twice it cost an hour to find. The scheduling is now
+ * unconditional and a bad frame is logged and skipped instead of fatal.
+ */
 function loop(now) {
+  requestAnimationFrame(loop);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  // Paused still renders — the scene stays on screen, it just stops moving.
-  if (S.running && !S.paused) update(dt);
-  render(ctx, S, S.time, dt);
-  UI.frame(S, dt);
-  requestAnimationFrame(loop);
+  try {
+    // Paused still renders — the scene stays on screen, it just stops moving.
+    if (S.running && !S.paused) update(dt);
+    render(ctx, S, S.time, dt);
+    UI.frame(S, dt);
+  } catch (e) {
+    // Noisy on purpose for the first few, then quiet: a fault that repeats
+    // every frame would otherwise bury the console it is meant to be reported
+    // in.
+    if (frameErrors++ < 5) console.error(`frame ${frameErrors}:`, e);
+  }
 }
 requestAnimationFrame(loop);

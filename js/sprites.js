@@ -289,6 +289,10 @@ export function drawActor(ctx, a, sx, sy, t) {
 
 function drawWeapon(ctx, k, fx, W) {
   const c = ctx;
+  // Empty-handed. The blade's steel is a fixed colour — it has to be, it is the
+  // brightest thing on a character — so a kit that wants a bare silhouette
+  // cannot get one by recolouring, only by not drawing the weapon at all.
+  if (k.weapon === 'none') return;
   if (k.glow) { c.save(); c.shadowColor = k.glow; c.shadowBlur = 12; }
   switch (k.weapon) {
     case 'shortsword':
@@ -418,6 +422,299 @@ export function drawBrazier(ctx, sx, sy, t, seed) {
   ctx.restore();
 }
 
+
+/**
+ * The boss's chest, in the air or on the ground.
+ *
+ * `z` is how far above the ground it still is, `open` how far the lid has swung
+ * (0 shut, 1 wide). Drawn from primitives like everything else, and lit from
+ * the inside once it is open so the thing you are being asked to click is the
+ * brightest object on the screen.
+ */
+export function drawChest(ctx, sx, sy, z, open, t, scale = 1) {
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.scale(scale, scale);
+
+  // Its shadow on the ground stays where the chest will land, and tightens as
+  // it falls — the only cue that says "this is coming down here".
+  const near = Math.max(0, 1 - z / 22);
+  drawShadow(ctx, 0, 0, 15 + (1 - near) * 10, 0.28 + near * 0.24);
+
+  ctx.translate(0, -z);
+  const W = 17, H = 12;
+
+  // Body.
+  ctx.fillStyle = '#3a2a1a';
+  ctx.fillRect(-W, -H, W * 2, H);
+  ctx.fillStyle = '#4a3722';
+  ctx.fillRect(-W, -H, W * 2, 3);
+  // Iron bands.
+  ctx.fillStyle = '#2a2420';
+  ctx.fillRect(-W * 0.62, -H, 4, H);
+  ctx.fillRect(W * 0.62 - 4, -H, 4, H);
+  // Lock.
+  ctx.fillStyle = open > 0.05 ? '#6b5c3e' : '#c8a24a';
+  ctx.fillRect(-3, -H * 0.62, 6, 5);
+
+  // The light inside, once there is a gap for it to get out of.
+  if (open > 0.02) {
+    const glow = ctx.createRadialGradient(0, -H, 2, 0, -H, 46);
+    glow.addColorStop(0, `rgba(255,206,110,${0.5 * open})`);
+    glow.addColorStop(1, 'rgba(255,190,90,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(0, -H, 46, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Lid, hinged at the back and swung up by `open`.
+  ctx.save();
+  ctx.translate(0, -H);
+  ctx.rotate(-open * 1.15);
+  ctx.fillStyle = '#4a3722';
+  ctx.fillRect(-W, -7, W * 2, 7);
+  ctx.fillStyle = '#5c4630';
+  ctx.fillRect(-W, -7, W * 2, 2.5);
+  ctx.restore();
+
+  // Once it is open it keeps asking: a slow pulse on the rim.
+  if (open > 0.9) {
+    ctx.strokeStyle = `rgba(224,196,99,${0.45 + Math.sin(t * 3) * 0.25})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, W + 5, 7, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * A campfire: logs, embers and flame, drawn from the same primitives as the
+ * brazier but sitting on the ground rather than in a stand.
+ *
+ * The camp is the only place in the game where nothing is trying to kill the
+ * hero, and the fire is what says so — it is the one warm, moving thing on a
+ * screen where everybody is standing still.
+ */
+export function drawCampfire(ctx, sx, sy, t, scale = 1) {
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.scale(scale, scale);
+
+  // Embers under the logs, breathing. Drawn first so the logs sit in them.
+  const pulse = 0.75 + Math.sin(t * 2.4) * 0.25;
+  const bed = ctx.createRadialGradient(0, -2, 0, 0, -2, 26);
+  bed.addColorStop(0, `rgba(255,150,50,${0.5 * pulse})`);
+  bed.addColorStop(1, 'rgba(255,120,30,0)');
+  ctx.fillStyle = bed;
+  ctx.beginPath(); ctx.ellipse(0, -2, 26, 11, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Three logs leaning into each other.
+  ctx.lineCap = 'round';
+  for (const [x0, y0, x1, y1, w] of [
+    [-15, 1, 9, -7, 5], [14, 1, -8, -7, 5], [-9, 3, 10, 3, 4.5],
+  ]) {
+    ctx.strokeStyle = '#3a2a1e'; ctx.lineWidth = w;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,90,60,.55)'; ctx.lineWidth = w * 0.35;
+    ctx.beginPath(); ctx.moveTo(x0, y0 - w * 0.3); ctx.lineTo(x1, y1 - w * 0.3); ctx.stroke();
+  }
+
+  // Flame, three tongues of it, each on its own rhythm so the shape never
+  // reads as a loop.
+  const f = t * 5.5;
+  for (let i = 0; i < 3; i++) {
+    const h = 20 + Math.sin(f + i * 1.9) * 7 - i * 3;
+    const w = 9 - i * 2.4;
+    ctx.fillStyle = ['rgba(214,70,20,.8)', 'rgba(245,165,45,.9)', 'rgba(255,236,170,.95)'][i];
+    ctx.beginPath();
+    ctx.moveTo(-w, -4);
+    ctx.quadraticCurveTo(Math.sin(f * 1.2 + i) * 4, -4 - h, w, -4);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// A fixed-seed scatter. The camp's ground grain must not crawl between frames,
+// so it cannot come from Math.random — the same seed has to lay the same dirt
+// down every time it is painted.
+function seeded(seed) {
+  let s = seed >>> 0;
+  return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+}
+
+/**
+ * The camp itself: what stands behind and around the fire.
+ *
+ * Drawn as flat `#0a0806` cut-outs rather than lit objects, because the light
+ * in this scene comes from one place and everything else is what that light
+ * finds. A crypt arch and dead trees on the horizon, a ring of stones, a
+ * bedroll and a woodpile on the ground — enough for the eye to read a place
+ * that somebody camped in, and no more.
+ *
+ * Painted under the firelight wash on purpose: the glow is what pulls these
+ * shapes out of the dark, so anything drawn over it reads as pasted on.
+ */
+export function drawCampSet(ctx, W, H, t, fireX, fireY) {
+  const sky = H * 0.50;
+
+  // The fire's light on the air above it. Without this the horizon is black
+  // cut-outs on black ground and simply cannot be seen — a silhouette needs
+  // something behind it to be a silhouette against.
+  // Filled edge to edge, not into a band: a gradient cut off by a rectangle
+  // leaves a straight seam across the sky, which reads as a box on the screen
+  // rather than light in the air.
+  const haze = ctx.createRadialGradient(fireX, sky + H * 0.06, 10, fireX, sky + H * 0.06, W * 0.42);
+  haze.addColorStop(0, 'rgba(122,70,30,.40)');
+  haze.addColorStop(0.45, 'rgba(74,42,19,.18)');
+  haze.addColorStop(1, 'rgba(20,12,7,0)');
+  ctx.fillStyle = haze;
+  ctx.fillRect(0, 0, W, H);
+
+  // ---- horizon. Flat black, no gradient: these are holes in the light. -----
+  ctx.fillStyle = '#0a0806';
+  // A broken crypt arch, the one built thing out there.
+  ctx.save();
+  ctx.translate(W * 0.20, sky);
+  ctx.fillRect(-58, -H * 0.15, 17, H * 0.15);
+  ctx.fillRect(41, -H * 0.12, 17, H * 0.12);
+  ctx.beginPath();
+  ctx.moveTo(-58, -H * 0.15);
+  ctx.quadraticCurveTo(0, -H * 0.235, 58, -H * 0.12);
+  ctx.lineTo(58, -H * 0.155);
+  ctx.quadraticCurveTo(0, -H * 0.27, -58, -H * 0.185);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+
+  // Leaning headstones.
+  for (const [fx, fh, tilt] of [[0.06, 0.055, -0.16], [0.86, 0.045, 0.2], [0.955, 0.03, -0.1]]) {
+    ctx.save();
+    ctx.translate(W * fx, sky); ctx.rotate(tilt);
+    ctx.beginPath();
+    ctx.moveTo(-11, 0); ctx.lineTo(-11, -H * fh);
+    ctx.quadraticCurveTo(0, -H * fh - 13, 11, -H * fh);
+    ctx.lineTo(11, 0); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  // Dead trees. Bare forks, thinning outwards — the verge of the road the camp
+  // is pitched beside.
+  ctx.strokeStyle = '#0a0806';
+  ctx.lineCap = 'round';
+  for (const [fx, fh, seed] of [[0.34, 0.30, 3], [0.68, 0.25, 11], [0.965, 0.34, 27]]) {
+    const r = seeded(seed);
+    const x = W * fx, top = sky - H * fh;
+    ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(x, sky); ctx.lineTo(x + (r() - 0.5) * 14, top); ctx.stroke();
+    for (let i = 0; i < 5; i++) {
+      const by = top + (sky - top) * (0.1 + r() * 0.5);
+      const dir = r() < 0.5 ? -1 : 1;
+      ctx.lineWidth = 3.4 - i * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, by);
+      ctx.quadraticCurveTo(x + dir * 22, by - 12, x + dir * (30 + r() * 22), by - 26 - r() * 20);
+      ctx.stroke();
+    }
+  }
+
+  // ---- ground grain. Trodden earth, not a gradient. ------------------------
+  ctx.save();
+  ctx.translate(fireX, H * 0.80); ctx.scale(1, 0.34); ctx.translate(-fireX, -H * 0.80);
+  ctx.beginPath(); ctx.arc(fireX, H * 0.80, W * 0.58, 0, Math.PI * 2); ctx.clip();
+  const r = seeded(91);
+  for (let i = 0; i < 240; i++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * W * 0.58;
+    ctx.fillStyle = r() < 0.82 ? 'rgba(10,8,6,.24)' : 'rgba(150,118,74,.09)';
+    ctx.beginPath();
+    ctx.ellipse(fireX + Math.cos(a) * d, H * 0.80 + Math.sin(a) * d,
+                1 + r() * 3.4, 0.6 + r() * 1.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // ---- things somebody put there --------------------------------------------
+  const lit = 'rgba(255,168,80,.30)';
+  const s = Math.max(0.8, H / 560);
+
+  // The ring of stones the fire is built inside.
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2 + 0.3;
+    const x = fireX + Math.cos(a) * 54 * s, y = fireY + Math.sin(a) * 19 * s;
+    ctx.fillStyle = '#161009';
+    ctx.beginPath(); ctx.ellipse(x, y, (9 + (i % 3) * 2) * s, (4.5 + (i % 2)) * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = lit;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 1.6 * s, (7 + (i % 3) * 1.6) * s, 2.2 * s, 0, Math.PI, 0);
+    ctx.fill();
+  }
+
+  // A bedroll, and the woodpile the fire is being fed from.
+  prop(ctx, W * 0.13, H * 0.86, s, lit, (c) => {
+    c.beginPath(); c.ellipse(0, 0, 32, 12, -0.06, 0, Math.PI * 2); c.fill();
+    c.fillStyle = lit;
+    c.beginPath(); c.ellipse(-3, -4, 26, 5, -0.06, Math.PI, 0); c.fill();
+  });
+  prop(ctx, W * 0.83, H * 0.83, s, lit, (c) => {
+    for (let i = 0; i < 5; i++) {
+      const y = -i * 6, w = 26 - i * 3;
+      c.beginPath(); c.ellipse((i % 2) * 4 - 2, y, w, 4.6, 0, 0, Math.PI * 2); c.fill();
+    }
+    c.fillStyle = lit;
+    c.beginPath(); c.ellipse(-1, -26, 12, 2.4, 0, Math.PI, 0); c.fill();
+  });
+
+  // A spear and a shield, set down against a stone.
+  prop(ctx, W * 0.92, H * 0.77, s, lit, (c) => {
+    c.save(); c.rotate(0.22);
+    c.fillRect(-1.6, -74, 3.2, 74);
+    c.beginPath(); c.moveTo(-4.5, -74); c.lineTo(4.5, -74); c.lineTo(0, -90); c.closePath(); c.fill();
+    c.restore();
+    c.beginPath(); c.ellipse(-13, -13, 15, 16, 0.1, 0, Math.PI * 2); c.fill();
+    c.fillStyle = lit;
+    c.beginPath(); c.ellipse(-13, -15, 11, 11, 0.1, Math.PI * 0.9, Math.PI * 1.9); c.fill();
+  });
+}
+
+// Every prop is the same recipe: a black body on the ground with a fire-facing
+// edge and a contact shadow, so they all sit in the one light.
+function prop(ctx, x, y, s, lit, body) {
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(6,5,4,.55)';
+  ctx.beginPath(); ctx.ellipse(0, 2, 30, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#161009';
+  body(ctx);
+  ctx.restore();
+}
+
+/**
+ * The tripod and its pot, over the fire.
+ *
+ * Drawn after the flame rather than before it: a pot hanging in front of the
+ * fire is the single clearest way to say "somebody lives here for the night",
+ * and behind the flame it would simply be invisible.
+ */
+export function drawCookpot(ctx, fireX, fireY, s) {
+  ctx.save();
+  ctx.translate(fireX, fireY); ctx.scale(s, s);
+  ctx.strokeStyle = '#120d08';
+  ctx.lineWidth = 2.6; ctx.lineCap = 'round';
+  for (const dx of [-26, 24, 6]) {
+    ctx.beginPath(); ctx.moveTo(dx, 2); ctx.lineTo(1, -58); ctx.stroke();
+  }
+  // The hook and the pot.
+  ctx.beginPath(); ctx.moveTo(1, -56); ctx.lineTo(1, -44); ctx.stroke();
+  ctx.fillStyle = '#0f0b07';
+  ctx.beginPath();
+  ctx.moveTo(-13, -42); ctx.lineTo(13, -42);
+  ctx.quadraticCurveTo(11, -24, 0, -23);
+  ctx.quadraticCurveTo(-11, -24, -13, -42);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,168,80,.42)';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(-13.5, -41); ctx.lineTo(13.5, -41); ctx.stroke();
+  ctx.restore();
+}
 
 // ---------------------------------------------------------------------------
 // Scenery. Everything beside the road is drawn from primitives too, keyed off

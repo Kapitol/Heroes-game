@@ -27,6 +27,29 @@ export const SLOTS = [
 export const slotByKey = (k) => SLOTS.find(s => s.key === k);
 
 /**
+ * Painted art for a looted piece, or null while a slot still has none.
+ *
+ * One sheet per slot, five cells, worst band to best — so the cell is simply
+ * where the item's band sits on the ladder, and a Gold helm is the fifth helm
+ * on the sheet without a lookup table to keep in step. Slots with no sheet yet
+ * keep their glyph, which is why this returns null rather than a placeholder.
+ */
+export const SLOT_ART = {
+  head:   'art/helmets.png',
+  chest:  'art/warrior-chests.png',
+  hands:  'art/icons-gauntlets.png',
+  feet:   'art/icon-greaves.png',
+  weapon: 'art/icons-weapon.png',
+};
+
+export function itemArt(it) {
+  const src = it && SLOT_ART[it.slot];
+  if (!src) return null;
+  const cell = TIER_BANDS.findIndex(b => b.key === it.band);
+  return cell < 0 ? null : { src, cell };
+}
+
+/**
  * The attribute pool. `per` is what one point of item level is worth, so every
  * roll scales with the level it dropped at without a separate table per tier.
  *
@@ -134,6 +157,21 @@ export function rollItem(slotKey, level, forcedBand) {
 }
 
 /**
+ * What every hero owns before they have earned anything.
+ *
+ * A full set at the bottom of the ladder: Gray, level 1, one piece in every
+ * slot including the hand. Starting empty-handed was survivable while skulls
+ * bought plate in the armoury; now that armour only ever comes off a boss, an
+ * unarmed hero has twelve waves of nothing before their first upgrade, and the
+ * numbers simply do not hold up over that stretch.
+ */
+export function startingKit() {
+  const kit = {};
+  for (const s of SLOTS) kit[s.key] = rollItem(s.key, 1, 'gray');
+  return kit;
+}
+
+/**
  * What a boss leaves: two to four pieces of armour and one to three weapons.
  * Deeper bosses leave more, but the ceiling holds — the interesting growth is
  * in what the pieces roll, not how many of them there are.
@@ -174,5 +212,28 @@ export const attrText = (a) => {
   const def = ATTRS.find(x => x.key === a.key);
   return def ? def.fmt(a.value) : '';
 };
+
+/**
+ * The armour tier the hero reads as, from what they are actually wearing.
+ *
+ * Loot arrives a piece at a time and a hero ends up in a silver gauntlet and a
+ * gold helm at once. The body sheet has one tier per row and no way to show a
+ * mixed set — layers would, and this pipeline cannot make layers — so the body
+ * takes the *average* of what is worn and the individual pieces show as
+ * themselves in the armoury. Round up: a single gold piece should feel like it
+ * did something.
+ */
+export function wornTier(equipped) {
+  const worn = SLOTS.filter(s => s.armour)
+    .map(s => equipped && equipped[s.key])
+    .filter(Boolean);
+  if (!worn.length) return 1;
+  const sum = worn.reduce((t, it) => t + TIER_BANDS.findIndex(b => b.key === it.band) + 1, 0);
+  return Math.max(1, Math.min(TIER_BANDS.length, Math.round(sum / worn.length)));
+}
+
+/** Where a piece sits on the five-band ladder, as a row index, or -1 for none. */
+export const bandIndex = (it) =>
+  (it ? TIER_BANDS.findIndex(b => b.key === it.band) : -1);
 
 export const bandName = (key) => (TIER_BANDS.find(b => b.key === key) || {}).name || key;

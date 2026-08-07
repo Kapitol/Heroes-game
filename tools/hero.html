@@ -1,0 +1,129 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Split-tier test</title>
+<!--
+  Can the body be cut in half and taken from two different tiers?
+
+  Every row of a tier sheet is the same character in the same pose, so in
+  principle the legs could come from the Gold row and the torso from the Gray
+  one, and the hero would wear his boots and his cuirass separately without a
+  single new sprite. This page draws exactly that, against the unsplit figure,
+  so the seam can be judged rather than argued about.
+-->
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; background: #14100c; color: #cbbfa8;
+    font: 13px/1.5 "Iowan Old Style", Georgia, serif;
+  }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+
+<canvas id="cv"></canvas>
+
+<script type="module">
+import * as Atlas from '../js/atlas.js';
+
+const SHEET = '../art/warrior-combat.png';
+const COLS = 4, ROWS = 5;
+const POSE = 0;              // standing
+const BODY_TIER = 0;         // Gray torso
+const BOOT_TIER = 4;         // Bone greaves
+const WAIST = 0.62;          // fraction of the figure's height that is "legs"
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function frame() {
+  requestAnimationFrame(frame);
+
+  const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+  if (cv.width !== r.width * d || cv.height !== r.height * d) {
+    cv.width = r.width * d; cv.height = r.height * d;
+  }
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.fillStyle = '#14100c';
+  ctx.fillRect(0, 0, r.width, r.height);
+
+  const sh = Atlas.sheet(SHEET, COLS, ROWS, { auto: true });
+  if (!sh) return;
+
+  const ref = sh.cells[BODY_TIER * COLS + POSE];
+  const baseline = r.height * 0.72;
+  const scale = Math.min(r.height * 0.52 / ref.h, r.width * 0.22 / ref.w);
+
+  const x1 = r.width * 0.2, x2 = r.width * 0.5, x3 = r.width * 0.8;
+
+  whole(sh, BODY_TIER, x1, baseline, scale, 'Gray, whole');
+  split(sh, BODY_TIER, BOOT_TIER, x2, baseline, scale);
+  whole(sh, BOOT_TIER, x3, baseline, scale, 'Bone, whole');
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#8a7c62';
+  ctx.font = '13px "Iowan Old Style", Georgia, serif';
+  ctx.fillText('the middle figure is a Gray torso over Bone greaves, cut at the belt',
+    r.width / 2, r.height - 46);
+  ctx.fillStyle = '#7d705a';
+  ctx.font = '12px ui-monospace, Menlo, monospace';
+  const a = sh.cells[BODY_TIER * COLS + POSE], b = sh.cells[BOOT_TIER * COLS + POSE];
+  ctx.fillText(`row ${BODY_TIER} cell ${a.w}x${a.h}   row ${BOOT_TIER} cell ${b.w}x${b.h}   `
+    + `height drift ${(b.h - a.h)}px (${((b.h / a.h - 1) * 100).toFixed(1)}%)`,
+    r.width / 2, r.height - 24);
+}
+
+function whole(sh, tier, x, baseline, scale, label) {
+  Atlas.drawSprite(ctx, sh, tier * COLS + POSE, x, baseline, scale, false);
+  caption(x, baseline, label);
+}
+
+/**
+ * The same figure, torso from one row and legs from another.
+ *
+ * Both halves are anchored on their own footprint the way the renderer does it,
+ * then each is clipped to its share of the height — so if the two rows really
+ * are the same drawing, the seam lands in the same place on both and the join
+ * is invisible.
+ */
+function split(sh, topTier, botTier, x, baseline, scale) {
+  const top = sh.cells[topTier * COLS + POSE];
+  const bot = sh.cells[botTier * COLS + POSE];
+  const h = top.h * scale;
+  const cut = baseline - h * (1 - WAIST);
+
+  // legs first, clipped to below the belt
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x - 200, cut, 400, baseline - cut + 40);
+  ctx.clip();
+  Atlas.drawSprite(ctx, sh, botTier * COLS + POSE, x, baseline, (top.h / bot.h) * scale, false);
+  ctx.restore();
+
+  // torso above it
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x - 200, baseline - h - 40, 400, (baseline - h - 40 < cut ? cut - (baseline - h - 40) : 0));
+  ctx.clip();
+  Atlas.drawSprite(ctx, sh, topTier * COLS + POSE, x, baseline, scale, false);
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(255,120,60,.35)';
+  ctx.beginPath();
+  ctx.moveTo(x - 70, cut + 0.5); ctx.lineTo(x + 70, cut + 0.5);
+  ctx.stroke();
+
+  caption(x, baseline, 'split at the belt');
+}
+
+function caption(x, baseline, label) {
+  ctx.textAlign = 'center';
+  ctx.strokeStyle = 'rgba(224,196,99,.12)';
+  ctx.beginPath();
+  ctx.moveTo(x - 90, baseline + 0.5); ctx.lineTo(x + 90, baseline + 0.5);
+  ctx.stroke();
+  ctx.fillStyle = '#e0c463';
+  ctx.font = '14px "Iowan Old Style", Georgia, serif';
+  ctx.fillText(label, x, baseline + 30);
+}
+
+requestAnimationFrame(frame);
+</script>
