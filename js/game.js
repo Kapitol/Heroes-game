@@ -430,6 +430,7 @@ function hurtMonster(m, amount, crit) {
   float(m.x, m.y, crit ? `${Math.round(dealt)}!` : `${Math.round(dealt)}`,
         crit ? '#ffd76a' : '#f0e6d2', crit);
   Audio.sfx[crit ? 'crit' : 'hit']();
+  Audio.sfx.foeHurt(m.scale || 1);
   if (m.boss && !m.enraged && m.hp <= m.maxHp * 0.3) {
     m.enraged = true;
     m.atk *= 0.65;

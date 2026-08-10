@@ -271,6 +271,13 @@ const BANK = {
   // happens once a run, a boss arrives once a stage — so there is nothing for
   // repetition to wear out, and a second variant would be weight for nothing.
   screamHero: 1, screamFoe: 1, growl: 1, laugh: 1, thud: 1, blast: 1,
+  // Three human grunts, one animal. Taking a hit happens constantly, so this
+  // is the one voice that does need variants.
+  // Two grunts, not the three the pack holds: the third peaks at 0.16, so
+  // matching it to the others means multiplying its noise floor by four as
+  // well, and at 1.46s it is three times their length. Two that belong
+  // together beat three where one hisses.
+  grunt: 2, gruntFoe: 1, heal: 1, spell: 1,
 };
 
 // name -> [{ buffer, gain }]. Empty until `loadBank` resolves, which is why
@@ -283,6 +290,12 @@ const bank = new Map();
 // measured off the decoded buffer rather than trusted from the file, so
 // swapping a file in needs no accompanying number.
 const PEAK = 0.7;
+
+// Ceiling on the make-up gain. Normalising is only ever supposed to bring a
+// hot file down or a slightly quiet one up; a file that needs more than this
+// is not quiet, it is a bad recording, and the difference between the two is
+// that the second brings its own hiss up with it.
+const MAX_GAIN = 2.5;
 
 async function loadOne(url) {
   const res = await fetch(url);
@@ -309,7 +322,7 @@ async function loadOne(url) {
   // A few milliseconds back, so the attack itself is not clipped off.
   const offset = Math.max(0, onset / buffer.sampleRate - 0.005);
 
-  return { buffer, offset, gain: peak > 0.0001 ? PEAK / peak : 1 };
+  return { buffer, offset, gain: peak > 0.0001 ? Math.min(MAX_GAIN, PEAK / peak) : 1 };
 }
 
 /**
@@ -328,6 +341,26 @@ function loadBank() {
       loadOne(`audio/${name}-${i}.m4a`).then((s) => list.push(s), () => {});
     }
   }
+}
+
+// When each throttled key last fired, on the audio clock.
+const lastAt = new Map();
+
+/**
+ * Whether enough time has passed to let this sound through again.
+ *
+ * **Voices need this and blows do not.** A sword landing four times in a
+ * second reads as a flurry; a man grunting four times in a second reads as a
+ * bug. Worse, the hero can be surrounded — five monsters landing on the same
+ * frame is five grunts stacked into one, which is loud and sounds like nothing
+ * at all. Held at the mix rather than in the game rules, because how often a
+ * voice may repeat is a property of the sound, not of the fight.
+ */
+function throttled(key, gap) {
+  const now = ctx ? ctx.currentTime : 0;
+  if ((lastAt.get(key) ?? -Infinity) + gap > now) return false;
+  lastAt.set(key, now);
+  return true;
 }
 
 /**
@@ -381,8 +414,26 @@ export const sfx = {
   // The gain is deliberately low. `hurt` fires on the same frame as the
   // attacker's `hit`, so it is the second sample in a single moment and has to
   // sit under the first or every exchange turns to mud.
-  hurt()       { sample('body', 0.32, 0.09);
+  // The grunt is the voice and the impact is the blow, and the synth tone that
+  // used to stand in for the voice is gone from underneath both — with a real
+  // grunt over it, it was a third thing arriving in the same instant and only
+  // muddied the two that meant something. It is still the fallback.
+  hurt()       { const cried = throttled('hurt', 0.34) && sample('grunt', 0.6);
+                 if (sample('body', 0.3, 0.09) || cried) return;
                  tone(210, { type: 'sawtooth', dur: 0.22, gain: 0.20, slide: -130 }); },
+
+  /**
+   * A monster taking one, in its own voice.
+   *
+   * Throttled hard and mixed under the hero's, because this fires on every
+   * blow the player lands — which in a good run is most of the seconds of the
+   * game. It is a reaction, not an event; the moment it competes with the
+   * weapon that caused it, both stop meaning anything.
+   */
+  foeHurt(scale = 1) {
+    if (!throttled('foeHurt', 0.7)) return;
+    sample('gruntFoe', 0.34, 0.06, Math.max(0.6, Math.min(1.3, 1.1 / Math.max(0.5, scale))));
+  },
   // The same three impacts dropped a third of an octave. A body hitting the
   // ground is the impact of being hit, slower and heavier — pitching for that
   // is what the recordings can honestly be made to say, and it costs no files.
@@ -427,9 +478,11 @@ export const sfx = {
   boom()       { if (sample('blast', 0.8, 0.05)) return;
                  noise({ dur: 0.55, gain: 0.34, freq: 220, q: 0.5, type: 'lowpass' });
                  tone(70, { type: 'square', dur: 0.45, gain: 0.26, slide: -30 }); },
-  heal()       { tone(520, { dur: 0.3, gain: 0.16, slide: 340 });
+  heal()       { if (sample('heal', 0.6)) return;
+                 tone(520, { dur: 0.3, gain: 0.16, slide: 340 });
                  tone(780, { dur: 0.35, gain: 0.12, slide: 260, delay: 0.06 }); },
-  buff()       { tone(300, { type: 'square', dur: 0.28, gain: 0.14, slide: 300 }); },
+  buff()       { if (sample('spell', 0.55)) return;
+                 tone(300, { type: 'square', dur: 0.28, gain: 0.14, slide: 300 }); },
   levelUp()    { [523, 659, 784, 1046].forEach((f, i) => tone(f, { type: 'triangle', dur: 0.3, gain: 0.16, delay: i * 0.09 })); },
   descend()    { tone(220, { type: 'triangle', dur: 0.8, gain: 0.2, slide: -120 });
                  noise({ dur: 0.9, gain: 0.14, freq: 300, q: 0.6, type: 'lowpass' }); },
