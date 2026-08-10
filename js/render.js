@@ -14,6 +14,23 @@ import * as Rig from './rig.js';
 
 let lightCv = null, lightCtx = null;
 
+/**
+ * How much the arena has dimmed for a boss, 0..1, eased.
+ *
+ * The lighting pass only ever ran where the *biome* was dark — the town and the
+ * road are 0 — so the first boss a player meets was lit like a summer
+ * afternoon. A boss is the one fight the game wants to look different, and
+ * darkening the ground he stands on does more for that than anything drawn on
+ * top of it.
+ *
+ * Eased rather than switched, and held here rather than in the run state,
+ * because it is a property of how the scene is being *shown*: a save reloaded
+ * mid-fight should come back lit correctly on its first frame without having
+ * stored a lighting variable.
+ */
+let arena = 0;
+const ARENA_DARK = 0.62;
+
 // The scene transform's screen origin, kept for the ground tiler.
 let lastOX = 0, lastOY = 0;
 
@@ -75,7 +92,15 @@ export function render(ctx, S, t, dt) {
 
   ctx.restore();
 
-  if (b.darkness > 0.02) drawLighting(ctx, S, cw, ch, ox, oy, t);
+  // The dim leads the fight in and lags it out: a boss appearing pulls the
+  // light down over about a second, and killing him gives it back more slowly
+  // still, so the arena releases rather than snaps.
+  const boss = S.monsters && S.monsters.some((m) => m.boss && !m.dead);
+  const want = boss ? 1 : 0;
+  arena += Math.max(-dt * 0.6, Math.min(dt * 1.1, want - arena));
+
+  const dark = Math.max(b.darkness, arena * ARENA_DARK);
+  if (dark > 0.02) drawLighting(ctx, S, cw, ch, ox, oy, t, dark);
   drawTint(ctx, S, cw, ch);
 
   ctx.save();
@@ -1093,7 +1118,7 @@ function drawGroundEffects(ctx, S, t) {
 
 // --- lighting ---------------------------------------------------------------
 
-function drawLighting(ctx, S, cw, ch, ox, oy, t) {
+function drawLighting(ctx, S, cw, ch, ox, oy, t, dark) {
   if (!lightCv) {
     lightCv = document.createElement('canvas');
     lightCtx = lightCv.getContext('2d');
@@ -1124,6 +1149,27 @@ function drawLighting(ctx, S, cw, ch, ox, oy, t) {
       }
     }
   }
+  /**
+   * A boss lights the ground he is standing on.
+   *
+   * Pulsed off his own attack timer rather than off the clock, so the light
+   * breathes in step with the thing the player is actually reading — it swells
+   * as he winds up and drops as he lands, which is a tell in its own right.
+   * Enraged he burns brighter and redder, on top of the banner that says so.
+   */
+  for (const m of S.monsters) {
+    if (!m.boss || m.dead) continue;
+    const p = toScreen(m.x, m.y);
+    const wind = m.atk > 0 ? 1 - Math.min(1, (m.atkTimer || 0) / m.atk) : 0.5;
+    const pulse = 0.82 + wind * 0.3 + Math.sin(t * 3.1) * 0.05;
+    lights.push({
+      x: p.x, y: p.y - 22 * (m.scale || 1),
+      r: 240 * (m.scale || 1) * pulse * (m.enraged ? 1.18 : 1),
+      warm: m.enraged ? 1.5 : 1.1,
+      rgb: m.enraged ? [255, 90, 50] : (m.light || [255, 150, 80]),
+    });
+  }
+
   for (const e of S.effects) {
     if (e.type !== 'boom' && e.type !== 'cleave') continue;
     const p = toScreen(e.x, e.y);
@@ -1132,7 +1178,7 @@ function drawLighting(ctx, S, cw, ch, ox, oy, t) {
 
   L.setTransform(1, 0, 0, 1, 0, 0);
   L.globalCompositeOperation = 'source-over';
-  L.fillStyle = `rgba(0,0,0,${b.darkness})`;
+  L.fillStyle = `rgba(0,0,0,${dark})`;
   L.fillRect(0, 0, cw, ch);
   L.globalCompositeOperation = 'destination-out';
   for (const li of lights) {
@@ -1157,9 +1203,12 @@ function drawLighting(ctx, S, cw, ch, ox, oy, t) {
     if (li.warm <= 0) continue;
     const x = ox + li.x * z, y = oy + li.y * z, r = li.r * z * 0.85;
     if (x + r < 0 || x - r > cw || y + r < 0 || y - r > ch) continue;
+    // Firelight unless the light says otherwise. A boss brings his own colour,
+    // which is the whole reason this stopped being one hardcoded orange.
+    const [lr, lg, lb] = li.rgb || [255, 182, 90];
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, `rgba(255,182,90,${0.12 * li.warm})`);
-    g.addColorStop(1, 'rgba(255,140,40,0)');
+    g.addColorStop(0, `rgba(${lr},${lg},${lb},${0.12 * li.warm})`);
+    g.addColorStop(1, `rgba(${lr},${Math.round(lg * 0.75)},${Math.round(lb * 0.45)},0)`);
     ctx.fillStyle = g;
     ctx.save();
     ctx.translate(x, y); ctx.scale(1, 0.66); ctx.translate(-x, -y);

@@ -62,7 +62,10 @@ export const MONSTERS = {
 // Bosses each own a pair of telegraphed moves and an enrage threshold.
 export const BOSSES = [
   {
-    key: 'butcher', name: 'The Butcher', kind: 'brute',
+    // `light` is the colour he throws on the ground while he is alive — see
+    // the boss lights in drawLighting. Chosen to fight the biome rather than
+    // match it: a boss should not look like the scenery.
+    key: 'butcher', name: 'The Butcher', kind: 'brute', light: [255, 96, 62],
     hp: 250, dmg: 17, speed: 1.6, atk: 1.7, range: 1.6, scale: 1.55,
     skulls: 300, xp: 150,
     moves: [
@@ -71,7 +74,7 @@ export const BOSSES = [
     ],
   },
   {
-    key: 'warden', name: 'The Bone Warden', kind: 'skeleton', sprite: { ...SPRITE.knight, h: 72 },
+    key: 'warden', name: 'The Bone Warden', kind: 'skeleton', light: [150, 214, 255], sprite: { ...SPRITE.knight, h: 72 },
     hp: 225, dmg: 13, speed: 1.9, atk: 1.4, range: 1.2, scale: 1.5,
     skulls: 330, xp: 165,
     moves: [
@@ -80,7 +83,7 @@ export const BOSSES = [
     ],
   },
   {
-    key: 'ogre', name: 'The Flame Ogre', kind: 'brute',
+    key: 'ogre', name: 'The Flame Ogre', kind: 'brute', light: [255, 138, 40],
     hp: 310, dmg: 19, speed: 1.5, atk: 1.9, range: 1.7, scale: 1.7,
     skulls: 380, xp: 190,
     moves: [
