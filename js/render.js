@@ -873,6 +873,30 @@ const DOLL_ART = {
  * amount of picking fixes the frames where it does.
  */
 const DOLL_FOES = {
+  // The Fallen is the foe the player sees most and the only one still drawn
+  // from vector shapes, so a doll moves it further than anything else here.
+  // `h` is nudged above the 30 the vector used: a figure with real shading
+  // reads smaller than a flat silhouette of the same height.
+  fallen: {
+    sheet: 'art/m2-combat.png', cols: 3, rows: 1, row: 0, attacks: [1, 2], h: 34,
+    anim: {
+      sheet: 'art/m2-walk.png', cols: 16, rows: 1,
+      walk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      death: [10, 11, 12, 13, 14, 15],
+    },
+  },
+  // **Two of the sword combo's eight frames are unusable, not two of mine.**
+  // The clip turns the character to face the camera partway through and a
+  // fixed side view has nothing left to draw — he thins to a sliver. The two
+  // swings are the frames that stay side-on.
+  skeleton: {
+    sheet: 'art/m1-combat.png', cols: 3, rows: 1, row: 0, attacks: [1, 2], h: 50,
+    anim: {
+      sheet: 'art/m1-walk.png', cols: 16, rows: 1,
+      walk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      death: [10, 11, 12, 13, 14, 15],
+    },
+  },
   brute: {
     sheet: 'art/warrok-combat.png', cols: 3, rows: 1, row: 0, attacks: [1, 2], h: 62,
     // One sheet, three states: ten frames of stride and six of collapse. They

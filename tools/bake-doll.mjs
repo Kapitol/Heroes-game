@@ -75,14 +75,16 @@ function findSkin() {
   const dir = new URL('../art/mixamo/', import.meta.url).pathname;
   const files = readdirSync(dir).filter((f) => f.endsWith('.fbx'));
   if (files.includes(`${char}.fbx`)) return char;
-  const paired = files.find((f) => f.startsWith(`${char}@`));
+  // `<char>@<clip>` is Mixamo's own naming; `<char>-<clip>` is the one used
+  // for downloads renamed by hand. Both mean "this file has the mesh in it".
+  const paired = files.find((f) => f.startsWith(`${char}@`) || f.startsWith(`${char}-`));
   if (!paired) throw new Error(`no mesh file for "${char}" in art/mixamo/`);
   return paired.replace(/\.fbx$/, '');
 }
 const skin = findSkin();
 // An alias for downloads named by hand rather than by Mixamo — `paladin-Idle`
 // alongside `Paladin WProp J Nordstrom@Great Sword Casting`.
-const alias = String(opt('alias', ''));
+const alias = String(opt('alias', char));
 
 /**
  * The file holding one clip, under whichever of the four names it landed with.

@@ -47,6 +47,23 @@ const DEV_BOSS = new URLSearchParams(location.search).get('boss');
 // applies, so what is being previewed is the same fight, just one you outlast.
 const DEV_HP = Number(new URLSearchParams(location.search).get('hp')) || 0;   // see heroStats
 const DEV_GOD = new URLSearchParams(location.search).has('god');
+
+/**
+ * Dev hook: `?fresh` ignores the save and starts a clean run.
+ *
+ * **There is a state a run can reach and not leave.** `wavesSinceBoss` is
+ * persisted and only reset by *completing* a boss wave, so a boss that outlives
+ * the hero leaves the counter over the threshold — and every reload, with or
+ * without any dev flag, opens on that boss again. Abandoning the run from the
+ * menu clears it, but that is hard to find when the thing in the way is a loop
+ * you did not choose to be in.
+ *
+ * Declared up here with the other flags rather than beside `load`, which is
+ * where it started: `load()` runs during module initialisation, so a `const`
+ * further down the file is still in its temporal dead zone when it is read and
+ * the whole game fails to boot.
+ */
+const DEV_FRESH = new URLSearchParams(location.search).has('fresh');
 if (DEV_BOSS && !forceBoss(DEV_BOSS)) {
   console.warn(`?boss=${DEV_BOSS} names no boss; the stage decides as usual`);
 }
@@ -1596,6 +1613,7 @@ function save() {
 
 function load() {
   let d;
+  if (DEV_FRESH) { S.equipped = startingKit(); return; }
   try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch { d = null; }
   // A run that has never been played starts kitted: one Gray piece in every
   // slot, weapon included. Nobody walks the road empty-handed.
