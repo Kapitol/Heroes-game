@@ -784,7 +784,19 @@ const RIG_STICK = new URLSearchParams(location.search).has('rigstick');
  * of them.** Mixamo's sword clips animate a character around a weapon prop the
  * character download does not include, so X Bot mimes it.
  */
-const DOLL_HERO = new URLSearchParams(location.search).has('doll');
+/**
+ * The dolls are what the game draws now; the older paths are the flags.
+ *
+ *   (nothing)   the baked Mixamo cast — Paladin hero, Warrok Butcher
+ *   ?rig        the jointed paperdoll, armoury and all
+ *   ?painted    the painted class sheets the game shipped with
+ *
+ * It was the other way round while the doll was a question. It stopped being
+ * one, and a default nobody can see is a default nobody gets: the old look
+ * kept coming back simply because a URL had been retyped without its flag.
+ */
+const Q = new URLSearchParams(location.search);
+const DOLL_HERO = !Q.has('painted') && !Q.has('rig');
 
 /**
  * The baked Mixamo cast, as sheets in the shape the painted classes use.

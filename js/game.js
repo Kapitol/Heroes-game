@@ -65,10 +65,10 @@ const DEV_BIOME = new URLSearchParams(location.search).get('biome');
 // far — everything else shows as the bare skeleton, which is a thing to develop
 // against and not a thing to ship. It is the only way to judge the rig at the
 // real scale, under the real lighting, driven by the real hero.
-// `?doll` implies `?rig`: the doll is drawn in place of the jointed hero, so it
-// needs the same hero to exist. One flag rather than two, or the interesting
-// one silently does nothing.
-const DEV_RIG = ['rig', 'doll'].some((k) => new URLSearchParams(location.search).has(k));
+// The doll is drawn in place of the jointed hero and needs that hero to exist,
+// so both paths want the rig equipped. `?painted` is the way back to the
+// class sheets — see DOLL_HERO in js/render.js for the full set of flags.
+const DEV_RIG = !new URLSearchParams(location.search).has('painted');
 const pinnedBiome = () => (DEV_BIOME ? BIOMES.find((b) => b.key === DEV_BIOME) : null);
 
 const LEASH = 1.9;          // how far the hero will step off their mark
@@ -373,6 +373,8 @@ function beginEncounter() {
 
   const f = formationFor(S.stage);
   S.formation = f;
+  // The boss has its own arrival; this is for everything else.
+  Audio.sfx.encounter();
   const roster = rosterFor(S.stage);
   const pool = DEV_SPAWN && MONSTERS[DEV_SPAWN] ? [DEV_SPAWN] : f.pick(roster);
   const n = waveSize(S.stage, f.count);

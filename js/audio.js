@@ -277,7 +277,7 @@ const BANK = {
   // matching it to the others means multiplying its noise floor by four as
   // well, and at 1.46s it is three times their length. Two that belong
   // together beat three where one hisses.
-  grunt: 2, gruntFoe: 1, heal: 1, spell: 1,
+  grunt: 2, gruntFoe: 1, heal: 1, spell: 1, clash: 1,
 };
 
 // name -> [{ buffer, gain }]. Empty until `loadBank` resolves, which is why
@@ -467,6 +467,17 @@ export const sfx = {
    * sound at all — a banner, a shake, and silence. A growl says the thing in
    * front of you got worse better than a caption does.
    */
+  /**
+   * A wave arriving.
+   *
+   * Only the boss ever announced itself; an ordinary encounter began with the
+   * hero simply stopping and something walking out of the trees. The banner
+   * said a fight had started and nothing else did.
+   */
+  encounter()  { if (sample('clash', 0.6)) return;
+                 noise({ dur: 0.4, gain: 0.22, freq: 700, q: 0.6, type: 'bandpass' });
+                 tone(96, { type: 'sawtooth', dur: 0.45, gain: 0.2, slide: -30 }); },
+
   enrage()     { if (sample('growl', 0.75, 0.03, 0.9)) return;
                  tone(70, { type: 'sawtooth', dur: 0.7, gain: 0.24, slide: -20 }); },
   bones()      { for (let i = 0; i < 5; i++) noise({ dur: 0.05, gain: 0.1, freq: 2600 + Math.random() * 1800, q: 3, type: 'bandpass', delay: i * 0.045 }); },
