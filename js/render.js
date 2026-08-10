@@ -13,6 +13,7 @@ import * as Coffin from './coffin.js';
 import * as Rig from './rig.js';
 
 let lightCv = null, lightCtx = null;
+let bloomCv = null, bloomCtx = null;
 
 /**
  * How much the arena has dimmed for a boss, 0..1, eased.
@@ -30,6 +31,14 @@ let lightCv = null, lightCtx = null;
  */
 let arena = 0;
 const ARENA_DARK = 0.62;
+
+// The moves in js/encounters.js author their colour as CSS hex because that is
+// what the telegraph ring is stroked with; the light list wants components.
+const rgbOf = (hex) => {
+  const h = String(hex || '').replace('#', '');
+  if (h.length !== 6) return [255, 182, 90];
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+};
 
 // The scene transform's screen origin, kept for the ground tiler.
 let lastOX = 0, lastOY = 0;
@@ -101,6 +110,12 @@ export function render(ctx, S, t, dt) {
 
   const dark = Math.max(b.darkness, arena * ARENA_DARK);
   if (dark > 0.02) drawLighting(ctx, S, cw, ch, ox, oy, t, dark);
+  // **After the lighting, not before.** The effects themselves are drawn in the
+  // scene pass and so are dimmed along with everything else — correct for a
+  // painted sprite, wrong for a thing that is supposed to be emitting. The
+  // glow is added back on top of the darkness, which is what makes a rune read
+  // as hot in a dark arena instead of as a picture of a hot thing.
+  drawBloom(ctx, S, cw, ch, ox, oy, t);
   drawTint(ctx, S, cw, ch);
 
   ctx.save();
@@ -1064,8 +1079,9 @@ function drawVfx(ctx, e, p, k) {
   return true;
 }
 
-function drawGroundEffects(ctx, S, t) {
+function drawGroundEffects(ctx, S, t, vfxOnly) {
   for (const e of S.effects) {
+    if (vfxOnly && !e.vfx) continue;
     const p = toScreen(e.x, e.y);
     const k = 1 - e.life / e.max;
     ctx.save();
@@ -1118,6 +1134,51 @@ function drawGroundEffects(ctx, S, t) {
 
 // --- lighting ---------------------------------------------------------------
 
+/**
+ * A blurred copy of the baked effects, added back over the scene.
+ *
+ * Bloom is the one thing a WebGL renderer would genuinely do better, and it is
+ * also the one thing that is cheap to approximate here: draw the effects a
+ * second time into an offscreen, blur it, and add it. `ctx.filter` does the
+ * blur on the GPU, so the cost is one extra pass over a handful of sprites and
+ * only while an effect is alive.
+ *
+ * Only the baked sheets bloom. The code-drawn shockwaves are already radial
+ * gradients — blurring a gradient produces the same gradient, slightly worse.
+ */
+function drawBloom(ctx, S, cw, ch, ox, oy, t) {
+  if (!S.effects.some((e) => e.vfx)) return;
+  if (!bloomCv) {
+    bloomCv = document.createElement('canvas');
+    bloomCtx = bloomCv.getContext('2d');
+  }
+  if (bloomCv.width !== cw || bloomCv.height !== ch) { bloomCv.width = cw; bloomCv.height = ch; }
+
+  const B = bloomCtx;
+  B.setTransform(1, 0, 0, 1, 0, 0);
+  B.clearRect(0, 0, cw, ch);
+  B.save();
+  B.translate(ox, oy);
+  B.scale(S.cam.zoom, S.cam.zoom);
+  drawGroundEffects(B, S, t, true);
+  B.restore();
+
+  ctx.save();
+  ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+  ctx.globalCompositeOperation = 'lighter';
+  // Two passes at different radii: a tight one for the core and a wide one for
+  // the halo. One radius gives either a sharp effect with a faint edge or a
+  // soft blob with no centre, and the difference between those and a glow is
+  // that a glow has both.
+  for (const [blur, alpha] of [[5, 0.55], [16, 0.4]]) {
+    ctx.filter = `blur(${blur}px)`;
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(bloomCv, 0, 0, cw, ch);
+  }
+  ctx.filter = 'none';
+  ctx.restore();
+}
+
 function drawLighting(ctx, S, cw, ch, ox, oy, t, dark) {
   if (!lightCv) {
     lightCv = document.createElement('canvas');
@@ -1129,7 +1190,12 @@ function drawLighting(ctx, S, cw, ch, ox, oy, t, dark) {
   const lights = [];
   const flick = 0.9 + Math.sin(t * 9) * 0.05 + Math.sin(t * 23) * 0.03;
   const hp = toScreen(S.hero.x, S.hero.y);
-  lights.push({ x: hp.x, y: hp.y - 16, r: 330 * flick, warm: 0.55 });
+  // **The hero's light shrinks as the arena dims.** At full radius his pool and
+  // the boss's overlap the moment they close, and two big lights side by side
+  // flood the middle of the screen — the dim is still there and cannot be seen.
+  // Pulled in, the two stay separate pools and the dark between them is what
+  // reads as an arena.
+  lights.push({ x: hp.x, y: hp.y - 16, r: 330 * flick * (1 - arena * 0.42), warm: 0.55 });
 
   // Whatever the biome burns along the verge does the rest of the work: wall
   // sconces in the crypt, iron braziers in the inferno. A painted biome
@@ -1167,6 +1233,30 @@ function drawLighting(ctx, S, cw, ch, ox, oy, t, dark) {
       r: 240 * (m.scale || 1) * pulse * (m.enraged ? 1.18 : 1),
       warm: m.enraged ? 1.5 : 1.1,
       rgb: m.enraged ? [255, 90, 50] : (m.light || [255, 150, 80]),
+    });
+  }
+
+  /**
+   * A telegraphed move lights the ground it is about to land on.
+   *
+   * The ring was a line drawn on the floor — information, read or not read.
+   * Lighting the same circle turns it into something the scene does, so the
+   * ground under the hero brightens before the blow rather than only being
+   * outlined, and the warning is felt at the edge of vision instead of having
+   * to be looked at.
+   *
+   * It ramps on the *fill* the ring already uses, so light and outline finish
+   * together and the brightest instant is the one the strike lands on.
+   */
+  for (const m of S.monsters) {
+    if (m.dead || !m.casting || !m.telegraph) continue;
+    const p = toScreen(m.telegraph.x, m.telegraph.y);
+    const fill = Math.min(1, m.castT / m.casting.tell);
+    lights.push({
+      x: p.x, y: p.y,
+      r: m.casting.radius * TILE_W * 0.5 * (0.75 + fill * 0.45),
+      warm: 0.5 + fill * 1.6,
+      rgb: rgbOf(m.casting.colour),
     });
   }
 
