@@ -6,7 +6,7 @@
 // skills, the drop and the cards — never on the walking.
 
 import { BIOMES, biomeFor, levelFor, ROAD, onRoad, HALF, MARCH } from './world.js';
-import { toWorld, toScreen, clamp, lerp } from './iso.js';
+import { toWorld, toScreen, clamp, lerp, TILE_W } from './iso.js';
 import { makeHero, heroStats, moveToward, faceTo, separate, nearestFoe, CLASSES, classByKey } from './entities.js';
 import {
   MONSTERS, makeMonster, makeBoss, rosterFor, formationFor, isBossStage, bossFor, forceBoss,
@@ -16,6 +16,7 @@ import { SKILLS, skillById, rollDraft, applyCard, MAX_SKILLS } from './perks.js'
 import * as UI from './ui.js';
 import * as Audio from './audio.js';
 import * as Coffin from './coffin.js';
+import * as Rig from './rig.js';
 import { rollBossLoot, bossSkullBonus, wornTier, startingKit, bandIndex } from './items.js';
 // The difficulty curve lives in its own module so the simulator in tools/ can
 // tune the same formula the game runs on — see js/balance.js.
@@ -1173,6 +1174,8 @@ function update(dt) {
     idleStep(dt, st);   // the hero waits, for as long as the choice takes
   }
 
+  footfalls(h);
+
   if (S.chest) updateChest(dt);
   if (S.phase === 'fight' && !h.dead) pumpSpawns(dt);
   updateMonsters(dt);
@@ -1203,6 +1206,27 @@ function update(dt) {
     S.cam.x = lerp(S.cam.x, tx, Math.min(1, dt * 4));
     S.cam.y = lerp(S.cam.y, ty, Math.min(1, dt * 4));
   }
+}
+
+/**
+ * A footstep every  half a stride, keyed to ground covered rather than to a clock.
+ *
+ * The same reason the rig runs on distance: a stride is a fixed length of road,
+ * so a slowed hero takes slower steps instead of skating, and a hasted one does
+ * not moonwalk. Timing footfalls off `dt` would put the sound and the feet on
+ * separate clocks, and they drift apart the moment anything changes the hero's
+ * speed — which boons do constantly.
+ *
+ * `Rig.STRIDE` is in figure-heights and `dist` is in tiles, so the conversion
+ * is the same one `drawRiggedHero` makes. Twice a stride because a stride is
+ * two steps.
+ */
+function footfalls(h) {
+  if (h.dead || !Rig.STRIDE) { h.stepAt = h.dist || 0; return; }
+  const perStep = (Rig.STRIDE * ((h.sprite ? h.sprite.h : 56) * (h.scale || 1)) / TILE_W) / 2;
+  if ((h.dist || 0) - (h.stepAt || 0) < perStep) return;
+  h.stepAt = h.dist || 0;
+  Audio.sfx.step();
 }
 
 // Walking in. Ends on the mark, which is where the camera has been waiting.

@@ -278,6 +278,10 @@ const BANK = {
   // well, and at 1.46s it is three times their length. Two that belong
   // together beat three where one hisses.
   grunt: 2, gruntFoe: 1, heal: 1, spell: 1, clash: 1,
+  // Five, cut out of one 34-second walk by tools/slice-steps.mjs. Footfalls
+  // are the most repeated sound in the game by a wide margin — the hero walks
+  // the length of every stage — so this is where variants matter most.
+  step: 5,
 };
 
 // name -> [{ buffer, gain }]. Empty until `loadBank` resolves, which is why
@@ -474,6 +478,17 @@ export const sfx = {
    * hero simply stopping and something walking out of the trees. The banner
    * said a fight had started and nothing else did.
    */
+  /**
+   * One footfall.
+   *
+   * Quiet, and deliberately quieter than anything else in the bank: this fires
+   * two or three times a second for the whole game, and a footstep the player
+   * can pick out individually is a footstep they will come to hate. No synth
+   * fallback — silence is the right failure here, where a tone twice a second
+   * would be worse than nothing.
+   */
+  step()       { sample('step', 0.3, 0.12); },
+
   encounter()  { if (sample('clash', 0.6)) return;
                  noise({ dur: 0.4, gain: 0.22, freq: 700, q: 0.6, type: 'bandpass' });
                  tone(96, { type: 'sawtooth', dur: 0.45, gain: 0.2, slide: -30 }); },
