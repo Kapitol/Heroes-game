@@ -265,7 +265,7 @@ function startBed() {
 // How many variants of each. A fight is dozens of swings a minute, and one
 // recording played on a loop reads as a stuck key within seconds — the ear
 // picks up the repeat long before it picks up the sound.
-const BANK = { swing: 4, hit: 3, crit: 2, punch: 3 };
+const BANK = { swing: 4, hit: 3, crit: 2, punch: 3, body: 3 };
 
 // name -> [{ buffer, gain }]. Empty until `loadBank` resolves, which is why
 // every caller has a synth branch behind it.
@@ -318,14 +318,14 @@ function loadBank() {
  * fight; a few per cent either way on the playback rate makes each one land as
  * a different swing of the same sword rather than the same swing again.
  */
-function sample(name, gain = 1, spread = 0.07) {
+function sample(name, gain = 1, spread = 0.07, rate = 1) {
   if (!ctx || !enabled) return false;
   const list = bank.get(name);
   if (!list || !list.length) return false;
   const s = list[(Math.random() * list.length) | 0];
   const src = ctx.createBufferSource();
   src.buffer = s.buffer;
-  src.playbackRate.value = 1 + (Math.random() * 2 - 1) * spread;
+  src.playbackRate.value = rate * (1 + (Math.random() * 2 - 1) * spread);
   const g = ctx.createGain();
   g.gain.value = s.gain * gain;
   src.connect(g).connect(master);
@@ -352,9 +352,39 @@ export const sfx = {
   punch()      { if (sample('punch', 0.6)) return;
                  tone(120, { type: 'square', dur: 0.12, gain: 0.22, slide: -60 });
                  noise({ dur: 0.14, gain: 0.2, freq: 380, q: 1.0 }); },
-  hurt()       { tone(210, { type: 'sawtooth', dur: 0.22, gain: 0.24, slide: -130 }); },
-  die()        { tone(180, { type: 'triangle', dur: 0.4, gain: 0.22, slide: -140 });
+  // **Hurt and death are the impact, plus the tone that was already there.**
+  // There are no vocals in the pack — 105 files, every one a blade or a fist —
+  // so nothing here is a cry. What the samples supply is the thud of a body
+  // taking it, and the synth tone stays underneath at reduced gain doing what
+  // it always did: standing in for the grunt. Replacing the tone outright made
+  // being hit sound like hitting something, which is the wrong end of the blow.
+  //
+  // The gain is deliberately low. `hurt` fires on the same frame as the
+  // attacker's `hit`, so it is the second sample in a single moment and has to
+  // sit under the first or every exchange turns to mud.
+  hurt()       { sample('body', 0.32, 0.09);
+                 tone(210, { type: 'sawtooth', dur: 0.22, gain: 0.20, slide: -130 }); },
+  // The same three impacts dropped a third of an octave. A body hitting the
+  // ground is the impact of being hit, slower and heavier — pitching for that
+  // is what the recordings can honestly be made to say, and it costs no files.
+  die()        { sample('body', 0.85, 0.04, 0.72);
+                 tone(180, { type: 'triangle', dur: 0.4, gain: 0.22, slide: -140 });
                  noise({ dur: 0.35, gain: 0.18, freq: 320, q: 0.9, delay: 0.03 }); },
+  /**
+   * Something else going down, pitched by how big it was.
+   *
+   * Monster deaths were silent — the killing blow's `hit` was the only sound,
+   * so a body fell out of the fight without a sound of its own. It matters most
+   * on the Butcher, who has six frames of collapse and had nothing under them.
+   *
+   * `scale` is the creature's own, so a Fallen One lands light and quick and a
+   * boss lands slow and low off the same three recordings.
+   */
+  fall(scale = 1) {
+    const rate = Math.max(0.55, Math.min(1.25, 1.15 / Math.max(0.5, scale)));
+    if (sample('body', 0.5, 0.07, rate)) return;
+    tone(150 * rate, { type: 'triangle', dur: 0.3, gain: 0.16, slide: -90 });
+  },
   bones()      { for (let i = 0; i < 5; i++) noise({ dur: 0.05, gain: 0.1, freq: 2600 + Math.random() * 1800, q: 3, type: 'bandpass', delay: i * 0.045 }); },
   bank()       { tone(1180, { dur: 0.09, gain: 0.16 }); tone(1760, { dur: 0.12, gain: 0.12, delay: 0.05 }); },
   cleave()     { noise({ dur: 0.3, gain: 0.3, freq: 900, q: 0.5, type: 'bandpass' });

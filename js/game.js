@@ -445,6 +445,9 @@ function killMonster(m) {
   m.dead = true;
   m.fade = 1;
   S.kills++;
+  // Pitched by the body that fell: a boss lands lower and slower than a Fallen
+  // One off the same recording.
+  Audio.sfx.fall(m.scale || 1);
   S.stains.push({ x: m.x, y: m.y, r: 9 * (m.scale || 1), a: 0.28, c: '90,14,10', seed: (m.x * 31 + m.y * 17) | 0 });
   if (S.stains.length > 24) S.stains.shift();
 
