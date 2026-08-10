@@ -953,7 +953,11 @@ function drawProjectile(ctx, x, y, o) {
  */
 const VFX = {
   bolt:   { src: 'art/vfx-bolt.png',   cols: 4, rows: 4, h: 96, over: true },
-  portal: { src: 'art/vfx-portal.png', cols: 4, rows: 4, h: 64, over: false },
+  // `ground` lays the effect in the floor plane instead of standing it up
+  // facing the camera. A ring is the case that makes the difference obvious:
+  // upright it is a hoop the hero stands behind, flat it is a circle drawn
+  // round his feet, and only the second is what a rune circle is.
+  portal: { src: 'art/vfx-portal.png', cols: 4, rows: 4, h: 76, ground: true, spin: 0.6 },
   // **`add` says this clip is a black matte, not a cut-out.** FootageCrate ship
   // both kinds and the file does not say which it is: the "Noglow" spell is
   // opaque across its whole frame with the effect painted on black, so
@@ -996,6 +1000,26 @@ function drawVfx(ctx, e, p, k) {
   // shading inside it — fine for turning a red portal green, ruinous on
   // anything whose interest is in its own gradient. Off unless asked for.
   const src = e.tint ? Atlas.tinted(sh, e.tint) : sh.canvas;
+
+  if (cfg.ground) {
+    // **Drawn square, then squashed.** The iso floor is half as tall as it is
+    // wide, so a circle on it is an ellipse of exactly that ratio — the same
+    // `TILE_H / TILE_W` the shockwaves use. Taking the cell's own aspect here
+    // instead would inherit however the footage happened to be framed and the
+    // ring would sit at a different angle from every other ground effect.
+    //
+    // The spin is what stops it reading as a decal. It turns *inside* the
+    // squash, so the ellipse stays put and the ring turns within it — spinning
+    // outside it would wobble the ellipse itself, which looks like the camera
+    // moving rather than the magic.
+    const d = w;
+    ctx.translate(p.x, p.y);
+    ctx.scale(1, TILE_H / TILE_W);
+    ctx.rotate(k * Math.PI * 2 * (cfg.spin || 0));
+    ctx.drawImage(src, cell.x, cell.y, cell.w, cell.h, -d / 2, -d / 2, d, d);
+    return true;
+  }
+
   ctx.drawImage(src, cell.x, cell.y, cell.w, cell.h,
                 p.x - w / 2, p.y - (cfg.over ? h * 0.75 : h * 0.5), w, h);
   return true;

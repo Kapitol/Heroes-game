@@ -121,6 +121,18 @@ export const ARMOR_PER_LEVEL =
   (typeof process !== 'undefined' && process.env && process.env.ARMOR_PER_LEVEL !== undefined)
     ? Number(process.env.ARMOR_PER_LEVEL) : 1.6;
 
+/**
+ * Dev hook: `?hp=2000` replaces the health pool, for watching a fight instead
+ * of surviving one.
+ *
+ * **Applied here rather than at a call site.** `heroStats` is recomputed from
+ * scratch by whoever needs it — game.js for the damage maths, ui.js for the
+ * globe and the character sheet — so an override wrapped around one of them
+ * reaches only that one. The first attempt sat in game.js and produced a hero
+ * with two thousand points of health and a globe that read `1822/111`.
+ */
+const DEV_HP = Number(new URLSearchParams(location.search).get('hp')) || 0;
+
 export function heroStats(h, gear, perks, equipped) {
   const p = perks || {};
   const n = (k) => p[k] || 0;
@@ -131,7 +143,7 @@ export function heroStats(h, gear, perks, equipped) {
 
   const dmg = Math.round(((h.baseDmg + gear.weapon * 5) * (1 + h.level * 0.13)
     * (1 + n('might') * 0.15)) + i('dmg'));
-  const maxHp = Math.round(((100 + gear.armor * 18) * (1 + (h.level - 1) * 0.15)
+  const maxHp = DEV_HP || Math.round(((100 + gear.armor * 18) * (1 + (h.level - 1) * 0.15)
     * (1 + n('vigor') * 0.15)) + i('life'));
 
   return {

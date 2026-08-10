@@ -35,6 +35,18 @@ const DEV_SPAWN = new URLSearchParams(location.search).get('spawn');
 // long time to wait to look at one — and looking at one is most of what a
 // boss needs during art work.
 const DEV_BOSS = new URLSearchParams(location.search).get('boss');
+
+// Dev hooks for watching a fight rather than surviving one.
+//
+//   ?hp=2000   a bigger pool, so the fight runs long enough to look at
+//   ?god       no damage at all, for looking at one thing for as long as
+//              it takes
+//
+// `?hp` replaces the pool outright rather than scaling it. Everything that
+// reduces incoming damage — armour, Ward, the cap on a single blow — still
+// applies, so what is being previewed is the same fight, just one you outlast.
+const DEV_HP = Number(new URLSearchParams(location.search).get('hp')) || 0;   // see heroStats
+const DEV_GOD = new URLSearchParams(location.search).has('god');
 if (DEV_BOSS && !forceBoss(DEV_BOSS)) {
   console.warn(`?boss=${DEV_BOSS} names no boss; the stage decides as usual`);
 }
@@ -506,7 +518,7 @@ function gainXp(n) {
 
 function hurtHero(amount) {
   const h = S.hero;
-  if (h.dead) return;
+  if (h.dead || DEV_GOD) return;
   const st = stats();
   const raw = amount
     * (1 - st.armor / (st.armor + 55))
@@ -1166,6 +1178,11 @@ function update(dt) {
   // version of Field Dressing rather than a different answer to the same
   // problem. The dead do not regenerate.
   if (!h.dead && st.regen) h.hp = Math.min(st.maxHp, h.hp + st.maxHp * st.regen * dt);
+
+  // A bigger pool is only useful if the hero is actually in it: `hp` raises the
+  // maximum, and without this the globe opens at the old value and trickles up
+  // on regen for a minute before the fight is worth watching.
+  if (DEV_HP && !h.dead && h.hp < st.maxHp && !h.devFilled) { h.hp = st.maxHp; h.devFilled = true; }
 
   if (h.dead) {
     h.deathAnim = Math.min(1, (h.deathAnim || 0) + dt * 1.6);
