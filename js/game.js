@@ -423,6 +423,17 @@ function effect(type, x, y, r, dur, a) {
   S.effects.push({ type, x, y, r: r || 1, life: dur, max: dur, a: a || 0 });
 }
 
+/**
+ * Play a baked effect at a point. See VFX in js/render.js for the set.
+ *
+ * Separate from `effect` because these are art rather than shapes: they carry
+ * a sheet and a frame count and know nothing about radius, and folding them
+ * into the same record would have every drawn effect testing which kind it is.
+ */
+function vfx(name, x, y, dur = 0.5, opts = {}) {
+  S.effects.push({ vfx: name, x, y, life: dur, max: dur, r: 1, ...opts });
+}
+
 const stats = () => heroStats(S.hero, S.gear, S.perks, S.equipped);
 
 function hurtMonster(m, amount, crit) {
@@ -469,6 +480,7 @@ function killMonster(m) {
 
 function detonate(m) {
   effect('boom', m.x, m.y, 2.8, 0.5);
+  vfx('bolt', m.x, m.y, 0.5, { scale: 1.4 });
   Audio.sfx.boom();
   S.cam.shake = Math.max(S.cam.shake, 0.5);
   const h = S.hero;
@@ -686,6 +698,7 @@ function castSkill(slot) {
         const heal = st.maxHp * 0.4;
         h.hp = Math.min(st.maxHp, h.hp + heal);
         effect('heal', h.x, h.y, 1, 0.9);
+        vfx('portal', h.x, h.y, 0.85, { tint: 'rgba(90,230,150,.9)', scale: 1.35 });
         float(h.x, h.y, `+${Math.round(heal)}`, '#8ce8a0', true);
         Audio.sfx.heal();
       });
@@ -694,6 +707,7 @@ function castSkill(slot) {
     case 'frenzy':
       onRelease(h, () => {
         h.buffs.frenzy = 7;
+        vfx('cast', h.x, h.y, 0.7, { tint: 'rgba(255,170,70,.9)', scale: 1.2 });
         float(h.x, h.y, 'FRENZY', '#ffb84a', true);
         Audio.sfx.buff();
       });
@@ -701,6 +715,7 @@ function castSkill(slot) {
     case 'ward':
       onRelease(h, () => {
         h.buffs.ward = 6;
+        vfx('cast', h.x, h.y, 0.7, { tint: 'rgba(150,200,255,.9)', scale: 1.2 });
         effect('ward', h.x, h.y, 1, 0.9);
         float(h.x, h.y, 'WARDED', '#9fc0ff', true);
         Audio.sfx.buff();
@@ -1259,6 +1274,7 @@ function fightStep(dt, st) {
         const back = Math.min(st.maxHp - h.hp, st.maxHp * st.dressing);
         h.hp += back;
         float(h.x, h.y, `+${Math.round(back)}`, '#7fd6a0');
+        vfx('portal', h.x, h.y, 0.75, { tint: 'rgba(90,230,150,.85)', scale: 1.1 });
         Audio.sfx.heal();
       }
       endWave();            // everything is down: bank it, and maybe drop it

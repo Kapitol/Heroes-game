@@ -944,12 +944,75 @@ function drawProjectile(ctx, x, y, o) {
 
 // --- effects ----------------------------------------------------------------
 
+/**
+ * The baked video effects, by name. See tools/vfx-sheet.swift for the bake.
+ *
+ * `h` is the effect's height in world pixels — the hero is 56 — and `over`
+ * decides whether it plays on the floor or over the figure, which is the whole
+ * difference between a rune circle and a burst.
+ */
+const VFX = {
+  bolt:   { src: 'art/vfx-bolt.png',   cols: 4, rows: 4, h: 96, over: true },
+  portal: { src: 'art/vfx-portal.png', cols: 4, rows: 4, h: 64, over: false },
+  // **`add` says this clip is a black matte, not a cut-out.** FootageCrate ship
+  // both kinds and the file does not say which it is: the "Noglow" spell is
+  // opaque across its whole frame with the effect painted on black, so
+  // composited normally it is a black square with a wisp in it. Added, the
+  // black contributes nothing and only the wisp lands. The tell at bake time is
+  // that cropping to the alpha bounds finds no bounds — it reported the full
+  // 720x720 — so the two are distinguishable, just not automatically here.
+  cast:   { src: 'art/vfx-cast.png',   cols: 4, rows: 4, h: 88, over: true, add: true },
+};
+
+/**
+ * One frame of a baked effect, centred on a world point.
+ *
+ * Not `Atlas.drawSprite`, which anchors a sprite by the middle of its footprint
+ * so a walking figure's feet stay put. An explosion has no feet: anchored that
+ * way a burst that grows upward appears to sink into the ground as it plays.
+ *
+ * **Composited normally, not with `lighter` like the shapes around it.** The
+ * code-drawn glows are gradients on black and need adding to the scene to read
+ * at all. These carry a real alpha channel from ProRes 4444, so they are
+ * already lit and already shaped: added on top of themselves they saturate to
+ * a flat white-hot blob within two frames and lose every bit of the detail
+ * they were baked for.
+ */
+function drawVfx(ctx, e, p, k) {
+  const cfg = VFX[e.vfx];
+  if (!cfg) return false;
+  const sh = Atlas.sheet(cfg.src, cfg.cols, cfg.rows);
+  if (!sh) return false;
+  const n = cfg.cols * cfg.rows;
+  const cell = sh.cells[Math.min(n - 1, Math.floor(k * n))];
+  if (!cell) return false;
+
+  // Scaled off the *sheet cell size* rather than the trimmed cell, so a frame
+  // whose content happens to be small does not shrink the whole effect.
+  const scale = (cfg.h * (e.scale || 1)) / (sh.canvas.height / cfg.rows);
+  const w = cell.w * scale, h = cell.h * scale;
+  ctx.globalAlpha = Math.min(1, (1 - k) * 3) * (e.a || 1);
+  // A tint replaces the effect's colour wholesale, which throws away the
+  // shading inside it — fine for turning a red portal green, ruinous on
+  // anything whose interest is in its own gradient. Off unless asked for.
+  const src = e.tint ? Atlas.tinted(sh, e.tint) : sh.canvas;
+  ctx.drawImage(src, cell.x, cell.y, cell.w, cell.h,
+                p.x - w / 2, p.y - (cfg.over ? h * 0.75 : h * 0.5), w, h);
+  return true;
+}
+
 function drawGroundEffects(ctx, S, t) {
   for (const e of S.effects) {
     const p = toScreen(e.x, e.y);
     const k = 1 - e.life / e.max;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
+    if (e.vfx) {
+      ctx.globalCompositeOperation = VFX[e.vfx] && VFX[e.vfx].add ? 'lighter' : 'source-over';
+      drawVfx(ctx, e, p, k);
+      ctx.restore();
+      continue;
+    }
     if (e.type === 'boom' || e.type === 'quake') {
       const r = e.r * TILE_W * 0.5 * (0.35 + k * 0.8);
       ctx.globalAlpha = (1 - k) * 0.85;

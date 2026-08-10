@@ -20,3 +20,8 @@ art/mixamo/
 # Doll and mocap renders. `tools/bake-doll.mjs` and `tools/doll.html` regenerate
 # every one on demand, the same reason tools/gauntlet/*.png is ignored above.
 tools/gauntlet/mocap/
+
+# VFX source. ProRes clips and the Kenney particle pack are inputs, like
+# art/mixamo/ — what ships is baked out of them by tools/vfx-sheet.swift and
+# committed as art/vfx-*.png.
+art/vfx/
