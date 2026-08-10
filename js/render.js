@@ -975,7 +975,11 @@ const VFX = {
   halo:   { src: 'art/vfx-halo.png',   cols: 4, rows: 4, h: 72 },
   // A head-on ring on black: squashed into the floor, spun, and added.
   ring:   { src: 'art/vfx-ring.png',   cols: 4, rows: 4, h: 108, ground: true, spin: 0.4, add: true },
-  sparkle:{ src: 'art/vfx-sparkle.png', cols: 4, rows: 3, h: 120, over: true, add: true },
+  // `lift` raises an effect off the ground in world pixels — the hero is 56
+  // tall, so 34 puts this across his chest. Without it the burst sat in the
+  // dirt at his boots and read as a scuff rather than as something happening
+  // to him. Big, too: a level-up is rare and is allowed to take the screen.
+  sparkle:{ src: 'art/vfx-sparkle.png', cols: 4, rows: 3, h: 210, over: true, add: true, lift: 34 },
 };
 
 /**
@@ -1031,7 +1035,7 @@ function drawVfx(ctx, e, p, k) {
   }
 
   ctx.drawImage(src, cell.x, cell.y, cell.w, cell.h,
-                p.x - w / 2, p.y - (cfg.over ? h * 0.75 : h * 0.5), w, h);
+                p.x - w / 2, p.y - (cfg.lift || 0) - (cfg.over ? h * 0.75 : h * 0.5), w, h);
   return true;
 }
 
