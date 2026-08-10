@@ -54,6 +54,7 @@ export const DEFAULTS = {
   state: 'walk',
   frame: 0,
   frames: 4,          // art/warrior-walk.png has four strides; frames line up
+  strip: 0,           // > 1 lays that many phases across the canvas at once
   w: 480,
   h: 720,
   fh: 560,            // figure height in pixels, crown to sole
@@ -88,6 +89,7 @@ export function shotURL(o) {
     state: String(o.state),
     frame: String(o.frame),
     frames: String(o.frames),
+    strip: String(o.strip),
     art: String(o.art),
     stick: String(o.stick),
     travel: String(o.travel),

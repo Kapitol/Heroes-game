@@ -575,15 +575,30 @@ function drawFighter(ctx, o, p, t) {
  * vector version takes over.
  */
 function drawPaintedFighter(ctx, o, sx, sy, t) {
-  if (!o.sprite) return false;
-  const sp = o.sprite;
+  // A foe with a doll has no painted sprite of its own to fall back to — the
+  // Butcher is vector-drawn — so the sprite test has to come after the merge
+  // rather than before it.
+  if (!o.sprite && !(DOLL_HERO && DOLL_FOES[o.kind])) return false;
+  // `?doll` dresses the rigged hero in the baked Mixamo sheets instead. It is a
+  // flag rather than a config because it is a question being asked, not a
+  // decision taken: the doll reads better as a figure and cannot wear the
+  // armoury, and those are not comparable on a spreadsheet. See
+  // `tools/bake-doll.mjs` for where the sheets come from.
+  //
+  // It merges over the hero's own sprite rather than replacing it, so
+  // everything downstream — the swing alternation, the hurt tint, the death
+  // fade, the walk's bob damping — is the same code the painted classes run.
+  const sp = !DOLL_HERO ? o.sprite
+    : o.rig ? { ...o.sprite, ...DOLL_ART }
+      : DOLL_FOES[o.kind] ? { ...o.sprite, ...DOLL_FOES[o.kind] }
+        : o.sprite;
   const attacking = o.swing > 0.15 && o.swing < 0.85;
   const bob = o.walk ? Math.abs(Math.sin(o.walk)) * 1.1 : Math.sin(t * 2 + sx * 0.05) * 0.8;
 
   // The jointed hero, when a run asks for it. Nothing else is rigged yet, so
   // this is opt-in until the rest of the part art exists — a stick figure in
   // gauntlets is a thing to develop against, not a thing to ship.
-  if (o.rig) return drawRiggedHero(ctx, o, sx, sy);
+  if (o.rig && !DOLL_HERO) return drawRiggedHero(ctx, o, sx, sy);
 
   // A skill outranks everything. It is the one thing on screen the player
   // actually pressed, and a hero who keeps swinging through his own heal is a
@@ -754,6 +769,70 @@ function drawAnimFrame(ctx, o, sp, sx, sy, attacking, bob) {
 // of a leg is a boot in this style, and the one that worked described a taper
 // with a flat cut instead.
 const RIG_STICK = new URLSearchParams(location.search).has('rigstick');
+
+/**
+ * The baked Mixamo doll, as a set of sheets in the shape the painted classes
+ * already use. See `drawPaintedFighter` for how it is switched in.
+ *
+ * `rows: 1` and no `tiered` flag on the walk: there is one X Bot, not five
+ * armour bands of him, so nothing here reads `sp.row`. That is the whole cost
+ * of the doll stated in one line of config — the armoury has nowhere to go.
+ *
+ * The two attack cells are the outward and inward slashes at the moment the
+ * blade is out, and `attacks` alternates them per swing, so a long fight is a
+ * hero working rather than one frame on a loop. **His hands are empty in all
+ * of them.** Mixamo's sword clips animate a character around a weapon prop the
+ * character download does not include, so X Bot mimes it.
+ */
+const DOLL_HERO = new URLSearchParams(location.search).has('doll');
+
+/**
+ * The baked Mixamo cast, as sheets in the shape the painted classes use.
+ *
+ * `rows: 1` and no `tiered` flag: there is one Paladin, not five armour bands
+ * of him, and nothing here reads `sp.row`. That is the cost of the doll route
+ * stated in one line of config — the armoury has nowhere to go.
+ *
+ * The Paladin carries his own great sword and shield in the download, so
+ * unlike X Bot he needs no weapon built for him. His guard is his own Great
+ * Sword Idle; the two swings are X Bot clips retargeted onto him, alternated
+ * per swing by `attacks`, so a long fight is a hero working rather than one
+ * frame on a loop.
+ */
+const DOLL_ART = {
+  sheet: 'art/paladin-combat.png', cols: 3, rows: 1, row: 0, attacks: [1, 2],
+  // The warrior's skill poses are painted warrior art and survive a merge
+  // unless cleared: a heal that flashes the old hero for a beat is worse than
+  // a heal the Paladin does not act out.
+  actions: null,
+  anim: { sheet: 'art/paladin-walk.png', cols: 10, rows: 1, walk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+};
+
+/**
+ * Foes that have a doll, by `kind`.
+ *
+ * The Butcher is drawn by `js/sprites.js` from a vector `build`, so unlike the
+ * hero he has no sprite at all to merge over — the config has to carry `h`
+ * itself or he is scaled off nothing.
+ *
+ * He walks, swings and falls over. The two swings are frames of the punch
+ * chosen for reading clearly rather than for being the moment of impact: the
+ * middle of that clip tears his loincloth geometry away from his legs, and no
+ * amount of picking fixes the frames where it does.
+ */
+const DOLL_FOES = {
+  brute: {
+    sheet: 'art/warrok-combat.png', cols: 3, rows: 1, row: 0, attacks: [1, 2], h: 62,
+    // One sheet, three states: ten frames of stride and six of collapse. They
+    // share a sheet because `drawAnimFrame` takes one — `walk` and `death` are
+    // index lists into it, not separate images.
+    anim: {
+      sheet: 'art/warrok-walk.png', cols: 16, rows: 1,
+      walk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      death: [10, 11, 12, 13, 14, 15],
+    },
+  },
+};
 
 const RIG_ART = {
   head:  { src: 'art/hair-helmets.png', cols: 1, bones: [['head']] },

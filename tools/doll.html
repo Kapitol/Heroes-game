@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Doll</title>
+<style>
+  html, body { margin: 0; background: #14100c; }
+  body.shot { overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.js" } }
+</script>
+<script type="module">
+// The Mixamo doll, framed exactly the way `tools/rig.html` frames the hero.
+//
+//   tools/doll.html?strip=8&clip=Withdrawing%20Sword&w=1760&h=460&fh=380&by=0.95
+//
+// This exists to answer one question and no others: **is the paperdoll's
+// problem its assembly or its art?** The rig's figure reads badly — six sheets
+// that disagree about where the light is, no occlusion where pieces meet, and
+// no value structure to separate a limb from a torso. A 3D render gets all
+// three right by construction, so putting the two side by side separates a
+// fault in the *system* from a fault in the *pictures*.
+//
+// That only works if nothing else differs. Same clip, same phases, same figure
+// height in pixels, same ground line, same background. The lighting here is
+// deliberately plain — one key, one fill, one rim — because art-directing the
+// doll would answer a different question than the one being asked.
+//
+// It is a workbench, not part of the game. `tools/vendor/` is only reachable
+// from here, nothing under `js/` imports three, and the shipped bundle is
+// unchanged.
+import * as THREE from 'three';
+import { FBXLoader } from './vendor/three/jsm/loaders/FBXLoader.js';
+
+const Q = new URLSearchParams(location.search);
+const qNum = (k, d) => (Q.has(k) ? +Q.get(k) : d);
+const SHOT = Q.has('shot');
+if (SHOT) document.body.classList.add('shot');
+
+const W = qNum('w', 1760);
+const H = qNum('h', 460);
+const FH = qNum('fh', 380);          // crown-to-sole in pixels, as the rig means it
+const BY = qNum('by', 0.95);         // the ground line, as a fraction of H
+const STRIP = Math.max(1, qNum('strip', 8));
+const CLIP = Q.get('clip') || 'Withdrawing Sword';
+// Which character wears the clip. Mixamo names a download `<Character>@<Clip>`
+// and the skin comes down as `<Character>.fbx`, so one name finds both and any
+// character dropped into art/mixamo/ is reachable without editing this file.
+const CHAR = Q.get('char') || 'X Bot';
+// Which character's download the *motion* comes out of, when it is not this
+// one's. Every Mixamo rig is the same `mixamorig` skeleton and three binds
+// animation tracks by bone name, so a clip downloaded on X Bot drives the
+// Paladin unchanged — which matters, because a character is downloaded once
+// and clips are downloaded per animation. Without this, using a new character
+// would mean re-downloading the whole library under his name.
+const MOTION = Q.get('motion') || CHAR;
+// Which file carries the mesh, when it is not `<Character>.fbx`. A character
+// downloaded together with an animation has no bare file at all — the Paladin
+// arrived only as `Paladin WProp J Nordstrom@Great Sword Casting.fbx` — and a
+// page cannot list a directory to go looking. `tools/bake-doll.mjs` can, so it
+// resolves the name and passes it in.
+const SKIN = Q.get('skin');
+// The exact basename of the clip file. `tools/bake-doll.mjs` resolves it — it
+// can list the directory and a page cannot, and the names in there follow no
+// single rule: `X Bot@Idle`, `Mutant Punch`, `paladin-Reaction` are all clips.
+const CLIPFILE = Q.get('clipfile');
+const BG = Q.get('bg') || '#14100c';
+// `yaw` turns the doll, in degrees, without moving the camera. Only a
+// diagnostic: a T-pose seen side-on hides both arms along the camera axis, so
+// the one view that cannot tell good skinning from bad is the one the game
+// uses.
+const YAW = (qNum('yaw', 0) * Math.PI) / 180;
+const CLAY = Q.has('clay') && Q.get('clay') !== '0';
+const SWORD = Q.has('sword') && Q.get('sword') !== '0';
+// A multiplier on every light. Characters do not arrive at a common
+// brightness — X Bot is untextured pale clay and Warrok is a near-black beast
+// whose own diffuse map eats most of the key — and a sheet baked too dark
+// cannot be recovered later, because the game tints and fades it but never
+// brightens it.
+const LIGHT = qNum('light', 1);
+// **A cycle is sampled `i / STRIP`; a one-shot is sampled `i / (STRIP - 1)`.**
+// The difference is one frame and it is the difference between a walk and a
+// limp: a loop's last sample is its first one again, so including the endpoint
+// bakes the same picture twice and the stride hitches once per cycle. A draw
+// or a slash is the other way round — its last frame is the pose it ends in,
+// and dropping it stops the animation a frame short of the thing it was for.
+const LOOP = Q.has('loop') && Q.get('loop') !== '0';
+// A single named phase, for sheets whose cells come from different clips.
+const AT = Q.has('p') ? +Q.get('p') : null;
+
+// `preserveDrawingBuffer` is not optional here. The shot is taken with
+// `canvas.toDataURL` — for the reason given in `tools/gauntlet/shot.mjs`, that
+// the buffer is the measurement and a viewport screenshot is not — and WebGL
+// throws its drawing buffer away after compositing unless told otherwise. The
+// first strip came back a blank canvas, not an empty scene.
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H, false);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+
+// **Orthographic, and side-on from the character's right.** Both halves are
+// forced by the rig rather than chosen: it draws one flat side view mirrored
+// for facing, so a perspective camera would disagree about the figure's
+// proportions on every limb, and the near side has to be the right because
+// that is the side `tools/bake-clip.mjs` projects — and the hand that draws
+// the sword. A Mixamo figure faces +Z with +Y up, so a camera on -X sees +Z as
+// screen-right and the doll faces the way the hero walks.
+const camera = new THREE.OrthographicCamera();
+camera.up.set(0, 1, 0);
+
+const key = new THREE.DirectionalLight(0xfff0dc, 2.6);
+key.position.set(-3, 5, 3);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0x6f7f9a, 0.7);
+fill.position.set(-2, 1, -3);
+scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffd9a0, 1.4);
+rim.position.set(2, 2, -2);
+scene.add(rim);
+scene.add(new THREE.AmbientLight(0x30281e, 1.2));
+for (const l of [key, fill, rim]) l.intensity *= LIGHT;
+
+const load = (url) => new Promise((res, rej) => new FBXLoader().load(url, res, undefined, rej));
+
+/**
+ * The doll, its clip, and the scale that makes it `FH` pixels tall.
+ *
+ * The clip is loaded from a *separate* file and played on the doll's skeleton,
+ * which is the whole reason Mixamo downloads split the two: the bone names
+ * match, so an AnimationClip keyed by name drives a skeleton it was never
+ * exported with. It is also why the clips in `art/mixamo/` carry no mesh.
+ */
+// **A Mixamo download is not always two files.** A character exported *with*
+// its clip carries the skin and the motion together, and there is then no bare
+// `<Character>.fbx` to load — which is how Warrok arrived. So the character
+// file is tried first and the clip stands in for it when it is missing, rather
+// than the page failing on a download that is perfectly valid.
+/**
+ * The clip file, and the mesh that should wear it.
+ *
+ * **A clip that carries its own skin wears it.** Every Warrok animation and
+ * every Paladin animation in `art/mixamo/` came down *with* the character, so
+ * each file already holds a skeleton, a mesh and a motion that were exported
+ * together. Loading the mesh from one download and the clip from another is
+ * then not only unnecessary, it is wrong: two downloads of the same character
+ * do not guarantee the same bind, and Warrok folded into a lump with his legs
+ * inside his chest the moment a clip crossed files. Reading both out of one
+ * file cannot go wrong, and needs no retargeting at all.
+ *
+ * Only X Bot needs the two-file path — his clips were downloaded *without*
+ * skin, which is what makes them mesh-free and reusable in the first place.
+ */
+const clipScene = CLIP === 'none' ? null
+  : await load(`../art/mixamo/${CLIPFILE || `${CHAR}@${CLIP}`}.fbx`);
+
+const hasMesh = (o) => { let f = false; o?.traverse?.((c) => { if (c.isMesh) f = true; }); return f; };
+const carriesSkin = hasMesh(clipScene);
+
+// `clip=none` renders the bind pose. It is the control: if a limb looks wrong
+// in a clip, that is either the skinning or the doll, and the bind pose is the
+// only frame where the two can be told apart.
+// An explicit `skin` wins over the clip's own mesh — it is the handle for
+// asking "is it this file's mesh or this file's animation that is wrong", and
+// there is no other way to take those two apart.
+const doll = SKIN ? await load(`../art/mixamo/${SKIN}.fbx`)
+  : carriesSkin ? clipScene
+    : await load(`../art/mixamo/${CHAR}.fbx`);
+const motion = clipScene;
+
+/**
+ * A clip reduced to the only thing a sprite bake can use: its rotations.
+ *
+ * **Only the rotations survive.** Mixamo bakes an absolute position track for
+ * every bone, in the units of the character it was exported on. Played back on
+ * a skeleton with different bone lengths those positions are not a pose, they
+ * are instructions to move each joint somewhere it does not belong — and
+ * Warrok, who is built nothing like the human rig the punch was exported on,
+ * folded into a lump with his legs crushed inside his chest. Rotations are
+ * proportion-independent: an elbow bent ninety degrees is bent ninety degrees
+ * on any arm.
+ *
+ * Dropping the hip translation too is deliberate rather than lazy. Every clip
+ * used here is either in place already or is about to be baked as a sprite
+ * whose feet the game positions itself, so the one thing that track could
+ * legitimately carry is the one thing nothing downstream wants.
+ */
+function retarget(clip) {
+  return new THREE.AnimationClip(clip.name, clip.duration,
+    clip.tracks.filter((t) => t.name.endsWith('.quaternion')));
+}
+
+doll.traverse((o) => {
+  if (!o.isMesh) return;
+  o.castShadow = true;
+  o.receiveShadow = true;
+  // **The clay override is for the mannequin only.** X Bot has no character to
+  // show, so flattening him to neutral was the honest way to ask whether
+  // *assembly* reads. A real character's textures are the entire question, and
+  // replacing them would answer a different one — so `clay=1` is opt-in.
+  if (CLAY) {
+    o.material = new THREE.MeshStandardMaterial({ color: 0xb9b2a6, roughness: 0.72, metalness: 0.04 });
+  } else if (o.material) {
+    // **The FBX material is rebuilt, not adjusted.** Mixamo exports Phong, and
+    // what comes through varies by character: X Bot arrives with no texture at
+    // all, and Warrok arrives with a 2048 diffuse and something else in the
+    // material — vertex colours, an emissive, a specular map — that renders him
+    // as a pure black silhouette. Chasing which one it is per character is
+    // work with no end; carrying the maps across onto a known-good standard
+    // material is one rule that holds for all of them.
+    o.material = [].concat(o.material).map((m) => {
+      const std = new THREE.MeshStandardMaterial({
+        map: m.map || null,
+        normalMap: m.normalMap || null,
+        color: m.map ? 0xffffff : (m.color || new THREE.Color(0xb9b2a6)),
+        roughness: 0.68,
+        metalness: 0.05,
+      });
+      if (std.map) std.map.colorSpace = THREE.SRGBColorSpace;
+      return std;
+    });
+    if (o.material.length === 1) o.material = o.material[0];
+  }
+});
+
+/**
+ * A blade in the right fist.
+ *
+ * Mixamo's sword clips animate a character *around* a weapon that the character
+ * download does not contain, so X Bot mimes every one of them. Nothing in the
+ * files fixes that — the sword has to be supplied.
+ *
+ * **It is parented to the hand bone, not posed per frame.** A skinned skeleton
+ * already carries a full transform at the wrist; hanging the sword off it means
+ * the mocap moves the blade for free, correctly, through every clip, including
+ * the ones nobody has looked at yet. Posing it per frame would be re-deriving
+ * what the skeleton already knows, and would be wrong the first time a clip
+ * rolled the wrist.
+ *
+ * The grip runs **across the fist along the knuckles**, which is how a sword is
+ * actually held and — more usefully — is a direction the skeleton can be asked
+ * for rather than guessed: index knuckle to little knuckle. Everything else is
+ * built from that one measurement, so the sword is the right size for the hand
+ * on any character, not just this one.
+ */
+function attachSword(doll) {
+  // FBXLoader strips the colon out of Mixamo's bone names, so `mixamorig:Hips`
+  // arrives as `mixamorigHips`. Both spellings are tried rather than one
+  // picked, because the raw FBX keeps the colon and `tools/bake-clip.mjs`
+  // reads that file directly — the two halves of this project genuinely see
+  // different names for the same bone.
+  const bone = (n) => doll.getObjectByName(n) || doll.getObjectByName(n.replace(':', ''));
+  const hand = bone('mixamorig:RightHand');
+  const index = bone('mixamorig:RightHandIndex1');
+  const pinky = bone('mixamorig:RightHandPinky1');
+  const middle = bone('mixamorig:RightHandMiddle1');
+  if (!hand || !index || !pinky || !middle) return null;
+
+  doll.updateMatrixWorld(true);
+  const local = (o) => hand.worldToLocal(o.getWorldPosition(new THREE.Vector3()));
+  const pi = local(index), pp = local(pinky), pm = local(middle);
+
+  // The blade leaves the fist on the index side, so the grip axis points from
+  // the little finger towards the index. Its length is the width of the hand,
+  // and every dimension below is a multiple of it.
+  const grip = pi.clone().sub(pp);
+  const h = grip.length() || 1;
+  grip.normalize();
+  // The flat of the blade lies across the palm: perpendicular to both the grip
+  // and the way the fingers point. Taken as a cross product rather than
+  // assumed, because a hand that rolls takes the flat with it and a blade that
+  // presents its edge to the camera vanishes.
+  const flat = new THREE.Vector3().crossVectors(grip, pm.clone().normalize()).normalize();
+  const side = new THREE.Vector3().crossVectors(grip, flat).normalize();
+
+  const steel = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.34, metalness: 0.85 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x3a3229, roughness: 0.75, metalness: 0.2 });
+  const brass = new THREE.MeshStandardMaterial({ color: 0x9c7b3f, roughness: 0.45, metalness: 0.7 });
+
+  const sword = new THREE.Group();
+  const part = (geo, mat, y) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.y = y;
+    m.castShadow = true;
+    sword.add(m);
+    return m;
+  };
+  part(new THREE.CylinderGeometry(h * 0.17, h * 0.19, h * 1.5, 10), dark, 0);
+  part(new THREE.SphereGeometry(h * 0.26, 12, 8), brass, -h * 0.85);
+  part(new THREE.BoxGeometry(h * 0.34, h * 0.24, h * 2.1), brass, h * 0.85);
+  part(new THREE.BoxGeometry(h * 0.16, h * 6.2, h * 0.8), steel, h * 4.1);
+  // A four-sided cone is a blade tip; a round one is a spear.
+  const tip = part(new THREE.ConeGeometry(h * 0.57, h * 1.1, 4), steel, h * 7.75);
+  tip.rotation.y = Math.PI / 4;
+  tip.scale.set(1, 1, 0.28);
+
+  // The basis has to be right-handed or the blade comes out mirrored, which on
+  // a symmetrical sword is invisible until the guard is on the wrong side.
+  sword.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(side, grip, flat));
+  sword.position.copy(pi.clone().add(pp).multiplyScalar(0.5));
+  hand.add(sword);
+  return sword;
+}
+
+// Height from the bind pose, before anything is animated: a clip that raises
+// an arm over the crown would otherwise decide the scale, and the figure would
+// shrink for exactly the frames where it reaches.
+const bounds = new THREE.Box3().setFromObject(doll);
+const height = bounds.max.y - bounds.min.y;
+const scale = 1 / height;                    // the doll is now exactly 1 unit tall
+doll.scale.setScalar(scale);
+doll.position.y = -bounds.min.y * scale;     // and standing on y = 0
+doll.rotation.y = YAW;
+window.__doll = doll; window.__scene = scene;
+if (SWORD) window.__sword = attachSword(doll);
+
+const mixer = motion ? new THREE.AnimationMixer(doll) : null;
+if (mixer) {
+  // **A clip that came with its mesh is played whole; only a borrowed one is
+  // reduced to rotations.** Which way round this goes was not obvious and is
+  // worth stating, because both halves were wrong once. Warrok's *bind* pose
+  // is broken — rendered with no animation at all he is a crumpled heap, in
+  // every file he ships in — so his bones only reach their right places when
+  // the clip's position tracks put them there. Strip those and he collapses.
+  // A clip borrowed from another character is the opposite case: its positions
+  // are in that character's proportions and would drag every joint somewhere
+  // it does not belong, while its rotations carry over untouched.
+  window.__clip = carriesSkin ? motion.animations[0] : retarget(motion.animations[0]);
+  mixer.clipAction(window.__clip).play();
+}
+const duration = motion ? motion.animations[0].duration : 0;
+
+// The ground exists for the contact shadow and nothing else. Without one the
+// figure floats, and "does it sit on the floor" is one of the things the rig
+// gets wrong — so leaving it out would hand the doll the comparison.
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(20, 20),
+  new THREE.ShadowMaterial({ opacity: 0.55 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+scene.add(doll);
+
+Object.assign(key.shadow.camera, { left: -2, right: 2, top: 2, bottom: -2, near: 0.1, far: 20 });
+key.shadow.camera.updateProjectionMatrix();
+
+/**
+ * Frame one cell of the strip.
+ *
+ * The rig's `fh` is a figure height in pixels and its `by` is the ground line,
+ * so the ortho frustum is derived from those rather than from a comfortable
+ * framing: the two images have to be measurable against each other, not merely
+ * similar. One doll-height is `FH` pixels, so the visible world height is
+ * `H / FH` doll-heights, and the camera sits so that y = 0 lands on `BY`.
+ */
+function frame(i) {
+  // One doll-height is FH pixels, so the cell sees H/FH of them top to bottom,
+  // and the ground line at BY puts the top of the view BY * worldH above y = 0.
+  const worldH = H / FH;
+  const worldW = (W / STRIP) / FH;
+  const centre = worldH * BY - worldH / 2;
+  camera.left = -worldW / 2; camera.right = worldW / 2;
+  camera.top = centre + worldH / 2; camera.bottom = centre - worldH / 2;
+  camera.near = 0.01; camera.far = 40;
+  camera.position.set(-8, 0, 0);
+  camera.lookAt(0, 0, 0);
+  camera.updateProjectionMatrix();
+
+  // A one-shot is sampled across its whole length, endpoints included, so the
+  // strip shows the pose it settles into rather than stopping a frame short.
+  if (mixer) {
+    const phase = AT != null ? AT
+      : LOOP ? i / STRIP
+        : i / Math.max(1, STRIP - 1);
+    mixer.setTime(0);
+    mixer.update(phase * duration);
+  }
+
+  renderer.setViewport((W / STRIP) * i, 0, W / STRIP, H);
+  renderer.setScissor((W / STRIP) * i, 0, W / STRIP, H);
+  renderer.render(scene, camera);
+}
+
+renderer.setClearColor(BG === 'none' ? 0x000000 : new THREE.Color(BG), BG === 'none' ? 0 : 1);
+renderer.setScissorTest(true);
+renderer.clear();
+for (let i = 0; i < STRIP; i++) frame(i);
+
+// The flag `tools/gauntlet/shot.mjs` waits on. Two FBX files and a skinned
+// mesh do not decode in a frame, and a shutter on a timer catches an empty
+// scene often enough to waste a round.
+document.body.dataset.ready = '1';
+</script>
+</body>
+</html>

@@ -10,3 +10,13 @@ tools/gauntlet/*.png
 tools/gauntlet/*.json
 tools/gauntlet/fixtures/
 tools/gauntlet/reverted/
+
+# Mixamo source downloads. 200MB of FBX, and the same argument as node_modules:
+# they are inputs re-fetchable from mixamo.com, not source. What the game ships
+# is baked out of them — `js/clips/*.js` and the sheets in `art/` — and those
+# are committed, so a clone runs without them. Re-download only to re-bake.
+art/mixamo/
+
+# Doll and mocap renders. `tools/bake-doll.mjs` and `tools/doll.html` regenerate
+# every one on demand, the same reason tools/gauntlet/*.png is ignored above.
+tools/gauntlet/mocap/

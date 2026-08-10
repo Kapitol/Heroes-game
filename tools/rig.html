@@ -317,10 +317,10 @@ let last = performance.now();
  * "which animation" and "is it running". They are separate now, so a single
  * frame of a named state can be asked for and got.
  */
-function poseNow() {
+function poseNow(p = S.p) {
   if (S.state === 'rest') return Rig.REST;
   const anim = Rig.ANIMS[S.state];
-  return anim ? anim(S.p) : Rig.REST;
+  return anim ? anim(p) : Rig.REST;
 }
 
 function frame(now) {
@@ -357,6 +357,24 @@ function frame(now) {
   const span = w * 0.6;
   const walked = S.travel ? ((S.p * Rig.STRIDE * h) % span) : 0;
   const x = (SHOT && !S.travel ? w * 0.5 : w * 0.25) + walked;
+  // `strip=N` lays N phases of the state across the canvas instead of one, which
+  // is the only way to judge a *clip*. A hand-written cycle can be read a frame
+  // at a time because someone chose every frame; a baked mocap take cannot —
+  // what goes wrong with it is continuity, and continuity is invisible in a
+  // single picture and unmeasurable in a moving one.
+  const strip = Math.max(0, qNum('strip', 0));
+  if (strip > 1) {
+    const gear = S.art ? equipment() : (pending = 0, null);
+    for (let i = 0; i < strip; i++) {
+      const px = w * ((i + 0.5) / strip);
+      const angles = poseNow(i / (strip - 1));
+      if (gear) Rig.drawParts(ctx, px, y, h, false, angles, gear, { hide: S.hide });
+      if (S.stick) Rig.drawStick(ctx, px, y, h, false, angles, { sel: S.sel });
+    }
+    if (!pending) document.body.dataset.ready = '1';
+    if (SHOT) return;
+  }
+
   const angles = poseNow();
 
   if (S.art) Rig.drawParts(ctx, x, y, h, false, angles, equipment(), { hide: S.hide });

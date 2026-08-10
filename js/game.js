@@ -9,7 +9,7 @@ import { BIOMES, biomeFor, levelFor, ROAD, onRoad, HALF, MARCH } from './world.j
 import { toWorld, toScreen, clamp, lerp } from './iso.js';
 import { makeHero, heroStats, moveToward, faceTo, separate, nearestFoe, CLASSES, classByKey } from './entities.js';
 import {
-  MONSTERS, makeMonster, makeBoss, rosterFor, formationFor, isBossStage, bossFor,
+  MONSTERS, makeMonster, makeBoss, rosterFor, formationFor, isBossStage, bossFor, forceBoss,
 } from './encounters.js';
 import { makeCamera, render, fitZoom, WINDUP } from './render.js';
 import { SKILLS, skillById, rollDraft, applyCard, MAX_SKILLS } from './perks.js';
@@ -28,6 +28,15 @@ const SAVE_KEY = 'cryptheroes.v3';
 // are rolled from a weighted roster and a given type may not show for minutes.
 // Ignored unless the key names a real monster.
 const DEV_SPAWN = new URLSearchParams(location.search).get('spawn');
+
+// Dev hook: ?boss=butcher makes every encounter that boss, from the first
+// step. A boss is otherwise eight stages and a dozen waves away, which is a
+// long time to wait to look at one — and looking at one is most of what a
+// boss needs during art work.
+const DEV_BOSS = new URLSearchParams(location.search).get('boss');
+if (DEV_BOSS && !forceBoss(DEV_BOSS)) {
+  console.warn(`?boss=${DEV_BOSS} names no boss; the stage decides as usual`);
+}
 
 // Dev hook: ?drop drops you straight into the payout minigame with a fixed
 // pot, and loops it, so it can be tuned without fighting a wave for every
@@ -56,7 +65,10 @@ const DEV_BIOME = new URLSearchParams(location.search).get('biome');
 // far — everything else shows as the bare skeleton, which is a thing to develop
 // against and not a thing to ship. It is the only way to judge the rig at the
 // real scale, under the real lighting, driven by the real hero.
-const DEV_RIG = new URLSearchParams(location.search).has('rig');
+// `?doll` implies `?rig`: the doll is drawn in place of the jointed hero, so it
+// needs the same hero to exist. One flag rather than two, or the interesting
+// one silently does nothing.
+const DEV_RIG = ['rig', 'doll'].some((k) => new URLSearchParams(location.search).has(k));
 const pinnedBiome = () => (DEV_BIOME ? BIOMES.find((b) => b.key === DEV_BIOME) : null);
 
 const LEASH = 1.9;          // how far the hero will step off their mark
@@ -340,7 +352,7 @@ function enterStage(stage, silent) {
 // A boss stands in the road once this many waves have gone by, wherever that
 // falls in a section. Tying it to the section boundary let the 3-or-4 wave
 // roll shift it around by a third.
-const isBossWave = () => S.wavesSinceBoss >= WAVES_PER_BOSS;
+const isBossWave = () => !!DEV_BOSS || S.wavesSinceBoss >= WAVES_PER_BOSS;
 
 function beginEncounter() {
   S.phase = 'fight';
@@ -1323,6 +1335,14 @@ function updateMonsters(dt) {
   }
 }
 
+/**
+ * Whether this thing hits with its hands.
+ *
+ * By build rather than by a flag on each entry: brutes are fists and the
+ * undead carry blades, and a new brute should not have to remember to say so.
+ */
+const unarmed = (m) => m.kind === 'brute' || m.kind === 'zombie';
+
 function meleeAI(m, h, d, dt) {
   const reach = m.range + 0.35;
   if (d > reach) { moveToward(m, h.x, h.y, dt, ROAD); return; }
@@ -1332,7 +1352,7 @@ function meleeAI(m, h, d, dt) {
     m.swing = 0.001;
     m.pending = h;
     m.atkTimer = m.atk;
-    Audio.sfx.swing();
+    Audio.sfx[unarmed(m) ? 'punch' : 'swing']();
   }
 }
 

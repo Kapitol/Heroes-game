@@ -1,3 +1,8 @@
+import * as CLIP_DRAW_SWORD from './clips/drawSword.js';
+import * as CLIP_SLASH_IN from './clips/slashIn.js';
+import * as CLIP_SLASH_OUT from './clips/slashOut.js';
+import * as CLIP_RUN_SWORD from './clips/runSword.js';
+
 // A jointed hero, instead of a drawn one.
 //
 // Every character sheet in this project draws the whole hero with the armour
@@ -814,7 +819,47 @@ export function plant(angles) {
   return { ...angles, lift: -lowest };
 }
 
+/**
+ * A baked Mixamo clip, as an entry in `ANIMS`.
+ *
+ * The tables under `js/clips/` are joint angles per frame in exactly the units
+ * `solve` wants — see `tools/bake-clip.mjs` for how a motion capture download
+ * becomes one. So playing a clip is a lookup and a lerp, and everything the
+ * hand-written animations get for free applies unchanged: the pose still goes
+ * through `plant`, so the hips still rise and fall because the legs are doing
+ * something, and the bob of a mocap step is derived rather than captured.
+ *
+ * **A clip does not loop unless it is a cycle.** A sword draw run round the
+ * clock snaps from the blade held high back to a hand at the hip, once a
+ * second, forever. `loop: false` holds the last frame instead, which is what a
+ * one-shot is: it ends, and something else decides what happens next.
+ */
+function clip({ KEYS, FRAMES }, { loop = false } = {}) {
+  const n = FRAMES.length;
+  return (p) => {
+    const w = loop ? ((p % 1) + 1) % 1 : Math.max(0, Math.min(1, p));
+    // A looping clip's last frame is followed by its first; a one-shot's is
+    // followed by itself, so it settles rather than rewinds.
+    const t = w * (loop ? n : n - 1);
+    const i = Math.min(n - 1, Math.floor(t));
+    const j = loop ? (i + 1) % n : Math.min(n - 1, i + 1);
+    const f = t - i;
+    const a = FRAMES[i], b = FRAMES[j];
+    const angles = {};
+    for (let k = 0; k < KEYS.length; k++) angles[KEYS[k]] = a[k] + (b[k] - a[k]) * f;
+    return plant(angles);
+  };
+}
+
 export const ANIMS = {
+  /** Drawing the blade — the beat between meeting a foe and swinging at it. */
+  drawSword: clip(CLIP_DRAW_SWORD),
+  /** The two halves of a sword fight, alternated so no two swings match. */
+  slashIn: clip(CLIP_SLASH_IN),
+  slashOut: clip(CLIP_SLASH_OUT),
+  /** A run with the blade already out. A cycle, so it loops. */
+  runSword: clip(CLIP_RUN_SWORD, { loop: true }),
+
   /**
    * Standing still, which is not the same as standing frozen.
    *

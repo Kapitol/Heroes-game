@@ -99,8 +99,26 @@ export const BOSSES = [
  * `BOSSES[-1]` — undefined — and threw inside the render loop, killing the
  * frame and freezing the game on the last thing it had drawn.
  */
-export const bossFor = (stage) =>
-  BOSSES[Math.max(0, Math.floor(stage / BOSS_EVERY) - 1) % BOSSES.length];
+let forced = null;
+
+/**
+ * Dev hook: pin which boss stands in the road, whatever the stage says.
+ *
+ * Set here rather than read from the URL in `game.js` because `bossFor` is the
+ * one place that answers "which boss", and `makeBoss` asks it too. A flag
+ * checked at the call site would have had to be checked at both, and the two
+ * would eventually disagree about who the player is fighting.
+ *
+ * Returns the boss it pinned, or null if the key names nothing — the caller
+ * can then say so instead of silently doing nothing.
+ */
+export function forceBoss(key) {
+  forced = BOSSES.find((b) => b.key === key) || null;
+  return forced;
+}
+
+export const bossFor = (stage) => forced
+  || BOSSES[Math.max(0, Math.floor(stage / BOSS_EVERY) - 1) % BOSSES.length];
 
 export const BOSS_EVERY = 8;
 export const isBossStage = (stage) => stage % BOSS_EVERY === 0;

@@ -1,4 +1,22 @@
-// All sound is synthesised at runtime — no audio files anywhere in this project.
+// Sound is synthesised at runtime, with one exception: the combat impacts.
+//
+// **The synth is still the floor, not the fallback of last resort.** Every
+// sampled effect below is written as "play the sample, and if there is no
+// sample play the tone" — so a missing file, a codec a browser does not want,
+// or a fight that starts before the bank has finished decoding all degrade to
+// the sound the game shipped with rather than to silence. Nothing had to be
+// re-tuned to add samples, and nothing breaks if they are deleted.
+//
+// The files under `audio/` are converted, not raw. The pack ships 96kHz 24-bit
+// stereo masters at 35MB; these are twelve of them at 44.1k AAC, 116KB the lot:
+//
+//   afconvert -f m4af -d aac@44100 -b 96000 in.wav audio/swing-1.m4a
+//
+// Only blades and fists are sampled. A synthesised sword is the one thing in
+// this project that never convinced anyone — it is a filtered noise burst, and
+// a real one has a body to it that an envelope cannot fake. Spells, coins,
+// level-ups and the boss stinger stay synthetic, where the same argument does
+// not apply and the files would only be weight.
 
 let ctx = null, master = null, musicGain = null;
 let enabled = true;
@@ -13,6 +31,7 @@ export function init() {
   master.gain.value = muted ? 0 : volume;
   master.connect(ctx.destination);
   startMusic();
+  loadBank();
 }
 
 export function resume() { if (ctx && ctx.state === 'suspended') ctx.resume(); }
@@ -241,12 +260,98 @@ function startBed() {
   src.start(); lfo.start();
 }
 
+// --- the sample bank --------------------------------------------------------
+
+// How many variants of each. A fight is dozens of swings a minute, and one
+// recording played on a loop reads as a stuck key within seconds — the ear
+// picks up the repeat long before it picks up the sound.
+const BANK = { swing: 4, hit: 3, crit: 2, punch: 3 };
+
+// name -> [{ buffer, gain }]. Empty until `loadBank` resolves, which is why
+// every caller has a synth branch behind it.
+const bank = new Map();
+
+// What every sample is normalised to. The pack is 24-bit studio masters cut at
+// wildly different levels — a clash is far hotter than a slash — and mixing
+// those raw would make the loudest one the volume of the game. Peak is
+// measured off the decoded buffer rather than trusted from the file, so
+// swapping a file in needs no accompanying number.
+const PEAK = 0.7;
+
+async function loadOne(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  const buffer = await ctx.decodeAudioData(await res.arrayBuffer());
+  let peak = 0;
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const d = buffer.getChannelData(c);
+    for (let i = 0; i < d.length; i++) {
+      const v = d[i] < 0 ? -d[i] : d[i];
+      if (v > peak) peak = v;
+    }
+  }
+  return { buffer, gain: peak > 0.0001 ? PEAK / peak : 1 };
+}
+
+/**
+ * Decode the bank in the background.
+ *
+ * Failures are swallowed per file on purpose. One sound that will not decode
+ * should cost that one sound its sample, not take the other eleven down with
+ * it — and the caller cannot tell the difference anyway, because it falls
+ * through to the synth either way.
+ */
+function loadBank() {
+  for (const [name, count] of Object.entries(BANK)) {
+    const list = [];
+    bank.set(name, list);
+    for (let i = 1; i <= count; i++) {
+      loadOne(`audio/${name}-${i}.m4a`).then((s) => list.push(s), () => {});
+    }
+  }
+}
+
+/**
+ * Play one variant, or report that there was none to play.
+ *
+ * The pitch wobble is not decoration. Four slashes still repeat inside a long
+ * fight; a few per cent either way on the playback rate makes each one land as
+ * a different swing of the same sword rather than the same swing again.
+ */
+function sample(name, gain = 1, spread = 0.07) {
+  if (!ctx || !enabled) return false;
+  const list = bank.get(name);
+  if (!list || !list.length) return false;
+  const s = list[(Math.random() * list.length) | 0];
+  const src = ctx.createBufferSource();
+  src.buffer = s.buffer;
+  src.playbackRate.value = 1 + (Math.random() * 2 - 1) * spread;
+  const g = ctx.createGain();
+  g.gain.value = s.gain * gain;
+  src.connect(g).connect(master);
+  src.start();
+  return true;
+}
+
 export const sfx = {
-  swing()      { noise({ dur: 0.13, gain: 0.13, freq: 1700, q: 0.8, type: 'highpass' }); },
-  hit()        { tone(150, { type: 'square', dur: 0.09, gain: 0.2, slide: -80 });
+  swing()      { if (sample('swing', 0.5)) return;
+                 noise({ dur: 0.13, gain: 0.13, freq: 1700, q: 0.8, type: 'highpass' }); },
+  hit()        { if (sample('hit', 0.6)) return;
+                 tone(150, { type: 'square', dur: 0.09, gain: 0.2, slide: -80 });
                  noise({ dur: 0.1, gain: 0.2, freq: 480, q: 1.2 }); },
-  crit()       { tone(320, { type: 'square', dur: 0.14, gain: 0.26, slide: -220 });
+  // A crit keeps its synth layer *underneath* the sample rather than instead of
+  // it. The low square slide is what makes a crit read as heavier than a hit,
+  // and the sampled blades are all bright — dropped, every crit sounded thinner
+  // than the ordinary hit it was supposed to beat.
+  crit()       { if (sample('crit', 0.75)) { tone(320, { type: 'square', dur: 0.14, gain: 0.16, slide: -220 }); return; }
+                 tone(320, { type: 'square', dur: 0.14, gain: 0.26, slide: -220 });
                  noise({ dur: 0.18, gain: 0.26, freq: 2200, q: 0.7, type: 'highpass' }); },
+  // Something heavy and unarmed. The Butcher throws fists, not steel, and a
+  // sword swing coming off a beast twice the hero's size was the one sound in
+  // the fight that named the wrong creature.
+  punch()      { if (sample('punch', 0.6)) return;
+                 tone(120, { type: 'square', dur: 0.12, gain: 0.22, slide: -60 });
+                 noise({ dur: 0.14, gain: 0.2, freq: 380, q: 1.0 }); },
   hurt()       { tone(210, { type: 'sawtooth', dur: 0.22, gain: 0.24, slide: -130 }); },
   die()        { tone(180, { type: 'triangle', dur: 0.4, gain: 0.22, slide: -140 });
                  noise({ dur: 0.35, gain: 0.18, freq: 320, q: 0.9, delay: 0.03 }); },
