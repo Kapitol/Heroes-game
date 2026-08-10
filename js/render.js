@@ -966,6 +966,16 @@ const VFX = {
   // that cropping to the alpha bounds finds no bounds — it reported the full
   // 720x720 — so the two are distinguishable, just not automatically here.
   cast:   { src: 'art/vfx-cast.png',   cols: 4, rows: 4, h: 88, over: true, add: true },
+
+  // **The halo is not `ground`, and that is the point.** It was shot in
+  // perspective — the footage is already an ellipse — so squashing it into the
+  // floor plane would apply that foreshortening twice and leave a gold line.
+  // Everything drawn as a head-on circle gets `ground`; anything already
+  // carrying its own perspective is drawn as it was shot.
+  halo:   { src: 'art/vfx-halo.png',   cols: 4, rows: 4, h: 72 },
+  // A head-on ring on black: squashed into the floor, spun, and added.
+  ring:   { src: 'art/vfx-ring.png',   cols: 4, rows: 4, h: 108, ground: true, spin: 0.4, add: true },
+  sparkle:{ src: 'art/vfx-sparkle.png', cols: 4, rows: 3, h: 120, over: true, add: true },
 };
 
 /**

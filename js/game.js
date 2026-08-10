@@ -512,6 +512,7 @@ function gainXp(n) {
     h.xpNext = Math.round(h.xpNext * 1.36);
     h.hp = stats().maxHp;
     Audio.sfx.levelUp();
+    vfx('sparkle', h.x, h.y, 0.9, { scale: 1.2 });
     float(h.x, h.y, `LEVEL ${h.level}`, '#7fb0f0', true);
   }
 }
@@ -710,7 +711,7 @@ function castSkill(slot) {
         const heal = st.maxHp * 0.4;
         h.hp = Math.min(st.maxHp, h.hp + heal);
         effect('heal', h.x, h.y, 1, 0.9);
-        vfx('portal', h.x, h.y, 0.85, { tint: 'rgba(90,230,150,.9)', scale: 1.35 });
+        vfx('halo', h.x, h.y, 0.9, { scale: 1.4 });
         float(h.x, h.y, `+${Math.round(heal)}`, '#8ce8a0', true);
         Audio.sfx.heal();
       });
@@ -719,7 +720,7 @@ function castSkill(slot) {
     case 'frenzy':
       onRelease(h, () => {
         h.buffs.frenzy = 7;
-        vfx('cast', h.x, h.y, 0.7, { tint: 'rgba(255,170,70,.9)', scale: 1.2 });
+        vfx('ring', h.x, h.y, 0.7, { scale: 1.15 });
         float(h.x, h.y, 'FRENZY', '#ffb84a', true);
         Audio.sfx.buff();
       });
@@ -727,7 +728,7 @@ function castSkill(slot) {
     case 'ward':
       onRelease(h, () => {
         h.buffs.ward = 6;
-        vfx('cast', h.x, h.y, 0.7, { tint: 'rgba(150,200,255,.9)', scale: 1.2 });
+        vfx('ring', h.x, h.y, 0.7, { tint: 'rgba(150,200,255,.95)', scale: 1.15 });
         effect('ward', h.x, h.y, 1, 0.9);
         float(h.x, h.y, 'WARDED', '#9fc0ff', true);
         Audio.sfx.buff();
@@ -1291,7 +1292,7 @@ function fightStep(dt, st) {
         const back = Math.min(st.maxHp - h.hp, st.maxHp * st.dressing);
         h.hp += back;
         float(h.x, h.y, `+${Math.round(back)}`, '#7fd6a0');
-        vfx('portal', h.x, h.y, 0.75, { tint: 'rgba(90,230,150,.85)', scale: 1.1 });
+        vfx('halo', h.x, h.y, 0.8, { scale: 1.1 });
         Audio.sfx.heal();
       }
       endWave();            // everything is down: bank it, and maybe drop it
