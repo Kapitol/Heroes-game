@@ -265,7 +265,13 @@ function startBed() {
 // How many variants of each. A fight is dozens of swings a minute, and one
 // recording played on a loop reads as a stuck key within seconds — the ear
 // picks up the repeat long before it picks up the sound.
-const BANK = { swing: 4, hit: 3, crit: 2, punch: 3, body: 3 };
+const BANK = {
+  swing: 4, hit: 3, crit: 2, punch: 3, body: 3,
+  // One take each. These are voices and events rather than blows — a death cry
+  // happens once a run, a boss arrives once a stage — so there is nothing for
+  // repetition to wear out, and a second variant would be weight for nothing.
+  screamHero: 1, screamFoe: 1, growl: 1, laugh: 1, thud: 1, blast: 1,
+};
 
 // name -> [{ buffer, gain }]. Empty until `loadBank` resolves, which is why
 // every caller has a synth branch behind it.
@@ -290,7 +296,20 @@ async function loadOne(url) {
       if (v > peak) peak = v;
     }
   }
-  return { buffer, gain: peak > 0.0001 ? PEAK / peak : 1 };
+
+  // **Where the sound actually starts.** The library files carry up to a
+  // couple of hundred milliseconds of room tone before the first transient,
+  // and a death cry that arrives a fifth of a second after the blow reads as
+  // unrelated to it. Found rather than trimmed offline, so a file dropped in
+  // needs no preparation: playback simply starts at the onset.
+  const first = buffer.getChannelData(0);
+  const floor = peak * 0.02;
+  let onset = 0;
+  while (onset < first.length && Math.abs(first[onset]) < floor) onset++;
+  // A few milliseconds back, so the attack itself is not clipped off.
+  const offset = Math.max(0, onset / buffer.sampleRate - 0.005);
+
+  return { buffer, offset, gain: peak > 0.0001 ? PEAK / peak : 1 };
 }
 
 /**
@@ -329,7 +348,7 @@ function sample(name, gain = 1, spread = 0.07, rate = 1) {
   const g = ctx.createGain();
   g.gain.value = s.gain * gain;
   src.connect(g).connect(master);
-  src.start();
+  src.start(0, s.offset);
   return true;
 }
 
@@ -367,9 +386,9 @@ export const sfx = {
   // The same three impacts dropped a third of an octave. A body hitting the
   // ground is the impact of being hit, slower and heavier — pitching for that
   // is what the recordings can honestly be made to say, and it costs no files.
-  die()        { sample('body', 0.85, 0.04, 0.72);
-                 tone(180, { type: 'triangle', dur: 0.4, gain: 0.22, slide: -140 });
-                 noise({ dur: 0.35, gain: 0.18, freq: 320, q: 0.9, delay: 0.03 }); },
+  die()        { sample('screamHero', 0.7);
+                 sample('thud', 0.7, 0.04, 0.85);
+                 tone(180, { type: 'triangle', dur: 0.4, gain: 0.18, slide: -140 }); },
   /**
    * Something else going down, pitched by how big it was.
    *
@@ -382,16 +401,31 @@ export const sfx = {
    */
   fall(scale = 1) {
     const rate = Math.max(0.55, Math.min(1.25, 1.15 / Math.max(0.5, scale)));
-    if (sample('body', 0.5, 0.07, rate)) return;
+    // The cry is pitched harder than the body: a big thing sounds big mostly
+    // because its voice is low, and a boss screaming at a Fallen One's pitch
+    // is the giveaway.
+    const cried = sample('screamFoe', 0.45, 0.05, rate * 0.9);
+    if (sample('thud', 0.5, 0.07, rate) || cried) return;
     tone(150 * rate, { type: 'triangle', dur: 0.3, gain: 0.16, slide: -90 });
   },
+
+  /**
+   * A boss crossing its enrage threshold.
+   *
+   * The one beat in a fight that changes how it has to be played and had no
+   * sound at all — a banner, a shake, and silence. A growl says the thing in
+   * front of you got worse better than a caption does.
+   */
+  enrage()     { if (sample('growl', 0.75, 0.03, 0.9)) return;
+                 tone(70, { type: 'sawtooth', dur: 0.7, gain: 0.24, slide: -20 }); },
   bones()      { for (let i = 0; i < 5; i++) noise({ dur: 0.05, gain: 0.1, freq: 2600 + Math.random() * 1800, q: 3, type: 'bandpass', delay: i * 0.045 }); },
   bank()       { tone(1180, { dur: 0.09, gain: 0.16 }); tone(1760, { dur: 0.12, gain: 0.12, delay: 0.05 }); },
   cleave()     { noise({ dur: 0.3, gain: 0.3, freq: 900, q: 0.5, type: 'bandpass' });
                  tone(90, { type: 'sawtooth', dur: 0.3, gain: 0.22, slide: -40 }); },
   fire()       { noise({ dur: 0.45, gain: 0.26, freq: 620, q: 0.4 });
                  tone(120, { type: 'sawtooth', dur: 0.4, gain: 0.18, slide: 300 }); },
-  boom()       { noise({ dur: 0.55, gain: 0.34, freq: 220, q: 0.5, type: 'lowpass' });
+  boom()       { if (sample('blast', 0.8, 0.05)) return;
+                 noise({ dur: 0.55, gain: 0.34, freq: 220, q: 0.5, type: 'lowpass' });
                  tone(70, { type: 'square', dur: 0.45, gain: 0.26, slide: -30 }); },
   heal()       { tone(520, { dur: 0.3, gain: 0.16, slide: 340 });
                  tone(780, { dur: 0.35, gain: 0.12, slide: 260, delay: 0.06 }); },
@@ -402,7 +436,10 @@ export const sfx = {
   buy()        { tone(880, { type: 'triangle', dur: 0.1, gain: 0.16 });
                  tone(1320, { type: 'triangle', dur: 0.16, gain: 0.13, delay: 0.06 }); },
   deny()       { tone(150, { type: 'square', dur: 0.14, gain: 0.14, slide: -50 }); },
-  boss()       { tone(58, { type: 'sawtooth', dur: 1.6, gain: 0.3 });
+  // The laugh goes *over* the drone rather than instead of it. The drone is
+  // what makes the screen feel heavier; the laugh is what makes it personal.
+  boss()       { sample('laugh', 0.6);
+                 tone(58, { type: 'sawtooth', dur: 1.6, gain: 0.3 });
                  tone(87, { type: 'sawtooth', dur: 1.6, gain: 0.18, delay: 0.1 });
                  noise({ dur: 1.2, gain: 0.16, freq: 180, q: 0.6, type: 'lowpass' }); },
 };

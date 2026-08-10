@@ -435,6 +435,7 @@ function hurtMonster(m, amount, crit) {
     m.atk *= 0.65;
     m.speed *= 1.3;
     UI.banner('ENRAGED');
+    Audio.sfx.enrage();
     S.cam.shake = 0.8;
     float(m.x, m.y, 'ENRAGED', '#ff5a3a', true);
   }
@@ -445,9 +446,6 @@ function killMonster(m) {
   m.dead = true;
   m.fade = 1;
   S.kills++;
-  // Pitched by the body that fell: a boss lands lower and slower than a Fallen
-  // One off the same recording.
-  Audio.sfx.fall(m.scale || 1);
   S.stains.push({ x: m.x, y: m.y, r: 9 * (m.scale || 1), a: 0.28, c: '90,14,10', seed: (m.x * 31 + m.y * 17) | 0 });
   if (S.stains.length > 24) S.stains.shift();
 
@@ -456,7 +454,12 @@ function killMonster(m) {
 
   m.dropSkulls = Math.round(m.skulls * (0.85 + Math.random() * 0.3));
   gainXp(m.xp);
-  Audio.sfx[m.kind === 'skeleton' ? 'bones' : 'die']();
+  // Skeletons clatter; everything else cries out and goes down, pitched by how
+  // big it was. `die` is the hero's alone — it carries a human scream, and a
+  // Fallen One borrowing it was the thing that made every kill sound like the
+  // run had ended.
+  if (m.kind === 'skeleton') Audio.sfx.bones();
+  else Audio.sfx.fall(m.scale || 1);
   if (m.boss) { S.cam.shake = 1.1; UI.banner('SLAIN'); }
 }
 
