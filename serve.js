@@ -24,7 +24,12 @@ http.createServer((req, res) => {
   if (!file.startsWith(ROOT)) { res.writeHead(403).end('forbidden'); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found'); return; }
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    // `no-store`, not `no-cache`. They read alike and are not: `no-cache` lets
+    // the browser keep the file and reuse it after revalidating, and for ES
+    // modules that reuse is sticky enough that an edited `render.js` kept
+    // drawing the previous hero across ordinary reloads. This is a dev server;
+    // nothing it serves should ever be reused.
+    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store, max-age=0' });
     res.end(data);
   });
 }).listen(PORT, () => console.log(`Crypt Heroes running at http://localhost:${PORT}`));
