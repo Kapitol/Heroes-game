@@ -386,22 +386,22 @@
       <span><b>11 Aug 2026</b></span>
       <span>branch <b>mixamo-and-effects</b></span>
       <span><b>10,048</b> lines across 15 modules</span>
-      <span><b>37</b> parts mapped</span>
+      <span><b>38</b> parts mapped</span>
     </div>
   </header>
 
   <section class="guide">
     <h2>The colour guide</h2>
-    <div class="bar" role="img" aria-label="Proportion of parts at each stage: 20 forged, 5 tempered, 7 rough, 2 cast aside, 3 ore.">
-      <span style="background: var(--forged);   width: 54.05%"></span>
-      <span style="background: var(--tempered); width: 13.51%"></span>
-      <span style="background: var(--rough);    width: 18.92%"></span>
-      <span style="background: var(--cast);     width: 5.41%"></span>
-      <span style="background: var(--ore);      width: 8.11%"></span>
+    <div class="bar" role="img" aria-label="Proportion of parts at each stage: 21 forged, 5 tempered, 7 rough, 2 cast aside, 3 ore.">
+      <span style="background: var(--forged);   width: 55.26%"></span>
+      <span style="background: var(--tempered); width: 13.16%"></span>
+      <span style="background: var(--rough);    width: 18.42%"></span>
+      <span style="background: var(--cast);     width: 5.26%"></span>
+      <span style="background: var(--ore);      width: 7.89%"></span>
     </div>
     <div class="keys">
       <div class="key">
-        <div class="top"><i class="swatch" style="background: var(--forged)"></i><span class="name">Forged</span><span class="n">20</span></div>
+        <div class="top"><i class="swatch" style="background: var(--forged)"></i><span class="name">Forged</span><span class="n">21</span></div>
         <p>Built, wired, and seen working in the running game.</p>
       </div>
       <div class="key">
@@ -643,6 +643,12 @@
         <div class="part">Biomes<small>world.js</small></div>
         <div class="what">Six named, in a ladder from daylight to the inferno. <b>Three are painted</b> — town, boneyard, inferno — and the grove, the gate and the crypt still draw generated ground under a real name.</div>
         <div class="ev">6 defined · 3 painted<br>town → boneyard → grove → gate → crypt → inferno</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Placement grammar<small>world.js</small></div>
+        <div class="what">Three tiers with frequency written down: <b>landmark</b> and <b>feature</b> get one object per window of road, position confined to the window's middle half so a real minimum gap holds; <b>scatter</b> is the old hash at a per-prop density, with <code>edge</code> saying what may hug the road. Pure arithmetic on the tile — nothing remembers what it placed.</div>
+        <div class="ev">landmarkEvery 34 · fence 15 · brazier 17<br>tools/placement-test.mjs</div>
       </div>
       <div class="row">
         <i class="mark" style="background: var(--rough)"></i>
@@ -973,7 +979,7 @@
         biomes, stomp on the quake skill and on slam and nova, motes on heals.
       </p>
 
-      <h3>Phase 2 — a placement grammar for props</h3>
+      <h3>Phase 2 — a placement grammar for props — done, 11 Aug</h3>
       <p>
         The windmill question generalised: today one hash scatters everything that
         is not a landmark, so set dressing has frequency but no <em>rules</em>.
@@ -987,14 +993,21 @@
         data anyone can tune.
       </p>
 
-      <p><b>Direction:</b> placement must stay a <b>pure function of
-      (x, y, biome)</b> — <code>propAt</code> is a hash consulted per frame per
-      tile, so any rule that keeps state pops props in and out between frames.
-      A minimum gap is arithmetic on <code>x</code> (a feature slot every N
-      tiles, its offset hashed), never a scan of neighbours. Landmarks go
-      through the <code>landmarkAt</code> table that already exists, not the
-      hash pool. The numbers live on the prop entry:
-      <code>{ tier, every, density }</code>.</p>
+      <p>
+        <b>Shipped:</b> tiers live on the prop entry —
+        <code>{ name, tier, every, density, edge }</code> — sorted once per biome
+        into a WeakMap, never filtered per tile. <code>slotAt</code> is the whole
+        mechanism: <code>x / every</code> names a window, the hash places the
+        object inside it, on a side, at a distance. <b>Confine that position to
+        the window's middle half.</b> Free to sit anywhere, one object ends a
+        window and the next begins the following one — measured over four
+        thousand tiles the real gap was <em>one tile</em>, which is the crowding
+        the tier exists to prevent. A landmark also clears its own tile now.
+        Verify with <code>node tools/placement-test.mjs</code>: per-window should
+        read 1.00 and min-gap about half a window. Cost 0.045ms/frame over 760
+        tiles, up from 0.011 — measure this way, not by headless rAF, which
+        reported 93ms of pure throttling.
+      </p>
       <h3>Phase 3 — Blender joins the toolchain, and the armoury comes back</h3>
       <p>
         Blender runs headless — <code>blender --background --python</code>, the
@@ -1075,6 +1088,11 @@
         <code>heroStats</code> is recomputed by game.js <em>and</em> ui.js —
         override at the source, never at a call site. This produced two
         confidently wrong claims in one session.</li>
+        <li>A slot rule that may place its object <b>anywhere</b> in its
+        window guarantees nothing: neighbours meet at the boundary and the real
+        minimum gap is one tile. Confine to the middle half, and measure —
+        <code>tools/placement-test.mjs</code> is the pattern for proving any
+        placement claim.</li>
         <li>Binaries from <code>swiftc</code> are SIGKILLed on launch, no
         output, until <code>codesign -s -</code>.</li>
         <li><code>afconvert -d aac</code>, never <code>aac@44100</code> — the
