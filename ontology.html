@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Crypt Heroes — Ontology</title>
+<!--
+  A map of every major part of the game and how finished each one is, marked
+  against evidence in this repo rather than against intention. Served by
+  serve.js like anything else: http://localhost:8124/ontology.html
+
+  It is a snapshot with a date on it, not a live view. Nothing generates it —
+  when a part moves, move its square by hand and change the counts in the
+  colour guide to match. The legend total and the row count are supposed to
+  agree; they did not on the first draft.
+-->
+</head>
+<body>
+<style>
+  :root {
+    --crypt:   #0B0907;
+    --vellum:  #EDE4D2;
+    --gild:    #C9A253;
+
+    --ground:  #100D0A;
+    --raised:  #171310;
+    --ink:     #EDE4D2;
+    --ink-dim: #A2988A;
+    --ink-mut: #6E655A;
+    --rule:    #2A231C;
+    --rule-sf: #1E1913;
+
+    --forged:   #7BA36B;
+    --tempered: #C9A253;
+    --rough:    #C0703C;
+    --cast:     #8479A8;
+    --ore:      #4E463C;
+
+    --measure: 68ch;
+    --pad: clamp(1.25rem, 4vw, 3.5rem);
+
+    --display: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+    --body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif;
+    --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --ground:  #F6F1E6;
+      --raised:  #EFE8D9;
+      --ink:     #1C1611;
+      --ink-dim: #574E44;
+      --ink-mut: #857A6C;
+      --rule:    #D8CDB8;
+      --rule-sf: #E5DCCA;
+      --forged:   #4F7742;
+      --tempered: #9A7524;
+      --rough:    #994E20;
+      --cast:     #5D5285;
+      --ore:      #A0968A;
+    }
+  }
+  :root[data-theme="light"] {
+    --ground:  #F6F1E6;
+    --raised:  #EFE8D9;
+    --ink:     #1C1611;
+    --ink-dim: #574E44;
+    --ink-mut: #857A6C;
+    --rule:    #D8CDB8;
+    --rule-sf: #E5DCCA;
+    --forged:   #4F7742;
+    --tempered: #9A7524;
+    --rough:    #994E20;
+    --cast:     #5D5285;
+    --ore:      #A0968A;
+  }
+  :root[data-theme="dark"] {
+    --ground:  #100D0A;
+    --raised:  #171310;
+    --ink:     #EDE4D2;
+    --ink-dim: #A2988A;
+    --ink-mut: #6E655A;
+    --rule:    #2A231C;
+    --rule-sf: #1E1913;
+    --forged:   #7BA36B;
+    --tempered: #C9A253;
+    --rough:    #C0703C;
+    --cast:     #8479A8;
+    --ore:      #4E463C;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: var(--pad);
+    display: flex;
+    flex-direction: column;
+    gap: 3.5rem;
+  }
+
+  /* ---- masthead ---- */
+  .mast { display: flex; flex-direction: column; gap: 1.1rem; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-mut);
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: clamp(2.2rem, 6vw, 3.6rem);
+    line-height: 1.04;
+    letter-spacing: -0.015em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  h1 em { font-style: italic; color: var(--gild); }
+  .thesis {
+    max-width: var(--measure);
+    font-size: 1.05rem;
+    color: var(--ink-dim);
+    margin: 0;
+  }
+  .stamp {
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem;
+    font-family: var(--mono); font-size: 0.72rem;
+    color: var(--ink-mut);
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--rule);
+  }
+  .stamp b { color: var(--ink-dim); font-weight: 500; }
+
+  /* ---- the colour guide ---- */
+  .guide { display: flex; flex-direction: column; gap: 1.1rem; }
+  h2 {
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: 1.5rem;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .bar {
+    display: flex; width: 100%; height: 0.55rem;
+    overflow: hidden;
+  }
+  .bar span { display: block; height: 100%; }
+
+  .keys {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
+    gap: 1px;
+    background: var(--rule-sf);
+    border-block: 1px solid var(--rule);
+  }
+  .key {
+    background: var(--ground);
+    padding: 0.85rem 0.95rem;
+    display: flex; flex-direction: column; gap: 0.3rem;
+  }
+  .key .top { display: flex; align-items: center; gap: 0.5rem; }
+  .swatch { width: 0.75rem; height: 0.75rem; flex: none; }
+  .key .name {
+    font-size: 0.78rem; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .key .n {
+    margin-left: auto; font-family: var(--mono); font-size: 0.72rem;
+    color: var(--ink-mut); font-variant-numeric: tabular-nums;
+  }
+  .key p { margin: 0; font-size: 0.8rem; line-height: 1.45; color: var(--ink-dim); }
+
+  /* ---- strata ---- */
+  .stratum { display: flex; flex-direction: column; gap: 0.1rem; }
+  .stratum > header {
+    display: flex; align-items: baseline; gap: 0.9rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 2px solid var(--ink);
+  }
+  .stratum > header .idx {
+    font-family: var(--mono); font-size: 0.72rem; color: var(--ink-mut);
+    font-variant-numeric: tabular-nums;
+  }
+  .stratum > header p {
+    margin: 0 0 0 auto; font-size: 0.82rem; color: var(--ink-mut);
+    text-align: right; max-width: 34ch;
+  }
+
+  .rows { display: flex; flex-direction: column; }
+  .row {
+    display: grid;
+    grid-template-columns: 0.9rem minmax(11rem, 15rem) minmax(0, 1fr) minmax(9rem, 15rem);
+    align-items: start;
+    gap: 0 1.1rem;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--rule-sf);
+  }
+  .row:last-child { border-bottom: 0; }
+  .mark { width: 0.7rem; height: 0.7rem; margin-top: 0.42rem; }
+  .part { font-weight: 600; font-size: 0.94rem; letter-spacing: -0.005em; }
+  .part small {
+    display: block; font-weight: 400; font-size: 0.76rem;
+    color: var(--ink-mut); letter-spacing: 0.04em; text-transform: uppercase;
+    margin-top: 0.15rem;
+  }
+  .what { font-size: 0.9rem; color: var(--ink-dim); }
+  .what b { color: var(--ink); font-weight: 600; }
+  .ev {
+    font-family: var(--mono); font-size: 0.74rem; line-height: 1.5;
+    color: var(--ink-mut); font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 46rem) {
+    .row { grid-template-columns: 0.9rem minmax(0, 1fr); }
+    .what, .ev { grid-column: 2; }
+    .what { margin-top: 0.35rem; }
+    .ev { margin-top: 0.35rem; }
+    .stratum > header { flex-wrap: wrap; }
+    .stratum > header p { margin-left: 0; text-align: left; }
+  }
+
+  /* ---- closing note ---- */
+  .note {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.4rem;
+    display: flex; flex-direction: column; gap: 0.7rem;
+    max-width: var(--measure);
+  }
+  .note p { margin: 0; font-size: 0.88rem; color: var(--ink-dim); }
+  .note strong { color: var(--ink); }
+  code {
+    font-family: var(--mono); font-size: 0.85em;
+    background: var(--raised); padding: 0.08em 0.35em;
+    border: 1px solid var(--rule-sf);
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="eyebrow">Crypt Heroes · build ontology</div>
+    <h1>Every major part of the game, and <em>how finished it actually is</em>.</h1>
+    <p class="thesis">
+      An isometric idle auto-battler: the hero walks a road, fights without being told,
+      and you spend the cooldowns and the skulls. This maps the parts that make that
+      happen — five strata, from the loop underneath to the assets on top — and marks
+      each one against evidence in the repo rather than intention.
+    </p>
+    <div class="stamp">
+      <span><b>9 Aug 2026</b></span>
+      <span>branch <b>mixamo-and-effects</b></span>
+      <span><b>10,048</b> lines across 15 modules</span>
+      <span><b>37</b> parts mapped</span>
+    </div>
+  </header>
+
+  <section class="guide">
+    <h2>The colour guide</h2>
+    <div class="bar" role="img" aria-label="Proportion of parts at each stage: 20 forged, 5 tempered, 7 rough, 2 cast aside, 3 ore.">
+      <span style="background: var(--forged);   width: 54.05%"></span>
+      <span style="background: var(--tempered); width: 13.51%"></span>
+      <span style="background: var(--rough);    width: 18.92%"></span>
+      <span style="background: var(--cast);     width: 5.41%"></span>
+      <span style="background: var(--ore);      width: 8.11%"></span>
+    </div>
+    <div class="keys">
+      <div class="key">
+        <div class="top"><i class="swatch" style="background: var(--forged)"></i><span class="name">Forged</span><span class="n">20</span></div>
+        <p>Built, wired, and seen working in the running game.</p>
+      </div>
+      <div class="key">
+        <div class="top"><i class="swatch" style="background: var(--tempered)"></i><span class="name">Tempered</span><span class="n">5</span></div>
+        <p>Works, with a known rough edge written down beside it.</p>
+      </div>
+      <div class="key">
+        <div class="top"><i class="swatch" style="background: var(--rough)"></i><span class="name">Rough</span><span class="n">7</span></div>
+        <p>Real but uneven — the system is there, the coverage is not.</p>
+      </div>
+      <div class="key">
+        <div class="top"><i class="swatch" style="background: var(--cast)"></i><span class="name">Cast aside</span><span class="n">2</span></div>
+        <p>Finished, then superseded. Still runs, behind a flag.</p>
+      </div>
+      <div class="key">
+        <div class="top"><i class="swatch" style="background: var(--ore)"></i><span class="name">Ore</span><span class="n">3</span></div>
+        <p>Named, wanted, and not started. Assets may already be on disk.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="stratum">
+    <header>
+      <span class="idx">I</span>
+      <h2>The loop</h2>
+      <p>What runs every frame, and what survives a reload.</p>
+    </header>
+    <div class="rows">
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Run &amp; phase machine<small>game.js</small></div>
+        <div class="what">Marching, fighting, the lull, the coffin, the draft, the map — six phases the hero moves between, plus revival and the wave counter.</div>
+        <div class="ev">1,716 lines<br>phases: enter · fight · lull · drop · draft · map</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Isometric renderer<small>render.js</small></div>
+        <div class="what">Ground, decals, a depth-merged pass over scenery and actors, overheads, and the tint. The camera rides behind the hero.</div>
+        <div class="ev">1,392 lines<br>TILE_W 64 · depth-sorted</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Atlas &amp; slicing<small>atlas.js</small></div>
+        <div class="what">Keys magenta out of generated sheets, fades the fringe, pulls spill from edge pixels, and slices on content gutters rather than a lattice. Baked sheets carry real alpha and skip all of it.</div>
+        <div class="ev">311 lines<br>sliceAuto · sliceGrid · footAnchor</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--tempered)"></i>
+        <div class="part">Save &amp; load<small>game.js</small></div>
+        <div class="what"><b>A run can reach a state it cannot leave.</b> The boss counter only resets on a boss wave <em>completed</em>, so a boss that outlives you reopens every reload. <code>?fresh</code> is the escape hatch, not the fix.</div>
+        <div class="ev">localStorage cryptheroes.v3<br>wavesSinceBoss ≥ 12 traps</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--tempered)"></i>
+        <div class="part">Balance model<small>balance.js</small></div>
+        <div class="what">The damage, health and skull curves, with headless sweeps to test them. Smallest module in the game and the one carrying the most consequence.</div>
+        <div class="ev">90 lines<br>tools/sim.mjs · tools/sweep.mjs</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stratum">
+    <header>
+      <span class="idx">II</span>
+      <h2>Bodies</h2>
+      <p>The hero, the things that come at him, and how they are drawn.</p>
+    </header>
+    <div class="rows">
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">The hero<small>Paladin · Mixamo doll</small></div>
+        <div class="what">Guard, two alternating swings and a ten-frame run, baked from a character who brings his own great sword and shield. The default since the doll comparison settled it.</div>
+        <div class="ev">art/paladin-{combat,walk}.png<br>3 + 10 cells</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--cast)"></i>
+        <div class="part">Jointed rig &amp; armoury<small>rig.js</small></div>
+        <div class="what">Seventeen bones, five armour bands across six slots, mocap clips baked to joint angles, and a bone editor. Complete, and beaten on legibility by a doll that cannot wear any of it. <b>The armoury has nowhere to go.</b></div>
+        <div class="ev">2,198 lines · 8 baked clips<br>reachable at <code>?rig</code></div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--cast)"></i>
+        <div class="part">Painted class sheets<small>sprites.js</small></div>
+        <div class="what">The original hero art — warrior, paladin — with pose sheets for heal, cast, cry, stomp and cleave. Superseded for the hero, still the fallback everything degrades to.</div>
+        <div class="ev">reachable at <code>?painted</code><br>4 classes, 2 marked ready</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--rough)"></i>
+        <div class="part">Foes<small>encounters.js</small></div>
+        <div class="what">Nine kinds across four approach behaviours. <b>Three ways of being drawn coexist:</b> dolls for the Fallen and skeletons, painted sheets for the archer, ghoul and dread knight, and vector shapes for the rest.</div>
+        <div class="ev">dolls 2 · painted 3 · vector 4<br>art/m1-*.png · art/m2-*.png</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--rough)"></i>
+        <div class="part">Bosses<small>encounters.js</small></div>
+        <div class="what">Three, each with two telegraphed moves and an enrage threshold. Only the Butcher is a doll; the Warden borrows the knight's painted sheet and the Ogre is still vector.</div>
+        <div class="ev">butcher · warden · ogre<br>1 of 3 dolled</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--tempered)"></i>
+        <div class="part">Monster attack clips<small>art/mixamo/</small></div>
+        <div class="what">Every doll has a walk, two swings and a real death. <b>Two of monster-01's eight combo frames are unusable</b> — the clip turns him to face the camera and a fixed side view has nothing left to draw.</div>
+        <div class="ev">monster-01 · monster-02 · Warrok<br>16-cell walk+death sheets</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Formations<small>encounters.js</small></div>
+        <div class="what">Six named ways a wave arrives, unlocking by stage — warband, rush, skirmish, shield wall, ambush from both sides, and a champion.</div>
+        <div class="ev">mob · rush · volley · wall<br>ambush · elite</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Boss moves &amp; telegraphs<small>game.js</small></div>
+        <div class="what">Slam, charge, bone nova and a summon that brings adds. Each rings the ground it will land on and now lights it as well.</div>
+        <div class="ev">4 move ids · tell 0.9–1.2s</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stratum">
+    <header>
+      <span class="idx">III</span>
+      <h2>The run</h2>
+      <p>Everything the player actually chooses.</p>
+    </header>
+    <div class="rows">
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Skills &amp; boons<small>perks.js</small></div>
+        <div class="what">Twenty entries — four active skills and sixteen passives — drafted three at a time and bought with skulls.</div>
+        <div class="ev">263 lines · 20 ids<br>mend · ward · frenzy · cleave …</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">The Coffin Drop<small>coffin.js</small></div>
+        <div class="what">The payout minigame every third wave: steer the coffin as it falls, chutes buy depth, stone shakes skulls loose.</div>
+        <div class="ev">682 lines<br>×1 – ×5 multiplier lanes</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--rough)"></i>
+        <div class="part">Items &amp; bands<small>items.js</small></div>
+        <div class="what">Five rarity bands across six slots, rolled as boss loot into a bag. <b>The band names do not match the materials</b> — a "Gold" gauntlet is bone, a "Purple" one is blue crystal. Visible on the character now, not buried in a tooltip.</div>
+        <div class="ev">gray · green · blue · purple · gold<br>239 lines</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--rough)"></i>
+        <div class="part">Classes<small>entities.js</small></div>
+        <div class="what">Four defined; two marked ready. The warlock and the druid have art and stats but are not walkable.</div>
+        <div class="ev">warrior ✓ · paladin ✓<br>warlock · druid</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--tempered)"></i>
+        <div class="part">World map &amp; fork<small>world.js</small></div>
+        <div class="what">Ten painted places and a fork of three roads, shown when a boss falls. The map art carries places the stage ladder does not yet visit.</div>
+        <div class="ev">10 nodes<br>art/world-map.png</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">HUD &amp; panels<small>ui.js</small></div>
+        <div class="what">Globes, the rune belt, the armoury paperdoll, the bag, the draft cards, the death overlay and the camp.</div>
+        <div class="ev">942 lines</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stratum">
+    <header>
+      <span class="idx">IV</span>
+      <h2>Light &amp; sound</h2>
+      <p>What makes a fight feel like one.</p>
+    </header>
+    <div class="rows">
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Arena lighting<small>render.js</small></div>
+        <div class="what">A boss pulls the light down over a second and gives it back slower, carries his own colour, and pulses it off his attack timer. The hero's own light shrinks so the two pools stay separate.</div>
+        <div class="ev">darkness 0 – 0.74 by biome<br>arena dim 0.62</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Telegraph light<small>render.js</small></div>
+        <div class="what">The move's ring lights the ground it is about to land on, ramping on the same fill the outline uses, so the warning arrives at the edge of vision.</div>
+        <div class="ev">colour per move id</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--tempered)"></i>
+        <div class="part">Enrage lighting<small>render.js</small></div>
+        <div class="what">Brighter and redder past the threshold. Coded, committed, and never yet caught in a screenshot — treat it as unverified.</div>
+        <div class="ev">m.enraged → ×1.18 radius</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Effect sheets<small>art/vfx-*.png</small></div>
+        <div class="what">Six baked from video: a gold halo on heals, a fire rune that lies on the floor and turns, sparks on a level-up, plus a bolt, a portal and a spell wisp.</div>
+        <div class="ev">halo · ring · sparkle<br>bolt · portal · cast</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Bloom<small>render.js</small></div>
+        <div class="what">The sheets drawn again into an offscreen, blurred at two radii — a tight core and a wide halo — and added back <em>after</em> the lighting, so an emitter is not dimmed with the scenery.</div>
+        <div class="ev">blur 5px @ .55 + 16px @ .40</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--ore)"></i>
+        <div class="part">Particle system<small>art/vfx/PNG (Transparent)</small></div>
+        <div class="what">Eighty-one greyscale textures meant to be emitted and tinted. No emitter exists. This is the better answer for a heal than any repurposed footage.</div>
+        <div class="ev">81 textures · 512px<br>Kenney, CC0</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Combat sound<small>audio.js</small></div>
+        <div class="what">Swings, impacts, crits, fists, bodies, both sides' voices, footsteps off distance walked, and a wave-arrival clash. Peak-normalised on decode; voices throttled so five foes landing at once is one grunt.</div>
+        <div class="ev">32 files · 524 KB<br>synth remains the floor</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Music<small>audio.js</small></div>
+        <div class="what">Generative and synthesised — a chord walk with a plucked voice over a noise bed, on its own gain so the score can go to nothing and the fight still reads.</div>
+        <div class="ev">6 chord states<br>no audio files</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--ore)"></i>
+        <div class="part">Ambience<small>—</small></div>
+        <div class="what">Nothing loops under the crypt or the inferno. A 21-second raspy breathing bed is on disk and unwired; it wants <code>startBed()</code>, not a one-shot slot.</div>
+        <div class="ev">1 clip waiting</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stratum">
+    <header>
+      <span class="idx">V</span>
+      <h2>World &amp; pipelines</h2>
+      <p>The ground the road runs over, and the machines that make the art.</p>
+    </header>
+    <div class="rows">
+      <div class="row">
+        <i class="mark" style="background: var(--rough)"></i>
+        <div class="part">Biomes<small>world.js</small></div>
+        <div class="what">Six named, in a ladder from daylight to the inferno. <b>Three are painted</b> — town, boneyard, inferno — and the grove, the gate and the crypt still draw generated ground under a real name.</div>
+        <div class="ev">6 defined · 3 painted<br>town → boneyard → grove → gate → crypt → inferno</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--rough)"></i>
+        <div class="part">Area art sets<small>art/*-&lt;area&gt;.png</small></div>
+        <div class="what">One word names a set, and the sets are lopsided: the town has seven sheets, the inferno five, the boneyard one. Everything else falls back.</div>
+        <div class="ev">town 7 · inferno 5 · boneyard 1</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--rough)"></i>
+        <div class="part">Camps<small>art/camp-*.png</small></div>
+        <div class="what">The scene between the title and the first step. Two of six exist; the other four show the boneyard, and only after the image decodes — set early it blanks the panel.</div>
+        <div class="ev">camp-town · camp-boneyard</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Doll baker<small>tools/bake-doll.mjs · doll.html</small></div>
+        <div class="what">A Mixamo character rendered offline from the same side-on camera the game draws in, out as an ordinary sprite sheet with real alpha. Resolves clip files off disk under four naming conventions.</div>
+        <div class="ev">--clip · --pose · --light<br>--sword · --clay · --alias</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Video effect baker<small>tools/vfx-sheet.swift</small></div>
+        <div class="what">ProRes 4444 and H.264 into sheets via AVFoundation, since no browser decodes ProRes. Crops to the union of lit pixels across frames, trims dead ends, and thins long clips while reading.</div>
+        <div class="ev">alpha bounds, luminance fallback<br>needs <code>codesign -s -</code> to run</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Footstep slicer<small>tools/slice-steps.mjs</small></div>
+        <div class="what">Cuts individual footfalls out of one long walking recording by looking for the rise in energy rather than the level — gravel keeps rattling after the foot lands.</div>
+        <div class="ev">5 steps from 34s<br>decoded in headless Chrome</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Mocap → rig baker<small>tools/bake-clip.mjs</small></div>
+        <div class="what">FBX joint curves projected to the rig's side-view angles. Unwraps the joint angle rather than the bone direction, so a parent passing the camera axis cannot corrupt its child. Serves the sidelined rig.</div>
+        <div class="ev">606 lines · 8 clips baked</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Rig editor &amp; gauntlet<small>tools/rig.html · gauntlet/</small></div>
+        <div class="what">A bone editor that doubles as a camera, driven entirely from its query string, plus headless shooters and measurement scripts for judging the rig against the painted sheets.</div>
+        <div class="ev">shot · compare · measure<br>strip · stack · skel-diff</div>
+      </div>
+      <div class="row">
+        <i class="mark" style="background: var(--ore)"></i>
+        <div class="part">Normal maps<small>—</small></div>
+        <div class="what">The one thing that would make real lighting on sprites possible, and the reason three.js was rejected: neither the painted pipeline nor the doll bake produces them.</div>
+        <div class="ev">not producible today</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="note">
+    <h2>How these were judged</h2>
+    <p>
+      <strong>Forged</strong> means seen working, not merely written — most of stratum IV was
+      screenshotted in a running fight. <strong>Rough</strong> is almost always coverage rather
+      than quality: the system works and the content behind it is uneven, which is why the
+      biomes, the foes and the camps all land there together.
+    </p>
+    <p>
+      Two parts are <strong>cast aside</strong> and that is not a defect. The jointed rig and the
+      painted class sheets both work; they were beaten by something that reads better and
+      cannot do what they do. The armoury is the real cost of that trade, and it is the
+      largest open question in the game — larger than any single row above.
+    </p>
+    <p>
+      Counts come from the repo on 9 Aug 2026: line counts from <code>wc -l</code>, content
+      counts from the tables in <code>encounters.js</code>, <code>perks.js</code>,
+      <code>items.js</code> and <code>world.js</code>, and asset counts from
+      <code>art/</code>, <code>audio/</code> and <code>js/clips/</code>.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

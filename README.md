@@ -8,8 +8,15 @@ Vanilla JS + **Canvas 2D** — no WebGL, no 3D, no GPU path. "Isometric" here is
 a projection, not a renderer. Measured cost is **0.8 ms/frame** idle and
 **1.0 ms** mid-boss-fight against a 16.7 ms budget for 60fps.
 
-Characters, props and every sound are generated at runtime; painted art drops
-in on top of the same rig (see **Art**).
+Props and the score are generated at runtime. Characters are **baked sprite
+sheets** — Mixamo dolls rendered offline from the game's own camera — and combat
+sound is sampled, with the synth kept underneath as the floor. The jointed rig
+and the painted class sheets both still run, at `?rig` and `?painted`.
+
+**[ontology.html](ontology.html) is the current state of the build**: every
+major part, marked against evidence rather than intention, with a five-stage
+colour guide. Read it before the four design docs below — they describe the
+painted-rig era and the code has moved past them in places.
 
 ## Run it
 
