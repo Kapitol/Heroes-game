@@ -644,6 +644,24 @@ function drawPaintedFighter(ctx, o, sx, sy, t) {
   // actually pressed, and a hero who keeps swinging through his own heal is a
   // hero whose buttons do not appear to do anything.
   if (drawActionPose(ctx, o, sp, sx, sy)) return true;
+
+  // **The flinch.** Taking a hit was a red tint and nothing else — a body that
+  // does not move when struck reads as a cardboard stand-up. The react cell is
+  // shown for as long as the tint is, so flash and recoil are one event, and
+  // `hurt`'s own decay is the throttle: five foes landing on the same frame
+  // re-arm the timer, not the pose. A swing is never interrupted — trading
+  // blows must not look like losing them — and the dead do not flinch.
+  if (o.hurt > 0.35 && !o.dead && sp.react != null && !attacking) {
+    const sh = Atlas.sheet(sp.sheet, sp.cols, sp.rows, sp);
+    const cell = sh && sh.cells[sp.row * sp.cols + sp.react];
+    if (cell) {
+      const ref = sh.cells[sp.row * sp.cols] || cell;
+      const scale = (sp.h * (o.scale || 1)) / ref.h;
+      Atlas.drawSprite(ctx, sh, sp.row * sp.cols + sp.react, sx, sy, scale, o.fx < 0,
+                       Atlas.tinted(sh, 'rgba(255,60,40,.55)'));
+      return true;
+    }
+  }
   if (drawAnimFrame(ctx, o, sp, sx, sy, attacking, bob)) return true;
 
   // `sp` doubles as the slicing options, the way projectile art does: the
@@ -770,8 +788,12 @@ function drawAnimFrame(ctx, o, sp, sx, sy, attacking, bob) {
   const frames = dying ? a.death : a.walk;
   // A collapse plays once and holds on the last frame — it is over, and a body
   // that loops its own death is a body that gets up again. A stride loops.
+  // The hero carries `deathAnim`, which runs 0..1; monsters only have `fade`,
+  // which the hero's death deliberately stops at 0.45 so the body stays
+  // visible for the revival. Read the honest clock for whichever this is.
+  const k = o.deathAnim != null ? o.deathAnim : 1 - Math.max(0, o.fade);
   const i = dying
-    ? Math.min(frames.length - 1, Math.floor((1 - Math.max(0, o.fade)) * frames.length))
+    ? Math.min(frames.length - 1, Math.floor(k * frames.length))
     : Math.floor((o.walk / TAU) * frames.length) % frames.length;
   const idx = base + frames[i];
   const cell = sh.cells[idx];
@@ -852,12 +874,16 @@ const DOLL_HERO = !Q.has('painted') && !Q.has('rig');
  * frame on a loop.
  */
 const DOLL_ART = {
-  sheet: 'art/paladin-combat.png', cols: 3, rows: 1, row: 0, attacks: [1, 2],
+  sheet: 'art/paladin-combat.png', cols: 4, rows: 1, row: 0, attacks: [1, 2], react: 3,
   // The warrior's skill poses are painted warrior art and survive a merge
   // unless cleared: a heal that flashes the old hero for a beat is worse than
   // a heal the Paladin does not act out.
   actions: null,
-  anim: { sheet: 'art/paladin-walk.png', cols: 10, rows: 1, walk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+  anim: {
+    sheet: 'art/paladin-walk.png', cols: 16, rows: 1,
+    walk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    death: [10, 11, 12, 13, 14, 15],
+  },
 };
 
 /**
@@ -878,7 +904,7 @@ const DOLL_FOES = {
   // `h` is nudged above the 30 the vector used: a figure with real shading
   // reads smaller than a flat silhouette of the same height.
   fallen: {
-    sheet: 'art/m2-combat.png', cols: 3, rows: 1, row: 0, attacks: [1, 2], h: 34,
+    sheet: 'art/m2-combat.png', cols: 4, rows: 1, row: 0, attacks: [1, 2], react: 3, h: 34,
     anim: {
       sheet: 'art/m2-walk.png', cols: 16, rows: 1,
       walk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
@@ -890,7 +916,7 @@ const DOLL_FOES = {
   // fixed side view has nothing left to draw — he thins to a sliver. The two
   // swings are the frames that stay side-on.
   skeleton: {
-    sheet: 'art/m1-combat.png', cols: 3, rows: 1, row: 0, attacks: [1, 2], h: 50,
+    sheet: 'art/m1-combat.png', cols: 4, rows: 1, row: 0, attacks: [1, 2], react: 3, h: 50,
     anim: {
       sheet: 'art/m1-walk.png', cols: 16, rows: 1,
       walk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],

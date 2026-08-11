@@ -316,6 +316,45 @@
   }
   .cn-note b { color: var(--ink); }
 
+
+  /* ---- the class matrix ---- */
+  .tablewrap { overflow-x: auto; margin-top: 1.6rem; border-block: 1px solid var(--rule); }
+  table.matrix { border-collapse: collapse; width: 100%; min-width: 52rem; }
+  .matrix th, .matrix td {
+    text-align: left; padding: 0.55rem 0.9rem 0.55rem 0;
+    border-bottom: 1px solid var(--rule-sf);
+    font-size: 0.82rem; vertical-align: baseline;
+  }
+  .matrix thead th {
+    font-family: var(--display); font-size: 1.08rem; font-weight: 400;
+    border-bottom: 2px solid var(--ink);
+  }
+  .matrix thead th small {
+    display: block; font-family: var(--mono); font-size: 0.58rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-mut);
+    margin-top: 0.2rem;
+  }
+  .matrix tbody th {
+    font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--ink-mut); font-weight: 400;
+    white-space: nowrap; padding-right: 1.2rem;
+  }
+  .matrix td { color: var(--ink); }
+  .matrix td i, .matrix-notes i {
+    font-style: normal; font-family: var(--mono); font-size: 0.6rem;
+    letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;
+  }
+  .matrix td i { margin-left: 0.35rem; }
+  i.inbake { color: var(--forged); }
+  i.ondisk { color: var(--tempered); }
+  i.code   { color: var(--rough); }
+  .matrix tr:last-child th, .matrix tr:last-child td { border-bottom: 0; }
+  .matrix-notes {
+    margin: 0.9rem 0 0; font-size: 0.82rem; line-height: 1.6;
+    color: var(--ink-dim); max-width: none;
+  }
+  .matrix-notes b { color: var(--ink); }
+
   /* ---- closing note ---- */
   .note {
     border-top: 1px solid var(--rule);
@@ -435,12 +474,12 @@
         <i class="mark" style="background: var(--forged)"></i>
         <div class="part">The hero<small>Paladin · Mixamo doll</small></div>
         <div class="what">Guard, two alternating swings and a ten-frame run, baked from a character who brings his own great sword and shield. The default since the doll comparison settled it.</div>
-        <div class="ev">art/paladin-{combat,walk}.png<br>3 + 10 cells</div>
+        <div class="ev">art/paladin-{combat,walk}.png<br>4 + 16 cells</div>
       </div>
       <div class="row">
         <i class="mark" style="background: var(--cast)"></i>
         <div class="part">Jointed rig &amp; armoury<small>rig.js</small></div>
-        <div class="what">Seventeen bones, five armour bands across six slots, mocap clips baked to joint angles, and a bone editor. Complete, and beaten on legibility by a doll that cannot wear any of it. <b>The armoury has nowhere to go.</b></div>
+        <div class="what">Seventeen bones, five armour bands across six slots, mocap clips baked to joint angles, and a bone editor. Complete, and beaten on legibility by a doll that cannot wear any of it. <b>Phase 3 of the plan is the road back for the armoury.</b></div>
         <div class="ev">2,198 lines · 8 baked clips<br>reachable at <code>?rig</code></div>
       </div>
       <div class="row">
@@ -568,7 +607,7 @@
       <div class="row">
         <i class="mark" style="background: var(--ore)"></i>
         <div class="part">Particle system<small>art/vfx/PNG (Transparent)</small></div>
-        <div class="what">Eighty-one greyscale textures meant to be emitted and tinted. No emitter exists. This is the better answer for a heal than any repurposed footage.</div>
+        <div class="what">Eighty-one greyscale textures meant to be emitted and tinted. No emitter exists yet — it is phase 1 of the plan, and the better answer for a heal, for weather, and for the stomp than any repurposed footage.</div>
         <div class="ev">81 textures · 512px<br>Kenney, CC0</div>
       </div>
       <div class="row">
@@ -691,10 +730,10 @@
       </div>
 
       <div class="pick">
-        <i class="mark" style="background: var(--ore)"></i>
-        <div class="part">Hit reaction<small>2 poses</small></div>
-        <div class="what">Taking a blow is a red tint over the sprite today. A recoil would replace the cheapest-looking moment in the game. <b>Needs wiring</b> — nothing reads it yet.</div>
-        <div class="ev">Standing React Large From Front<br>Reaction</div>
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Hit reaction<small>1 pose · wired</small></div>
+        <div class="what">The flinch shows for as long as the red tint does, so flash and recoil are one event, and <code>hurt</code>'s own decay is the throttle. A swing is never interrupted and the dead do not flinch. Paladin, Fallen and skeleton carry react cells today.</div>
+        <div class="ev">react: 3 in each combat sheet<br>threshold 0.35 · decay 4/s</div>
       </div>
       <div class="pick">
         <i class="mark" style="background: var(--ore)"></i>
@@ -720,79 +759,84 @@
     <div class="rules">
       <h3>Per class</h3>
       <p>
-        <b>Five clips each, and that is the whole list.</b> A doll drives exactly four
-        things — one idle cell, the swings it alternates between, a walk and a death — so a
-        sixth download has nowhere to go until code exists to play it. Names in
-        <code>this face</code> are already in <code>art/mixamo/</code>, and a clip fetched on
-        any character dresses any other, reduced to its rotations.
+        <b>Six clips each, and that is the whole list.</b> A doll drives five
+        things — one idle cell, the swings it alternates between, a walk, a death
+        and, as of 11 Aug, a flinch — plus one identity beat per class waiting on
+        code. A seventh download has nowhere to go. Every clip named below exists
+        in <code>art/mixamo/</code>, and any character's copy dresses any other,
+        reduced to its rotations.
       </p>
     </div>
 
-    <div class="roster">
-      <div class="cls">
-        <div class="chd"><span class="cn">Warrior</span><span class="tag tag-on">painted · not dolled</span></div>
-        <p class="cb">Walks in front and stays there.</p>
-        <dl>
-          <dt>idle</dt><dd>Great Sword Idle <i class="have">have</i></dd>
-          <dt>walk</dt><dd>Walking <i class="have">have</i></dd>
-          <dt>swing a</dt><dd>Stable Sword Outward Slash <i class="have">have</i></dd>
-          <dt>swing b</dt><dd>Stable Sword Inward Slash <i class="have">have</i></dd>
-          <dt>death</dt><dd>Dying <i class="have">have</i></dd>
-          <dt>cry</dt><dd>Standing Taunt Battlecry <i class="want">code first</i></dd>
-        </dl>
-        <p class="cn-note">Nothing to fetch. Dolling him trades the five armour rows of the richest painted class in the game for one fixed body — that is the decision, not the assets.</p>
-      </div>
-
-      <div class="cls">
-        <div class="chd"><span class="cn">Paladin</span><span class="tag tag-live">dolled · shipping</span></div>
-        <p class="cb">Holds the line and mends it.</p>
-        <dl>
-          <dt>idle</dt><dd>Great Sword Idle <i class="have">baked</i></dd>
-          <dt>walk</dt><dd>Run With Sword <i class="have">baked</i></dd>
-          <dt>swing a</dt><dd>Stable Sword Outward Slash <i class="have">baked</i></dd>
-          <dt>swing b</dt><dd>Stable Sword Inward Slash <i class="have">baked</i></dd>
-          <dt>death</dt><dd>Dying <i class="want">bake it</i></dd>
-          <dt>prayer</dt><dd>Standing 1H Cast Spell 01 <i class="want">code first</i></dd>
-        </dl>
-        <p class="cn-note"><b>He has no death.</b> The walk sheet is ten cells of stride and nothing else, so the hero fades where every foe falls. The clip is already on disk — this is a bake, not a download.</p>
-      </div>
-
-      <div class="cls">
-        <div class="chd"><span class="cn">Warlock</span><span class="tag">needs a character</span></div>
-        <p class="cb">Spends life to spend the dead.</p>
-        <dl>
-          <dt>idle</dt><dd>Idle <i class="have">have</i></dd>
-          <dt>walk</dt><dd>Unarmed Walk Forward <i class="have">have</i></dd>
-          <dt>cast a</dt><dd>Spell Casting <i class="have">have</i></dd>
-          <dt>cast b</dt><dd>Standing 2H Cast Spell 01 <i class="have">have</i></dd>
-          <dt>death</dt><dd>Dying <i class="have">have</i></dd>
-          <dt>drain</dt><dd>Spell Casting, held mid-phase <i class="want">code first</i></dd>
-        </dl>
-        <p class="cn-note">The one class the missing-weapon problem never touches — his hands are the weapon, so no prop has to be found or built. Fetch a robed, hooded body; at fifty pixels the silhouette is the entire character.</p>
-      </div>
-
-      <div class="cls">
-        <div class="chd"><span class="cn">Druid</span><span class="tag">needs a character</span></div>
-        <p class="cb">Brings the wood in with them.</p>
-        <dl>
-          <dt>idle</dt><dd>Idle <i class="have">have</i></dd>
-          <dt>walk</dt><dd>Walking <i class="have">have</i></dd>
-          <dt>swing a</dt><dd>Standing Melee Attack Downward <i class="have">have</i></dd>
-          <dt>swing b</dt><dd>Standing 1H Cast Spell 01 <i class="have">have</i></dd>
-          <dt>death</dt><dd>Dying <i class="have">have</i></dd>
-          <dt>summon</dt><dd>Standing Taunt Battlecry <i class="want">code first</i></dd>
-        </dl>
-        <p class="cn-note">A staff is a prop Mixamo will not hand over. Either fetch a <code>WProp</code> character already carrying one, or build it and parent it to the hand — the trick X Bot's sword needed.</p>
-      </div>
+    <div class="tablewrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th scope="col">slot</th>
+            <th scope="col">Warrior<small>painted · not dolled</small></th>
+            <th scope="col">Paladin<small>dolled · shipping</small></th>
+            <th scope="col">Warlock<small>needs a character</small></th>
+            <th scope="col">Druid<small>needs a character</small></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">idle</th>
+            <td>Great Sword Idle <i class="ondisk">have</i></td>
+            <td>Great Sword Idle <i class="inbake">baked</i></td>
+            <td>Idle <i class="ondisk">have</i></td>
+            <td>Idle <i class="ondisk">have</i></td></tr>
+          <tr><th scope="row">walk</th>
+            <td>Walking <i class="ondisk">have</i></td>
+            <td>Run With Sword <i class="inbake">baked</i></td>
+            <td>Unarmed Walk Forward <i class="ondisk">have</i></td>
+            <td>Walking <i class="ondisk">have</i></td></tr>
+          <tr><th scope="row">swing a</th>
+            <td>Stable Sword Outward Slash <i class="ondisk">have</i></td>
+            <td>Stable Sword Outward Slash <i class="inbake">baked</i></td>
+            <td>Spell Casting <i class="ondisk">have</i></td>
+            <td>Standing Melee Attack Downward <i class="ondisk">have</i></td></tr>
+          <tr><th scope="row">swing b</th>
+            <td>Stable Sword Inward Slash <i class="ondisk">have</i></td>
+            <td>Stable Sword Inward Slash <i class="inbake">baked</i></td>
+            <td>Standing 2H Cast Spell 01 <i class="ondisk">have</i></td>
+            <td>Standing 1H Cast Spell 01 <i class="ondisk">have</i></td></tr>
+          <tr><th scope="row">death</th>
+            <td>Dying <i class="ondisk">have</i></td>
+            <td>Dying <i class="inbake">baked</i></td>
+            <td>Dying <i class="ondisk">have</i></td>
+            <td>Mutant Dying <i class="ondisk">have</i></td></tr>
+          <tr><th scope="row">react</th>
+            <td>Getting-Hit <i class="ondisk">have</i></td>
+            <td>Reaction <i class="inbake">baked</i></td>
+            <td>Getting-Hit <i class="ondisk">have</i></td>
+            <td>Getting-Hit <i class="ondisk">have</i></td></tr>
+          <tr><th scope="row">the beat</th>
+            <td>cry — Standing Taunt Battlecry <i class="code">code first</i></td>
+            <td>prayer — Standing 1H Cast Spell 01 <i class="code">code first</i></td>
+            <td>drain — Spell Casting, held <i class="code">code first</i></td>
+            <td>summon — Standing Taunt Battlecry <i class="code">code first</i></td></tr>
+        </tbody>
+      </table>
     </div>
+    <p class="matrix-notes">
+      <i class="inbake">baked</i> is in a sheet the game draws today ·
+      <i class="ondisk">have</i> is on disk, one bake command away ·
+      <i class="code">code first</i> is waiting on the build order above, not on a download.
+      <b>Warrior</b> — nothing to fetch; dolling him trades five armour rows for one
+      body, and that is a decision, not an asset gap. <b>Paladin</b> — complete: he
+      dies and flinches as of 11 Aug. <b>Warlock</b> — the missing-weapon problem
+      never touches him; fetch a robed, hooded body. <b>Druid</b> — a staff is a
+      prop Mixamo will not hand over: a <code>WProp</code> character, or
+      build-and-parent, the trick X Bot's sword needed.
+    </p>
 
     <div class="rules">
       <h3>The shopping list</h3>
       <p>
         <b>Zero animations.</b> Every clip all four classes need is already in the folder;
         what is missing is two <em>characters</em> — a robed caster and something for the
-        Druid — and one bake of a death the Paladin never got. The slots further up marked
-        as not consumed are not purchases yet: a hit reaction, the five skill poses, the
+        Druid. The slots further up marked
+        as not consumed are not purchases yet: the five skill poses, the
         weapon draw and the boss moves each need code before a downloaded file does anything
         at all.
       </p>
@@ -810,14 +854,14 @@
         no jumps — nuance below "different outline" is weight.
       </p>
       <ol>
-        <li><b>Hit reactions, game-wide.</b> The highest-value missing animation
+        <li><b>Hit reactions, game-wide — done, 11 Aug.</b> The highest-value missing animation
         in the game: damage numbers say you are losing, a body rocking backwards
         makes you feel it. One recoil cell, held a beat, throttled like the grunt
         sounds so a surrounded hero does not vibrate. Clips on disk:
         <code>Getting-Hit</code> · <code>Reaction</code> ·
         <code>Standing React Large From Front</code>. Code: a react state beside
         <code>walk</code> and <code>death</code> in <code>drawAnimFrame</code>.</li>
-        <li><b>The Paladin's death.</b> A bake, not code — extend
+        <li><b>The Paladin's death — done, 11 Aug.</b> A bake, not code — extend
         <code>paladin-walk.png</code> to the same sixteen-cell walk-plus-death
         layout every foe already uses.</li>
         <li><b>Skill poses for dolls.</b> The <code>actions</code> path already
@@ -899,6 +943,86 @@
         in. A clip taken from another character still works, reduced to its rotations — its
         positions are in that character's proportions and would drag every joint somewhere it
         does not belong.
+      </p>
+    </div>
+  </section>
+
+  <section class="stratum">
+    <header>
+      <span class="idx">¶</span>
+      <h2>The plan</h2>
+      <p>Written 11 Aug. Five phases, each shippable on its own, in dependency order.</p>
+    </header>
+
+    <div class="rules" style="padding-top: 1rem">
+      <h3>Phase 1 — one particle emitter, many weathers</h3>
+      <p>
+        The 81 Kenney textures are made to be emitted and tinted, and one Canvas 2D
+        emitter serves every atmospheric ask at once, data-driven per biome:
+        <code>{ texture, rate, wind, tint, layer }</code>. Ash drifting across the
+        inferno road, dust hanging in the town light, embers rising off braziers,
+        motes in the crypt. The same emitter answers the <b>stomp</b>: a dust ring
+        thrown at the feet plus a cracked-earth stain — the quake shake and the
+        stain system already exist, so a stomp becomes data, not a feature. And it
+        replaces the repurposed footage where footage was the wrong tool: a heal
+        becomes rising green motes rather than a recoloured portal. No new
+        dependency; it draws in the pass the effects already use.
+      </p>
+
+      <h3>Phase 2 — a placement grammar for props</h3>
+      <p>
+        The windmill question generalised: today one hash scatters everything that
+        is not a landmark, so set dressing has frequency but no <em>rules</em>.
+        Every prop declares a tier instead. <b>Landmark</b> — windmill, gallows,
+        shrine — at most one per stage, placed from the landmark table
+        (<code>landmarkAt</code> already exists). <b>Feature</b> — carts, fences,
+        graves — hash-placed with a minimum gap in tiles so two never crowd one
+        screen. <b>Scatter</b> — grass, stones, bones — the current hash at a
+        per-biome density. Three numbers per prop in <code>world.js</code>, and
+        the answer to "how often should a wind wheel appear" becomes a line of
+        data anyone can tune.
+      </p>
+
+      <h3>Phase 3 — Blender joins the toolchain, and the armoury comes back</h3>
+      <p>
+        Blender runs headless — <code>blender --background --python</code>, the
+        same shape as every baker here — and does the three jobs Mixamo cannot.
+        <b>Armour:</b> kitbash or take CC0 armour kits, skin them to the
+        <code>mixamorig</code> skeleton by weight transfer from the body (minutes
+        per piece in Blender, impossible in the browser), assemble <b>five outfit
+        collections per class</b>, export one GLB. The baker learns GLB and bakes
+        the sheets with five tiered rows — <b>which the runtime already plays:</b>
+        <code>tiered: true</code> and <code>row = wornTier − 1</code> ship today
+        for the painted warrior. The armoury returns as visible tiers driven by
+        what is worn, the exact compromise the painted classes already made, for
+        zero runtime cost. <b>Clip repair:</b> edit the curves of the sword combo
+        that turns to face the camera so it stays in profile. <b>Authoring:</b>
+        the Druid's staff, and the clips Mixamo lacks — a stomp with real
+        anticipation.
+      </p>
+
+      <h3>Phase 4 — one light, one palette: the direction refresh</h3>
+      <p>
+        The dolls read as figures but not yet as <em>this world's</em> figures.
+        The fix is in the bake, where it costs nothing at runtime: key light
+        warmed to the biome palette, a posterize pass so shading steps like paint
+        rather than ramps like plastic, rim light against the dark grounds, and
+        one contact-sheet per character judged <b>at road size on the road</b> —
+        never as a sheet. Then even out the world: grove, gate and crypt painted
+        sets to match the town's seven, and the four missing camps. Every sheet
+        request goes through ART-BRIEF.md rules that already exist; the brief
+        gains a section for doll bake settings so the look is reproducible.
+      </p>
+
+      <h3>Phase 5 — deferred: the live hero</h3>
+      <p>
+        True per-slot mix-and-match — a gold gauntlet on a leather chest,
+        visible — means rendering the hero from meshes at runtime instead of
+        from sheets. It is one small WebGL canvas composited at the hero's depth,
+        and it is <b>deliberately last</b>: phase 3 buys visible progression for
+        nothing, and this buys per-slot truth at the cost of the first runtime
+        3D dependency in the project. Decide only after phase 3 has been seen on
+        the road; it may not be wanted.
       </p>
     </div>
   </section>

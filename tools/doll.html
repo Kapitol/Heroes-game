@@ -68,6 +68,14 @@ const SKIN = Q.get('skin');
 // can list the directory and a page cannot, and the names in there follow no
 // single rule: `X Bot@Idle`, `Mutant Punch`, `paladin-Reaction` are all clips.
 const CLIPFILE = Q.get('clipfile');
+// Whether the clip was authored for a *different* character. This is the real
+// test for retargeting, and file contents are not: `Dying.fbx` carries Warrok's
+// mesh, so "the clip file has a skin in it" said "play it whole" — Warrok's
+// bone positions applied to the Paladin's skeleton. Whose *proportions* the
+// tracks assume is what matters, the baker knows it from the filename it
+// resolved, and it says so here. Absent (a hand-built URL), the old
+// has-a-mesh test stands in.
+const FOREIGN = Q.has('foreign') ? Q.get('foreign') !== '0' : null;
 const BG = Q.get('bg') || '#14100c';
 // `yaw` turns the doll, in degrees, without moving the camera. Only a
 // diagnostic: a T-pose seen side-on hides both arms along the camera axis, so
@@ -334,8 +342,14 @@ if (mixer) {
   // A clip borrowed from another character is the opposite case: its positions
   // are in that character's proportions and would drag every joint somewhere
   // it does not belong, while its rotations carry over untouched.
-  window.__clip = carriesSkin ? motion.animations[0] : retarget(motion.animations[0]);
-  mixer.clipAction(window.__clip).play();
+  const whole = FOREIGN != null ? !FOREIGN : carriesSkin;
+  window.__clip = whole ? motion.animations[0] : retarget(motion.animations[0]);
+  const action = mixer.clipAction(window.__clip);
+  // A one-shot sampled at its very end must hold there. The mixer's default is
+  // LoopRepeat, and exactly-at-duration wraps to zero — so `Dying@1.0` baked a
+  // corpse standing back up as the final cell of the death.
+  if (!LOOP) { action.setLoop(THREE.LoopOnce); action.clampWhenFinished = true; }
+  action.play();
 }
 const duration = motion ? motion.animations[0].duration : 0;
 

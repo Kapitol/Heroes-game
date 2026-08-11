@@ -98,9 +98,15 @@ const alias = String(opt('alias', char));
 function findClip(name) {
   const dir = new URL('../art/mixamo/', import.meta.url).pathname;
   const files = new Set(readdirSync(dir).filter((f) => f.endsWith('.fbx')));
-  const tries = [`${char}@${name}`, alias && `${alias}-${name}`, name, `${motionChar}@${name}`];
+  const tries = [`${char}@${name}`, alias && `${alias}-${name}`, name,
+    `${motionChar}@${name}`, `${motionChar}-${name}`];
   for (const t of tries) if (t && files.has(`${t}.fbx`)) return t;
-  throw new Error(`no file for clip "${name}" (tried ${tries.filter(Boolean).join(', ')})`);
+  // Last resort: any character's copy. The library is shared — a clip is the
+  // same motion whoever it was downloaded on, and reduced to its rotations it
+  // dresses anyone. This is how the Paladin dies with Warrok's Dying.
+  const any = [...files].find((f) => f.endsWith(`@${name}.fbx`) || f.endsWith(`-${name}.fbx`));
+  if (any) return any.replace(/\.fbx$/, '');
+  throw new Error(`no file for clip "${name}" (tried ${tries.filter(Boolean).join(', ')}, and no other character has it)`);
 }
 
 if (!out || (!clip && !poses.length)) {
@@ -114,6 +120,11 @@ const url = (o) => {
     shot: '1', char, w: String(CELL_W * (o.strip || 1)), h: String(CELL_H),
     fh: String(FH), by: String(BY), bg: 'none', strip: String(o.strip || 1),
     clip: o.clip, clipfile: findClip(o.clip), skin, motion: motionChar,
+    // Authored for this character, or borrowed? Borrowed plays rotations-only.
+    foreign: (() => {
+      const f = findClip(o.clip);
+      return f === `${char}@${o.clip}` || f === `${alias}-${o.clip}` ? '0' : '1';
+    })(),
   });
   if (o.p != null) q.set('p', String(o.p));
   if (clay) q.set('clay', '1');
