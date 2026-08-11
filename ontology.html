@@ -605,10 +605,10 @@
         <div class="ev">blur 5px @ .55 + 16px @ .40</div>
       </div>
       <div class="row">
-        <i class="mark" style="background: var(--ore)"></i>
-        <div class="part">Particle system<small>art/vfx/PNG (Transparent)</small></div>
-        <div class="what">Eighty-one greyscale textures meant to be emitted and tinted. No emitter exists yet — it is phase 1 of the plan, and the better answer for a heal, for weather, and for the stomp than any repurposed footage.</div>
-        <div class="ev">81 textures · 512px<br>Kenney, CC0</div>
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Particle system<small>js/particles.js</small></div>
+        <div class="what">One pool, weather described per biome as data, and named bursts — ash over the inferno, dust in the town light, dirt off a stomp, motes off a heal. Eight Kenney cells shipped as one 75KB atlas, tinted at draw.</div>
+        <div class="ev">weather on 6 biomes · 3 bursts<br>cap 400 · tools/particle-atlas.mjs</div>
       </div>
       <div class="row">
         <i class="mark" style="background: var(--forged)"></i>
@@ -955,7 +955,7 @@
     </header>
 
     <div class="rules" style="padding-top: 1rem">
-      <h3>Phase 1 — one particle emitter, many weathers</h3>
+      <h3>Phase 1 — one particle emitter, many weathers — done, 11 Aug</h3>
       <p>
         The 81 Kenney textures are made to be emitted and tinted, and one Canvas 2D
         emitter serves every atmospheric ask at once, data-driven per biome:
@@ -967,6 +967,10 @@
         replaces the repurposed footage where footage was the wrong tool: a heal
         becomes rising green motes rather than a recoloured portal. No new
         dependency; it draws in the pass the effects already use.
+        <b>Shipped:</b> <code>js/particles.js</code> (pool of 400, weather +
+        named bursts), <code>art/particles.png</code> (8 Kenney cells, 75KB,
+        rebuilt by <code>tools/particle-atlas.mjs</code>), weather on all six
+        biomes, stomp on the quake skill and on slam and nova, motes on heals.
       </p>
 
       <h3>Phase 2 — a placement grammar for props</h3>
@@ -983,6 +987,14 @@
         data anyone can tune.
       </p>
 
+      <p><b>Direction:</b> placement must stay a <b>pure function of
+      (x, y, biome)</b> — <code>propAt</code> is a hash consulted per frame per
+      tile, so any rule that keeps state pops props in and out between frames.
+      A minimum gap is arithmetic on <code>x</code> (a feature slot every N
+      tiles, its offset hashed), never a scan of neighbours. Landmarks go
+      through the <code>landmarkAt</code> table that already exists, not the
+      hash pool. The numbers live on the prop entry:
+      <code>{ tier, every, density }</code>.</p>
       <h3>Phase 3 — Blender joins the toolchain, and the armoury comes back</h3>
       <p>
         Blender runs headless — <code>blender --background --python</code>, the
@@ -1001,6 +1013,20 @@
         anticipation.
       </p>
 
+      <p><b>Direction:</b> headless is <code>blender --background --python
+      script.py</code>. Skin armour with the <b>Data Transfer modifier</b>
+      copying weights from the body mesh — automatic weights on a rigid plate is
+      the classic mistake and produces rubber armour. Outfits are collections
+      <code>T1…T5</code>; export one GLB per class; the baker toggles collection
+      visibility by name. Vendor <code>GLTFLoader</code> from the same three
+      r0.185 tree already under <code>tools/vendor</code>. Bake <b>five tiered
+      rows</b> and reuse <code>tiered: true</code> + <code>row = wornTier −
+      1</code> — the warrior's painted sheets show the exact shape; do not
+      invent a runtime path. Retargeting rules are unchanged: a clip authored
+      for the character plays whole, a borrowed one plays rotations-only, and
+      some characters have broken bind poses — check <code>clip=none</code>
+      first. One-shots already clamp; keep <code>fh</code> constant per class
+      across every sheet or the hero changes height when he changes state.</p>
       <h3>Phase 4 — one light, one palette: the direction refresh</h3>
       <p>
         The dolls read as figures but not yet as <em>this world's</em> figures.
@@ -1014,6 +1040,13 @@
         gains a section for doll bake settings so the look is reproducible.
       </p>
 
+      <p><b>Direction:</b> every look change happens in the bake, none at
+      runtime. Posterize is a canvas post-step in the baker's compose (quantize
+      each channel), not a shader. Judge with <code>tools/gauntlet/stack.mjs</code>
+      contact sheets at <code>h=56</code> composited over road screenshots —
+      never approve art from a 320px cell. Record the chosen
+      <code>--light</code> and posterize per character in ART-BRIEF.md, or the
+      look stops being reproducible.</p>
       <h3>Phase 5 — deferred: the live hero</h3>
       <p>
         True per-slot mix-and-match — a gold gauntlet on a leather chest,
@@ -1024,6 +1057,42 @@
         3D dependency in the project. Decide only after phase 3 has been seen on
         the road; it may not be wanted.
       </p>
+      <p><b>Direction, if it is ever built:</b> the hard constraint is
+      <code>drawDepthPass</code> — sprites interleave by depth, and a WebGL
+      canvas composites only as a whole. So the hero renders alone to a small
+      offscreen WebGL canvas and that canvas is drawn <em>as his sprite, at his
+      slot in the sorted pass</em>. Never a full-scene overlay. Lazy dynamic
+      import behind a URL flag; the sheets stay the default until this has been
+      judged on the road.</p>
+
+      <h3>Traps — read before touching anything</h3>
+      <ol>
+        <li>The Bash shell's cwd <b>drifts back to the parent folder</b> between
+        calls. <code>cd</code> explicitly in every command, or edits silently
+        hit the unrelated Deep Dig project sitting beside this one.</li>
+        <li>Grep misses computed access. <code>Audio.sfx[cond ? 'a' : 'b']()</code>
+        is how this codebase calls its most important sounds, and
+        <code>heroStats</code> is recomputed by game.js <em>and</em> ui.js —
+        override at the source, never at a call site. This produced two
+        confidently wrong claims in one session.</li>
+        <li>Binaries from <code>swiftc</code> are SIGKILLed on launch, no
+        output, until <code>codesign -s -</code>.</li>
+        <li><code>afconvert -d aac</code>, never <code>aac@44100</code> — the
+        rate pin refuses some 48k sources with a useless error.</li>
+        <li><code>new URL(...).pathname</code> keeps <code>%20</code>; use
+        <code>fileURLToPath</code> for anything under a path with spaces.</li>
+        <li>The Browser pane's navigate strips query strings — reach dev hooks
+        with <code>location.href</code> from inside the page.</li>
+        <li><code>?fresh</code> escapes the saved boss-loop trap; serve.js is
+        deliberately <code>no-store</code> — do not add caching back.</li>
+        <li><code>Atlas.tinted</code> caches one canvas per colour string. Tint
+        with fixed palette strings; a colour built per frame is a memory leak
+        shaped like a rainbow.</li>
+        <li>The animation mixer's default loop <b>wraps at exactly
+        t = duration</b> — doll.html clamps one-shots for this; keep it, or
+        every death bakes a corpse that stands back up in its last cell.</li>
+      </ol>
+
     </div>
   </section>
 

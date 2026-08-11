@@ -11,6 +11,7 @@ import { drawActor, drawShadow, drawProp, drawTelegraph, drawChest } from './spr
 import * as Atlas from './atlas.js';
 import * as Coffin from './coffin.js';
 import * as Rig from './rig.js';
+import * as Particles from './particles.js';
 
 let lightCv = null, lightCtx = null;
 let bloomCv = null, bloomCtx = null;
@@ -98,6 +99,12 @@ export function render(ctx, S, t, dt) {
   drawTelegraphs(ctx, S);
   drawDepthPass(ctx, S, t, !!painted);
   drawGroundEffects(ctx, S, t);
+  // Weather and bursts ride the same shelf as the baked effects: above the
+  // actors, below the lighting — so ash is dimmed with the world (it is not an
+  // emitter of light) and a stomp's dirt lands in front of the boots that
+  // threw it.
+  Particles.update(dt, S);
+  Particles.draw(ctx, S);
 
   ctx.restore();
 

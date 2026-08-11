@@ -17,6 +17,7 @@ import * as UI from './ui.js';
 import * as Audio from './audio.js';
 import * as Coffin from './coffin.js';
 import * as Rig from './rig.js';
+import * as Particles from './particles.js';
 import { rollBossLoot, bossSkullBonus, wornTier, startingKit, bandIndex } from './items.js';
 // The difficulty curve lives in its own module so the simulator in tools/ can
 // tune the same formula the game runs on — see js/balance.js.
@@ -642,6 +643,8 @@ function quakeLands(h, st, foes) {
   // standing in rather than something he did. The *damage* stays on the body:
   // nothing gameplay-facing should move because a sprite's leg does.
   effect('quake', h.x + (h.fx < 0 ? -0.45 : 0.45), h.y + 0.2, 4.4, 0.6);
+  // The dirt the foot throws. Same forward offset as the ring, same reason.
+  Particles.burst.stomp(h.x + (h.fx < 0 ? -0.45 : 0.45), h.y + 0.2, 1.1);
   Audio.sfx.cleave();
   S.cam.shake = 0.6;
   for (const m of foes()) {
@@ -729,6 +732,7 @@ function castSkill(slot) {
         h.hp = Math.min(st.maxHp, h.hp + heal);
         effect('heal', h.x, h.y, 1, 0.9);
         vfx('halo', h.x, h.y, 0.9, { scale: 1.4 });
+        Particles.burst.heal(h.x, h.y);
         float(h.x, h.y, `+${Math.round(heal)}`, '#8ce8a0', true);
         Audio.sfx.heal();
       });
@@ -1310,6 +1314,7 @@ function fightStep(dt, st) {
         h.hp += back;
         float(h.x, h.y, `+${Math.round(back)}`, '#7fd6a0');
         vfx('halo', h.x, h.y, 0.8, { scale: 1.1 });
+        Particles.burst.heal(h.x, h.y);
         Audio.sfx.heal();
       }
       endWave();            // everything is down: bank it, and maybe drop it
@@ -1553,6 +1558,9 @@ function resolveBossMove(m, mv, h) {
   effect('boom', at.x, at.y, mv.radius, 0.5);
   Audio.sfx.boom();
   S.cam.shake = 0.9;
+  // A slam is the stomp grown to the boss's size; a nova is the same ground
+  // impact with the boss's own light doing the colour work above it.
+  if (mv.id === 'slam' || mv.id === 'nova') Particles.burst.stomp(at.x, at.y, (m.scale || 1) * 1.3);
   if (Math.hypot(h.x - at.x, h.y - at.y) <= mv.radius) hurtHero(m.dmg * mv.mult);
 }
 

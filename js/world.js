@@ -15,6 +15,9 @@ export const VERGE = 9;         // how far past the road we still draw ground
 export const BIOMES = [
   {
     key: 'town', name: 'Outside of a Town', indoors: false,
+    // Weather is read by js/particles.js: tex names a cell of art/particles.png,
+    // wind is tiles/s along the road, rise is height px/s, rate is spawns/s.
+    weather: [{ tex: 'glow', tint: 'rgba(255,238,190,.35)', add: true, rate: 1.2, wind: 0.06, rise: 4, size: 5, life: 7, high: true }],
     // The first thing anyone sees, and the only stretch drawn in daylight.
     art: {
       grass: 'art/grass-town.png',
@@ -53,6 +56,7 @@ export const BIOMES = [
   },
   {
     key: 'boneyard', name: 'The Boneyard Road', indoors: false,
+    weather: [{ tex: 'smoke', tint: 'rgba(150,150,140,.22)', rate: 1.4, wind: 0.22, rise: 2, size: 14, life: 7 }],
     // Drawn from art: two repeating ground textures plus a sheet of props the
     // engine scatters itself. Keeping the props separate from the ground is
     // what lets the road run forever without a visible repeat.
@@ -102,6 +106,7 @@ export const BIOMES = [
   },
   {
     key: 'grove', name: 'The Elder Wood', indoors: false,
+    weather: [{ tex: 'wisp', tint: 'rgba(170,210,150,.3)', rate: 1.6, wind: -0.12, rise: 2, size: 8, life: 8, high: true }],
     ground: '#39502f', groundAlt: '#405a34', path: '#6f6247', pathAlt: '#7a6c4f',
     sky: ['#4a6272', '#7d8f8a'], horizon: '#25341f',
     darkness: 0.24, tint: 'rgba(180,210,190,.05)', accent: '#9fd06a',
@@ -109,6 +114,7 @@ export const BIOMES = [
   },
   {
     key: 'gate', name: 'The Broken Gate', indoors: false,
+    weather: [{ tex: 'smoke', tint: 'rgba(120,110,96,.28)', rate: 2, wind: 0.3, rise: 3, size: 16, life: 6 }],
     ground: '#4a463c', groundAlt: '#535045', path: '#6d6656', pathAlt: '#787060',
     sky: ['#3b3f4c', '#6b6157'], horizon: '#2c2b26',
     darkness: 0.38, tint: 'rgba(255,220,170,.05)', accent: '#c8a24a',
@@ -116,6 +122,7 @@ export const BIOMES = [
   },
   {
     key: 'crypt', name: 'The Crypt', indoors: true,
+    weather: [{ tex: 'glow', tint: 'rgba(160,190,220,.25)', add: true, rate: 0.8, rise: 3, size: 4, life: 9, high: true }],
     ground: '#2a241c', groundAlt: '#312a20', path: '#463d2e', pathAlt: '#4f4534',
     sky: ['#0a0806', '#0a0806'], horizon: '#0a0806',
     darkness: 0.74, tint: 'rgba(255,190,110,.05)', accent: '#c8a24a',
@@ -123,6 +130,13 @@ export const BIOMES = [
   },
   {
     key: 'inferno', name: 'The Inferno', indoors: true,
+    // Two entries, and the difference between them is the whole effect: ash is
+    // dark, slow, windborne and composited normally, so the lighting dims it
+    // with the world; embers are bright, quick, rising and additive.
+    weather: [
+      { tex: 'smoke', tint: 'rgba(46,38,34,.55)', rate: 5, wind: 0.55, rise: 6, size: 13, life: 6, high: true },
+      { tex: 'spark', tint: 'rgba(255,150,60,.8)', add: true, rate: 1.6, wind: 0.25, rise: 26, size: 4, life: 3 },
+    ],
     // Painted, like the boneyard, and its sheet is laid out to match: three
     // uprights, three of the tall thing, two low spills, two boulders, a wall
     // and a bush. Only the names changed.
