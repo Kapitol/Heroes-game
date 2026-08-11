@@ -337,6 +337,27 @@ async function loadOne(url) {
  * it — and the caller cannot tell the difference anyway, because it falls
  * through to the synth either way.
  */
+/**
+ * Spoken lines, which are files rather than a numbered bank.
+ *
+ * **Named, not counted, and `.mp3` rather than `.m4a`.** Everything in `BANK`
+ * is a library effect that arrived as a numbered set and got converted; these
+ * are recorded lines that arrive one at a time under their own names, and
+ * forcing them into `name-N.m4a` would mean renaming a performance to fit a
+ * loader.
+ *
+ * The three keys are the Butcher saying the same thing to three different
+ * heroes — see `LORE.md`, where a class picks Light, Hybrid or Evil. Only
+ * `boss` is reachable today because nothing in the game records a branch yet;
+ * the other two are loaded and waiting rather than left on disk, so wiring
+ * them later is a lookup and not a hunt.
+ */
+const VOICES = {
+  boss: 'audio/boss-01.mp3',
+  bossLight: 'audio/boss-light-01.mp3',
+  bossHybrid: 'audio/boss-hybrid-01.mp3',
+};
+
 function loadBank() {
   for (const [name, count] of Object.entries(BANK)) {
     const list = [];
@@ -344,6 +365,11 @@ function loadBank() {
     for (let i = 1; i <= count; i++) {
       loadOne(`audio/${name}-${i}.m4a`).then((s) => list.push(s), () => {});
     }
+  }
+  for (const [name, url] of Object.entries(VOICES)) {
+    const list = [];
+    bank.set(name, list);
+    loadOne(url).then((s) => list.push(s), () => {});
   }
 }
 
@@ -492,6 +518,20 @@ export const sfx = {
   encounter()  { if (sample('clash', 0.6)) return;
                  noise({ dur: 0.4, gain: 0.22, freq: 700, q: 0.6, type: 'bandpass' });
                  tone(96, { type: 'sawtooth', dur: 0.45, gain: 0.2, slide: -30 }); },
+
+  /**
+   * The Butcher's line, once a fight.
+   *
+   * **Not on arrival.** `boss()` already fires there, and a sting and a spoken
+   * line landing on the same frame fight each other — the line loses, because
+   * the sting is the louder of the two and the banner is still animating. This
+   * plays on the first blow of the fight instead, which is a beat later, quiet,
+   * and is the moment the fight becomes real rather than announced.
+   *
+   * No synth fallback and no throttle key: a line either plays or it does not,
+   * and `game.js` guarantees the once by only calling it once per boss.
+   */
+  bossLine(which = 'boss') { sample(which, 0.9, 0, 1); },
 
   enrage()     { if (sample('growl', 0.75, 0.03, 0.9)) return;
                  tone(70, { type: 'sawtooth', dur: 0.7, gain: 0.24, slide: -20 }); },

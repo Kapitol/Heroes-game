@@ -35,6 +35,7 @@
 // unchanged.
 import * as THREE from 'three';
 import { FBXLoader } from './vendor/three/jsm/loaders/FBXLoader.js';
+import { GLTFLoader } from './vendor/three/jsm/loaders/GLTFLoader.js';
 
 const Q = new URLSearchParams(location.search);
 const qNum = (k, d) => (Q.has(k) ? +Q.get(k) : d);
@@ -64,6 +65,16 @@ const MOTION = Q.get('motion') || CHAR;
 // page cannot list a directory to go looking. `tools/bake-doll.mjs` can, so it
 // resolves the name and passes it in.
 const SKIN = Q.get('skin');
+// **A GLB wearing armour, instead of the bare Mixamo FBX.** `tools/armour.py`
+// bakes one per class: the same character, the same `mixamorig` skeleton, plus
+// every tier's plates skinned to it and named `T1_…` … `T5_…`. The path is
+// relative to the repo root — `glb=art/armour/warrior.glb` — because these are
+// built files rather than downloads and do not live in art/mixamo/.
+const GLB = Q.get('glb');
+// Which tier to show. The GLB carries all five at once and one prefix survives;
+// `tier=0` shows every piece stacked, which is only ever a diagnostic. The
+// numbering is the runtime's: `row = wornTier - 1`, so tier 1 is row 0.
+const TIER = qNum('tier', 0);
 // The exact basename of the clip file. `tools/bake-doll.mjs` resolves it — it
 // can list the directory and a page cannot, and the names in there follow no
 // single rule: `X Bot@Idle`, `Mutant Punch`, `paladin-Reaction` are all clips.
@@ -138,7 +149,71 @@ scene.add(rim);
 scene.add(new THREE.AmbientLight(0x30281e, 1.2));
 for (const l of [key, fill, rim]) l.intensity *= LIGHT;
 
+/**
+ * A sky for the armour to reflect.
+ *
+ * **A metal with nothing around it renders black.** That is not a bug to work
+ * around, it is what metal *is* under a physical material: it has no diffuse
+ * colour of its own and shows only what it reflects, so three lights and a void
+ * give three highlights on a black plate. The first tiered bake came out with
+ * rungs four and five darker than rung one, which is the opposite of the thing
+ * the tiers exist to say.
+ *
+ * A gradient — a cold sky over a dark floor — is enough, and is cheaper than
+ * vendoring RoomEnvironment for a picture that is 56 pixels tall on the road.
+ * Only built when there is a GLB, so every existing FBX bake comes out byte for
+ * byte as it did before.
+ *
+ * **It has to be a real equirectangular map, 2:1 and no smaller than this.**
+ * The first attempt was one pixel wide — the gradient only varies vertically,
+ * so a column looked like the whole of the information. PMREM convolves it
+ * through a cube render and a chain of blurred mips, and a 1-wide source makes
+ * that pipeline invalid: every draw call after it returned GL_INVALID_OPERATION
+ * and the canvas came out empty. `renderer.info` still reported 23 calls and
+ * 99,922 triangles, which is how an *erroring* render is told apart from a
+ * culled or off-screen one — check `gl.getError()` before suspecting the
+ * camera.
+ */
+if (GLB) {
+  const W_SKY = 64, H_SKY = 32;
+  const px = new Uint8Array(W_SKY * H_SKY * 4);
+  for (let i = 0; i < H_SKY; i++) {
+    const t = i / (H_SKY - 1);                 // 0 at the top of the sphere
+    const sky = [0x8e, 0x93, 0xa6], floor = [0x1a, 0x15, 0x10];
+    for (let j = 0; j < W_SKY; j++) {
+      const at = (i * W_SKY + j) * 4;
+      for (let c = 0; c < 3; c++) px[at + c] = sky[c] * (1 - t) + floor[c] * t;
+      px[at + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(px, W_SKY, H_SKY);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromEquirectangular(tex).texture;
+  // The environment lights the plates; it must not also wash out the character,
+  // whose look was settled against the three lights above and nothing else.
+  scene.environmentIntensity = 0.6;
+  pmrem.dispose();
+  tex.dispose();
+}
+
 const load = (url) => new Promise((res, rej) => new FBXLoader().load(url, res, undefined, rej));
+const loadGLB = (url) => new Promise((res, rej) =>
+  new GLTFLoader().load(url, (g) => res(g.scene), undefined, rej));
+
+/**
+ * Which tier a piece belongs to, or 0 for anything that is not armour.
+ *
+ * `tools/armour.py` writes the tier into the object name and nothing else
+ * carries it — no collections survive the GLB, and a name is the one handle
+ * three keeps. GLTFLoader sanitises node names on the way in (Mixamo's
+ * `mixamorig:Hips` arrives as `mixamorigHips`, which is exactly why the FBX
+ * clips bind to a GLB skeleton at all), and the `T<n>_` prefix passes through
+ * that untouched.
+ */
+const tierOf = (name) => (/^T(\d)_/.exec(name || '')?.[1] | 0);
 
 /**
  * The doll, its clip, and the scale that makes it `FH` pixels tall.
@@ -180,9 +255,21 @@ const carriesSkin = hasMesh(clipScene);
 // An explicit `skin` wins over the clip's own mesh — it is the handle for
 // asking "is it this file's mesh or this file's animation that is wrong", and
 // there is no other way to take those two apart.
-const doll = SKIN ? await load(`../art/mixamo/${SKIN}.fbx`)
-  : carriesSkin ? clipScene
-    : await load(`../art/mixamo/${CHAR}.fbx`);
+// A GLB skin wins over everything: it *is* the character, with his armoury on
+// him, and the clip file is then only ever a source of motion.
+const doll = GLB ? await loadGLB(`../${GLB}`)
+  : SKIN ? await load(`../art/mixamo/${SKIN}.fbx`)
+    : carriesSkin ? clipScene
+      : await load(`../art/mixamo/${CHAR}.fbx`);
+
+// Four tiers out of five are hidden, not deleted: they still cost their share
+// of one GLB parse, and deleting them would mean re-loading the file per row.
+if (GLB && TIER) {
+  doll.traverse((o) => {
+    const t = tierOf(o.name);
+    if (t) o.visible = t === TIER;
+  });
+}
 const motion = clipScene;
 
 /**
@@ -215,6 +302,14 @@ doll.traverse((o) => {
   // show, so flattening him to neutral was the honest way to ask whether
   // *assembly* reads. A real character's textures are the entire question, and
   // replacing them would answer a different one — so `clay=1` is opt-in.
+  // **Armour keeps its own material, always.** It was authored in
+  // `tools/armour.py` as a Principled BSDF with a deliberate metalness per
+  // tier, and that metalness is most of what separates rung four from rung
+  // five at road size. Both branches below exist to repair *Mixamo's* Phong
+  // materials, and applying either to a plate would throw the tier away —
+  // clay would flatten it to the body's colour, and the rebuild would pin it
+  // to roughness 0.68 / metalness 0.05, which is what plastic looks like.
+  if (tierOf(o.name) || tierOf(o.parent?.name)) return;
   if (CLAY) {
     o.material = new THREE.MeshStandardMaterial({ color: 0xb9b2a6, roughness: 0.72, metalness: 0.04 });
   } else if (o.material) {
@@ -322,13 +417,31 @@ function attachSword(doll) {
 // Height from the bind pose, before anything is animated: a clip that raises
 // an arm over the crown would otherwise decide the scale, and the figure would
 // shrink for exactly the frames where it reaches.
-const bounds = new THREE.Box3().setFromObject(doll);
+// **And measured on the body alone, never on the armour.** A helm stands proud
+// of the crown, so a bound taken over everything makes tier four a taller doll
+// — which the scale then shrinks back, and the hero loses half a head the
+// moment he puts a helmet on. It is the same failure `fh` exists to prevent
+// across sheets, arriving from inside one sheet instead. The plates are
+// excluded and the *character* fixes the scale, at every tier and at none.
+// **Every mesh counts, including the four tiers that are hidden.** The rule
+// has to be independent of which tier is showing, or the hero loses half a
+// head the moment he puts a helmet on — the same failure `fh` exists to
+// prevent across sheets, arriving from inside one sheet instead. Measuring
+// only the *untiered* meshes was the first attempt and it stopped working the
+// moment the outfits arrived: with the body replaced tier by tier, the one
+// untiered mesh left is a bare head, and a figure scaled to make a head 230
+// pixels tall is a giant. The union of all five is constant, which is the only
+// property that actually matters.
+const bounds = new THREE.Box3();
+doll.traverse((o) => { if (o.isMesh) bounds.expandByObject(o); });
+if (bounds.isEmpty()) bounds.setFromObject(doll);
 const height = bounds.max.y - bounds.min.y;
 const scale = 1 / height;                    // the doll is now exactly 1 unit tall
 doll.scale.setScalar(scale);
 doll.position.y = -bounds.min.y * scale;     // and standing on y = 0
 doll.rotation.y = YAW;
-window.__doll = doll; window.__scene = scene;
+window.__doll = doll; window.__scene = scene; window.__THREE_NS = THREE;
+window.__renderer = renderer; window.__camera = camera;
 if (SWORD) window.__sword = attachSword(doll);
 
 const mixer = motion ? new THREE.AnimationMixer(doll) : null;
@@ -342,7 +455,14 @@ if (mixer) {
   // A clip borrowed from another character is the opposite case: its positions
   // are in that character's proportions and would drag every joint somewhere
   // it does not belong, while its rotations carry over untouched.
-  const whole = FOREIGN != null ? !FOREIGN : carriesSkin;
+  // **A GLB skin never plays a clip whole, whoever authored it.** The two
+  // formats do not agree about units: FBXLoader keeps Mixamo's centimetres, so
+  // a hip track reads y = 100, while the GLB comes out of Blender in metres and
+  // stands 1.8 units tall. Played whole, the character's *own* idle throws him
+  // a hundred units into the air and the cell bakes empty — which is what it
+  // did, and which looks exactly like a load failure until the numbers are
+  // read. Rotations are unitless and carry over untouched.
+  const whole = GLB ? false : FOREIGN != null ? !FOREIGN : carriesSkin;
   window.__clip = whole ? motion.animations[0] : retarget(motion.animations[0]);
   const action = mixer.clipAction(window.__clip);
   // A one-shot sampled at its very end must hold there. The mixer's default is

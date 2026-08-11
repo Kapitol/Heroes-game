@@ -1008,7 +1008,95 @@
         tiles, up from 0.011 — measure this way, not by headless rAF, which
         reported 93ms of pure throttling.
       </p>
-      <h3>Phase 3 — Blender joins the toolchain, and the armoury comes back</h3>
+      <h3>Phase 3 — Blender joins the toolchain, and the armoury comes back
+        — done and in the game, 11 Aug</h3>
+      <p><b>The three commands that make the hero, recorded because the
+        Paladin's were not.</b> Re-running these reproduces exactly what ships;
+        the last session's sheets could not be reproduced at all, which is what
+        made changing them a risk rather than a chore.</p>
+      <pre><code>blender --background --python tools/outfit.py -- --out art/armour/knight.glb
+
+node tools/bake-doll.mjs --out art/knight-walk.png --glb art/armour/knight.glb \
+  --tiers 5 --sword --light 1.35 --seg "Run With Sword:10:loop" --seg "Dying:6"
+
+node tools/bake-doll.mjs --out art/knight-combat.png --glb art/armour/knight.glb \
+  --tiers 5 --sword --light 1.35 --pose "Idle@0" \
+  --pose "Stable Sword Outward Slash@0.45" --pose "Stable Sword Inward Slash@0.45" \
+  --pose "Getting-Hit@0.3"</code></pre>
+      <p><b>Where it stands.</b> Blender 4.5 is installed and headless,
+        <code>tools/armour.py</code> builds five outfits and skins them by Data
+        Transfer, <code>tools/doll.html</code> takes <code>?glb=</code> and
+        <code>?tier=</code>, and <code>tools/bake-doll.mjs --glb … --tiers 5</code>
+        bakes a five-row sheet. Proven on both X Bot and the Paladin — the
+        Paladin keeps his own sword and shield — and the five rungs are
+        distinguishable at <code>h=56</code> on the road.
+        <b>It is wired: the hero is the knight, and his armour changes with
+        what he wears.</b> Verified in the running game — both sheets load,
+        <code>wornTier</code> reads 5 on gold gear, and the figure on the road
+        changes between rungs.
+        The plan said this phase needed no runtime change because
+        <code>tiered: true</code> and <code>row = wornTier − 1</code> already
+        ship. That is true of the <em>painted</em> warrior and false of the
+        route the game actually draws: <code>DOLL_ART</code> in js/render.js
+        carries <code>rows: 1, row: 0</code> and merges that <code>row: 0</code>
+        over the <code>row: wornTier(S.equipped) − 1</code> that js/game.js:778
+        already computes. So the wiring is three fields, not none — and it
+        means re-baking the Paladin's shipped sheets with five rows, whose
+        original bake commands are recorded nowhere. Record them this time.</p>
+      <p><b>The plates were abandoned for a kit, and that is the bigger
+        decision here.</b> Generated cylinders read at road size and read as
+        grey boxes anywhere larger, so phase 3 now runs on Quaternius' Modular
+        Character Outfits — Fantasy (CC0, bought, in the repo root) through
+        <code>tools/outfit.py</code>. Five outfits <em>replace</em> the body
+        rather than dressing it, which is the tier ladder, and the kit's own
+        readme says to keep only the head. Its rig is Unreal-named and T-posed
+        and maps 1:1 onto <code>mixamorig</code> — but <b>renaming the bones is
+        not enough: the names match and the rolls do not</b>, so the first
+        clip's hip rotation lays every tier flat while the bind pose stands
+        perfectly upright. That is the tell. The fix is to throw the kit's rig
+        away and bind the outfit meshes to the real Mixamo skeleton with the
+        same Data Transfer weights, after which every existing clip drives them
+        untouched. Two measurements were load-bearing: each part file ships a
+        42-vertex <code>Icosphere</code> helper spanning z −1…1 that inflates
+        the kit's measured height to 2.84 and shrinks every outfit by a third
+        (the symptom is boots weighted to <code>UpLeg</code>), and the body
+        must be chosen by how many bones it reaches, never by vertex count.
+        The head comes from the free Universal Base Characters pack (also in
+        the repo root, also CC0): everything below the neck is deleted and the
+        head goes through the <em>same</em> fit as the outfits, which is the
+        only way it lands on the right shoulders. The hands never needed
+        anything — they are the kit's own, painted by the kit's own material.
+        With the body replaced tier by tier, the doll's ruler had to change
+        too: <code>tools/doll.html</code> now measures the figure from the
+        union of <em>all</em> meshes, hidden tiers included, because that is
+        the only measurement that does not move when a helmet appears.</p>
+
+      <p><b>What phase 3 does not know yet, and it is the lore's doing.</b>
+        <code>LORE.md</code> arrived after this was built and contradicts two
+        choices in it. The tier-5 horns read demonic on a light-ordained guard
+        — they belong to the Nephilim. And the ladder (peasant → ranger →
+        noble → mail → plate) is merchant progression, not an order of light;
+        tier 1 should be an initiate. Bigger: every class has a skill tree with
+        <b>Light, Hybrid and Evil</b> branches, so a hero is a branch
+        <em>and</em> a tier — fifteen outfits per class, not five. The sheets
+        already carry the cheap axis, so <b>a branch is a sheet and a row is
+        still a tier</b>: <code>DOLL_ART</code> becomes three entries,
+        <code>row = wornTier − 1</code> never changes, and the cost is three
+        bakes per class. Do not bake them yet: nothing in <code>js/</code>
+        records which branch a hero took, so there is no state to choose a
+        sheet with. Order of work — move the horns off Light tier 5, add the
+        branch to state behind a <code>?branch=</code> flag, then bake the
+        three branches alongside phase 4 so the palettes are chosen once,
+        against the road.</p>
+      <p><b>Two traps the first bakes walked into, both silent.</b> An FBX clip's
+        position tracks are in Mixamo's centimetres and a Blender GLB is in
+        metres, so a character playing his <em>own</em> idle whole is thrown a
+        hundred units into the air and the cell bakes empty — a GLB skin plays
+        rotations-only whoever authored the clip. And a PMREM environment built
+        from a 1-pixel-wide equirect makes every later draw call return
+        <code>GL_INVALID_OPERATION</code>: the canvas is blank while
+        <code>renderer.info</code> still reports 23 calls and 99,922 triangles.
+        Check <code>gl.getError()</code> before suspecting the camera.</p>
       <p>
         Blender runs headless — <code>blender --background --python</code>, the
         same shape as every baker here — and does the three jobs Mixamo cannot.

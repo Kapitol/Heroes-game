@@ -3,6 +3,8 @@
 //   node tools/bake-doll.mjs --out art/xbot-walk.png --clip "Run With Sword" --frames 10 --loop
 //   node tools/bake-doll.mjs --out art/xbot-combat.png \
 //     --pose "Idle@0" --pose "Stable Sword Outward Slash@0.45"
+//   node tools/bake-doll.mjs --out art/warrior-doll-walk.png --glb art/armour/warrior.glb \
+//     --tiers 5 --clip "Walking-02" --frames 4 --loop
 //
 // This is the other half of the question `tools/doll.html` was built to ask.
 // That page proved a 3D figure reads better than the paperdoll assembles; this
@@ -34,6 +36,14 @@ const all = (k) => argv.reduce((a, v, i) => (v === `--${k}` ? [...a, argv[i + 1]
 const has = (k) => argv.includes(`--${k}`);
 
 const char = String(opt('char', 'X Bot'));
+// **The armoured character, and how many rungs of him to bake.** `--glb` is a
+// file from `tools/armour.py` — the same skeleton with five outfits skinned to
+// it — and `--tiers 5` bakes the strip once per outfit, stacked into five rows.
+// That shape is not a new idea: `tiered: true` and `row = wornTier - 1` already
+// ship in js/entities.js and js/render.js for the painted warrior, so five rows
+// out of here are five rows the game plays today with no runtime change at all.
+const glb = opt('glb', null);
+const tiers = Number(opt('tiers', 0));
 const out = String(opt('out', ''));
 const clip = opt('clip', null);
 const poses = all('pose');
@@ -81,7 +91,9 @@ function findSkin() {
   if (!paired) throw new Error(`no mesh file for "${char}" in art/mixamo/`);
   return paired.replace(/\.fbx$/, '');
 }
-const skin = findSkin();
+// A GLB carries its own mesh, so there is no FBX skin to go looking for — and
+// asking for one would fail for a character who only ever existed as a build.
+const skin = glb ? null : findSkin();
 // An alias for downloads named by hand rather than by Mixamo — `paladin-Idle`
 // alongside `Paladin WProp J Nordstrom@Great Sword Casting`.
 const alias = String(opt('alias', char));
@@ -109,8 +121,8 @@ function findClip(name) {
   throw new Error(`no file for clip "${name}" (tried ${tries.filter(Boolean).join(', ')}, and no other character has it)`);
 }
 
-if (!out || (!clip && !poses.length)) {
-  console.error('usage: node tools/bake-doll.mjs --out sheet.png (--clip NAME --frames N [--loop] | --pose "NAME@phase" ...)');
+if (!out || (!clip && !poses.length && !argv.includes('--seg'))) {
+  console.error('usage: node tools/bake-doll.mjs --out sheet.png (--clip NAME --frames N [--loop] | --seg "NAME:N[:loop]" ... | --pose "NAME@phase" ...)');
   process.exit(1);
 }
 
@@ -119,7 +131,7 @@ const url = (o) => {
   const q = new URLSearchParams({
     shot: '1', char, w: String(CELL_W * (o.strip || 1)), h: String(CELL_H),
     fh: String(FH), by: String(BY), bg: 'none', strip: String(o.strip || 1),
-    clip: o.clip, clipfile: findClip(o.clip), skin, motion: motionChar,
+    clip: o.clip, clipfile: findClip(o.clip), skin: skin || '', motion: motionChar,
     // Authored for this character, or borrowed? Borrowed plays rotations-only.
     foreign: (() => {
       const f = findClip(o.clip);
@@ -127,6 +139,8 @@ const url = (o) => {
     })(),
   });
   if (o.p != null) q.set('p', String(o.p));
+  if (glb) q.set('glb', String(glb));
+  if (o.tier) q.set('tier', String(o.tier));
   if (clay) q.set('clay', '1');
   if (sword) q.set('sword', '1');
   if (light !== 1) q.set('light', String(light));
@@ -134,44 +148,71 @@ const url = (o) => {
   return `${BASE}/tools/doll.html?${q}`;
 };
 
-const shots = clip
+// **A row made of several clips, laid end to end.** `art/paladin-walk.png` is
+// ten strides followed by six frames of a collapse, in one row, because
+// `js/render.js` indexes `walk` and `death` as columns of a single sheet. One
+// `--clip` cannot say that and sixteen `--pose` flags say it at sixteen page
+// loads instead of two, so a segment is a clip plus how many frames of it:
+//
+//   --seg "Run With Sword:10:loop" --seg "Dying:6"
+const segs = all('seg').map((s) => {
+  const [name, n, mode] = String(s).split(':');
+  return { clip: name, strip: Number(n), loop: mode === 'loop' };
+});
+
+const shots = segs.length ? segs : clip
   ? [{ clip: String(clip), strip: frames, loop }]
   : poses.map((spec) => {
     const at = spec.lastIndexOf('@');
     return { clip: spec.slice(0, at), p: Number(spec.slice(at + 1)), strip: 1 };
   });
 
+// One row per armour tier, in the order the runtime indexes them: tier 1 is
+// row 0. Without `--tiers` there is a single row and nothing about the sheet
+// changes, which is what keeps every existing bake command working untouched.
+const rowTiers = tiers ? Array.from({ length: tiers }, (_, i) => i + 1) : [0];
+
 const png = await withPage(async (page) => {
-  const parts = [];
-  for (const s of shots) {
-    const errs = [];
-    page.on('pageerror', (e) => errs.push(String(e)));
-    await page.goto(url(s), { waitUntil: 'networkidle0' });
-    try {
-      await page.waitForSelector('body[data-ready]', { timeout: 60000 });
-    } catch {
-      throw new Error(`${s.clip} never became ready\n${errs.join('\n')}`);
+  const rows = [];
+  for (const tier of rowTiers) {
+    const parts = [];
+    for (const s of shots) {
+      const errs = [];
+      page.on('pageerror', (e) => errs.push(String(e)));
+      await page.goto(url({ ...s, tier }), { waitUntil: 'networkidle0' });
+      try {
+        await page.waitForSelector('body[data-ready]', { timeout: 60000 });
+      } catch {
+        throw new Error(`${s.clip}${tier ? ` (tier ${tier})` : ''} never became ready\n${errs.join('\n')}`);
+      }
+      parts.push(await page.evaluate(() => document.querySelector('canvas').toDataURL('image/png')));
     }
-    parts.push(await page.evaluate(() => document.querySelector('canvas').toDataURL('image/png')));
+    rows.push(parts);
   }
 
   // Composed in the page because node has no image decoder and the browser is
   // already open. A strip shot arrives as one image of many cells and drops in
   // whole; separate poses arrive one cell each and are laid side by side.
-  return page.evaluate(async (parts, cellW, cellH) => {
-    const imgs = await Promise.all(parts.map((src) => new Promise((res) => {
+  //
+  // Rows are stacked in the same grid `Atlas.sheet` slices, so a tiered sheet
+  // is a plain sheet with more rows — `sliceGrid` needs telling nothing new.
+  return page.evaluate(async (rows, cellW, cellH) => {
+    const load = (src) => new Promise((res) => {
       const im = new Image(); im.onload = () => res(im); im.src = src;
-    })));
-    const width = imgs.reduce((a, i) => a + i.width, 0);
+    });
+    const grid = await Promise.all(rows.map((r) => Promise.all(r.map(load))));
+    const width = Math.max(...grid.map((r) => r.reduce((a, i) => a + i.width, 0)));
     const c = document.createElement('canvas');
-    c.width = width; c.height = cellH;
+    c.width = width; c.height = cellH * grid.length;
     const x = c.getContext('2d');
-    let at = 0;
-    for (const im of imgs) { x.drawImage(im, at, 0); at += im.width; }
+    grid.forEach((row, r) => {
+      let at = 0;
+      for (const im of row) { x.drawImage(im, at, r * cellH); at += im.width; }
+    });
     return c.toDataURL('image/png').split(',')[1];
-  }, parts, CELL_W, CELL_H);
+  }, rows, CELL_W, CELL_H);
 });
 
 writeFileSync(out, Buffer.from(png, 'base64'));
-const cols = clip ? frames : poses.length;
-console.log(`${out}  ${cols} cells, ${CELL_W}x${CELL_H} each`);
+const cols = shots.reduce((a, s) => a + (s.strip || 1), 0);
+console.log(`${out}  ${cols} cells x ${rowTiers.length} row${rowTiers.length > 1 ? 's' : ''}, ${CELL_W}x${CELL_H} each`);

@@ -475,6 +475,11 @@ function hurtMonster(m, amount, crit) {
         crit ? '#ffd76a' : '#f0e6d2', crit);
   Audio.sfx[crit ? 'crit' : 'hit']();
   Audio.sfx.foeHurt(m.scale || 1);
+  // The boss speaks once, on the first blow of his fight rather than on his
+  // arrival — the arrival already has a sting and a banner, and a line landing
+  // under those is a line nobody hears. The flag lives on the monster, so it
+  // dies with him and the next boss says his piece too.
+  if (m.boss && !m.spoke) { m.spoke = true; Audio.sfx.bossLine(); }
   if (m.boss && !m.enraged && m.hp <= m.maxHp * 0.3) {
     m.enraged = true;
     m.atk *= 0.65;

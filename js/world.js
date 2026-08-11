@@ -5,7 +5,7 @@
 // coordinate itself — so the world is endless and needs no storage. The band
 // starts in open daylight and works its way underground.
 
-import { hash2 } from './iso.js';
+import { hash2, clamp } from './iso.js';
 
 // Matches the painted road in art/road-graveyard.png exactly (521px of a
 // 206px-per-tile lattice), so the hero always walks on the flagstones.
@@ -22,6 +22,7 @@ export const BIOMES = [
     art: {
       grass: 'art/grass-town.png',
       road: 'art/road-town.png',
+      water: 'water',        // what fills the hollows off the road
       // Sliced by content, and `minCell` earns its keep here: the sheet came
       // back with a 6x65 sliver of stray paint between two props, which the
       // gutter finder counted as a thirteenth object and which would have
@@ -74,6 +75,7 @@ export const BIOMES = [
     art: {
       grass: 'art/grass.png',
       road: 'art/pavement.png',
+      water: 'water',
       props: 'art/props-graveyard.png', propCols: 4, propRows: 3,
       groundScale: 0.30,   // texture px -> world px
       roadScale: 0.26,
@@ -171,6 +173,7 @@ export const BIOMES = [
     art: {
       grass: 'art/grass-inferno.png',
       road: 'art/road-inferno.png',
+      water: 'lava',        // the inferno's hollows crack open rather than pool
       // Not a lattice. The rows hold 3, 3, 4 and 2 objects, so a uniform grid
       // cuts the shards in half — this one is sliced by its gutters.
       props: 'art/props-inferno.png', propCols: 4, propRows: 3,
@@ -310,8 +313,14 @@ export const ROAD = {
 // therefore a *slot* — the road cut into fixed windows, one object per window,
 // its position inside the window hashed — and never a scan of neighbours.
 
-const SCATTER = 0.24;        // fraction of open verge tiles carrying something
-const EDGE_SCATTER = 0.26;   // the row beside the road, which runs busier
+// **Thinned by a third.** A quarter of every verge tile carrying something is
+// a hedge, not a roadside: at this camera the far field is a solid mat of
+// props, and a mat is where the eye starts reading repetition. The variant
+// seed in js/render.js was the other half of that complaint — the same three
+// bales drew forever — and the two together were what made the verge look
+// stamped rather than scattered.
+const SCATTER = 0.15;        // fraction of open verge tiles carrying something
+const EDGE_SCATTER = 0.19;   // the row beside the road, which runs busier
 
 /**
  * The one tile inside this object's window, or null.
@@ -378,6 +387,78 @@ function pick(list, r) {
   let acc = r * total;
   for (const e of list) { acc -= e.density; if (acc <= 0) return e.name; }
   return list[list.length - 1].name;
+}
+
+/**
+ * Smooth 2-D value noise on the tile lattice, in two octaves.
+ *
+ * `edgeNoise` in js/render.js is the 1-D version of exactly this and is used
+ * for the road's wobble; the verge needs the same thing in both axes. Built on
+ * `hash2` like everything else here, so a stretch of ground has the same shape
+ * every time it is walked.
+ */
+function noise2(x, y) {
+  let v = 0, amp = 1, freq = 1, total = 0;
+  for (let o = 0; o < 2; o++) {
+    const px = x * freq, py = y * freq;
+    const ix = Math.floor(px), iy = Math.floor(py);
+    const fx = px - ix, fy = py - iy;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const a = hash2(ix, iy), b = hash2(ix + 1, iy);
+    const c = hash2(ix, iy + 1), d = hash2(ix + 1, iy + 1);
+    v += amp * ((a + (b - a) * sx) + ((c + (d - c) * sx) - (a + (b - a) * sx)) * sy);
+    total += amp;
+    amp *= 0.5; freq *= 2.1;
+  }
+  return v / total;
+}
+
+/** How high the verge rises, in tile-heights, at its tallest. */
+export const RISE = 0.42;
+
+/**
+ * The ground's height at (x, y), in tile-heights. **Zero on the road, always.**
+ *
+ * The road has to stay dead flat and the reason is not aesthetic: the hero and
+ * everything he fights are sprites positioned by (x, y) with no notion of the
+ * floor under them, so a road that rose and fell would slide them into it. The
+ * verge has no such constraint — nothing walks there but scenery, which is
+ * placed by this same function.
+ *
+ * The rise starts *past* the road's edge tiles rather than at the road itself,
+ * and eases in with a smoothstep. A cliff at the kerb would be the one place
+ * the seam is most visible, and it is also where `drawRoadEdges` lays its
+ * transition art, which is painted flat.
+ */
+export function heightAt(x, y) {
+  const t = clamp((Math.abs(y) - (HALF + 1.1)) / 2.6, 0, 1);
+  const mask = t * t * (3 - 2 * t);
+  if (mask <= 0) return 0;
+  return mask * RISE * noise2(x * 0.42 + 3.1, y * 0.42 + 7.7);
+}
+
+/**
+ * Ground that is not ground: water, lava, a cracked crust.
+ *
+ * **Placed as pools, not as tiles.** A per-tile roll scatters single squares of
+ * water across a field like spilled paint; what reads as a pond is a *blob*,
+ * so the test is against the same smooth noise the height uses, offset so the
+ * two are unrelated. Everything below a threshold is wet, which gives ragged
+ * organic edges for free and costs one noise lookup.
+ *
+ * Pools sit in the low ground. That is not decoration — water in the high
+ * ground is the single fastest way to make terrain look fake — so the height
+ * field gates it, and a biome's `water` key says what its low ground is filled
+ * with: still water outside the town, lava in the inferno.
+ */
+export function featureAt(x, y, biome) {
+  const kind = biome.art && biome.art.water;
+  if (!kind) return null;
+  const ay = Math.abs(y);
+  if (ay < HALF + 1.4 || ay > VERGE) return null;      // never on or beside the road
+  if (heightAt(x, y) > RISE * 0.34) return null;       // only in the hollows
+  const n = noise2(x * 0.38 + 41.3, y * 0.38 + 19.7);
+  return n < 0.36 ? kind : null;
 }
 
 /**

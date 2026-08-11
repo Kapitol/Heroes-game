@@ -102,9 +102,49 @@ No objects, no plants, no rocks large enough to notice, no focal point of
 any kind — anything an eye can land on becomes a visible grid when this
 repeats. No text. No vignette, no corner darkening, no lighting gradient,
 no shadows. Uniform brightness across the whole image.
+
+NO DIRECTIONAL GRAIN. No furrows, ploughlines, brush strokes, plank
+seams, wood grain, combed sand, tyre tracks or any other detail that
+runs one way rather than another. The texture must look the same when
+turned ninety degrees.
 ```
 
 Verge and path need different flavour lines — see the table below.
+
+**Why the grain rule is not a preference.** The ground is laid through the
+isometric basis (`fillIso` in js/render.js), so the texture's own axes lie
+along the tile grid instead of along the screen. That is correct — a floor
+material should sit on the floor — but it means any directional detail inside
+the picture now runs diagonally down the screen along the lattice. The current
+`grass-town.png` has a faint plough grain that was invisible while the fill was
+screen-aligned, and the moment the ground was put on the grid the whole verge
+read as a ploughed field. Anything with a direction in it will do the same.
+Test before accepting: turn the image ninety degrees and look again. If you can
+tell, it will show.
+
+### 1b. Hollow fill — water and lava
+
+The verge has height now (`heightAt` in js/world.js), and the hollows it makes
+are filled by `featureAt` with a biome's `water` key — still water on the
+outdoor stretches, lava in the inferno. **Today these are drawn procedurally**:
+a vertical gradient per tile and a bright rim where the surface meets its bank.
+That is a placeholder good enough to judge placement and bad enough to replace.
+
+When it is replaced, they are ground textures under all the rules above, plus:
+
+```
+A seamless repeating top-down texture of FLAVOUR. Photographic detail,
+evenly lit from directly above, completely flat with no depth.
+
+No reflections of anything — no sky, no trees, no shoreline. A reflection
+is a direction, and this tiles in every direction. No shoreline, no bank,
+no edge of any kind: the engine cuts the shape and draws its own rim.
+```
+
+- **water** — dark still water, faint silt suspended in it, no ripples large
+  enough to read as a single wave
+- **lava** — cracked black basalt crust with molten orange in the fissures, the
+  crust dominant and the glow only in the cracks
 
 ### 2. Prop sheet — `props-<area>.png` — **4 columns × 3 rows**
 
