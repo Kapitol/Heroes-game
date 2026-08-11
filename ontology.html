@@ -344,7 +344,7 @@
       each one against evidence in the repo rather than intention.
     </p>
     <div class="stamp">
-      <span><b>9 Aug 2026</b></span>
+      <span><b>11 Aug 2026</b></span>
       <span>branch <b>mixamo-and-effects</b></span>
       <span><b>10,048</b> lines across 15 modules</span>
       <span><b>37</b> parts mapped</span>
@@ -738,6 +738,7 @@
           <dt>swing a</dt><dd>Stable Sword Outward Slash <i class="have">have</i></dd>
           <dt>swing b</dt><dd>Stable Sword Inward Slash <i class="have">have</i></dd>
           <dt>death</dt><dd>Dying <i class="have">have</i></dd>
+          <dt>cry</dt><dd>Standing Taunt Battlecry <i class="want">code first</i></dd>
         </dl>
         <p class="cn-note">Nothing to fetch. Dolling him trades the five armour rows of the richest painted class in the game for one fixed body — that is the decision, not the assets.</p>
       </div>
@@ -751,6 +752,7 @@
           <dt>swing a</dt><dd>Stable Sword Outward Slash <i class="have">baked</i></dd>
           <dt>swing b</dt><dd>Stable Sword Inward Slash <i class="have">baked</i></dd>
           <dt>death</dt><dd>Dying <i class="want">bake it</i></dd>
+          <dt>prayer</dt><dd>Standing 1H Cast Spell 01 <i class="want">code first</i></dd>
         </dl>
         <p class="cn-note"><b>He has no death.</b> The walk sheet is ten cells of stride and nothing else, so the hero fades where every foe falls. The clip is already on disk — this is a bake, not a download.</p>
       </div>
@@ -764,6 +766,7 @@
           <dt>cast a</dt><dd>Spell Casting <i class="have">have</i></dd>
           <dt>cast b</dt><dd>Standing 2H Cast Spell 01 <i class="have">have</i></dd>
           <dt>death</dt><dd>Dying <i class="have">have</i></dd>
+          <dt>drain</dt><dd>Spell Casting, held mid-phase <i class="want">code first</i></dd>
         </dl>
         <p class="cn-note">The one class the missing-weapon problem never touches — his hands are the weapon, so no prop has to be found or built. Fetch a robed, hooded body; at fifty pixels the silhouette is the entire character.</p>
       </div>
@@ -777,6 +780,7 @@
           <dt>swing a</dt><dd>Standing Melee Attack Downward <i class="have">have</i></dd>
           <dt>swing b</dt><dd>Standing 1H Cast Spell 01 <i class="have">have</i></dd>
           <dt>death</dt><dd>Dying <i class="have">have</i></dd>
+          <dt>summon</dt><dd>Standing Taunt Battlecry <i class="want">code first</i></dd>
         </dl>
         <p class="cn-note">A staff is a prop Mixamo will not hand over. Either fetch a <code>WProp</code> character already carrying one, or build it and parent it to the hand — the trick X Bot's sword needed.</p>
       </div>
@@ -791,6 +795,89 @@
         as not consumed are not purchases yet: a hit reaction, the five skill poses, the
         weapon draw and the boss moves each need code before a downloaded file does anything
         at all.
+      </p>
+    </div>
+
+    <div class="rules">
+      <h3>The build order — for whoever wires the next slot</h3>
+      <p>
+        In an idle battler nobody steers the hero, so animation is not feedback on
+        the player's inputs — <b>it is the narration of the fight.</b> Two
+        consequences rank everything here: every skill press must visibly change
+        the hero, because the four runes are the only buttons the game has; and
+        every new pose must pass the thumbnail test, because at 30–62 pixels the
+        silhouette is the whole message. No run-versus-walk, no turns, no strafes,
+        no jumps — nuance below "different outline" is weight.
+      </p>
+      <ol>
+        <li><b>Hit reactions, game-wide.</b> The highest-value missing animation
+        in the game: damage numbers say you are losing, a body rocking backwards
+        makes you feel it. One recoil cell, held a beat, throttled like the grunt
+        sounds so a surrounded hero does not vibrate. Clips on disk:
+        <code>Getting-Hit</code> · <code>Reaction</code> ·
+        <code>Standing React Large From Front</code>. Code: a react state beside
+        <code>walk</code> and <code>death</code> in <code>drawAnimFrame</code>.</li>
+        <li><b>The Paladin's death.</b> A bake, not code — extend
+        <code>paladin-walk.png</code> to the same sixteen-cell walk-plus-death
+        layout every foe already uses.</li>
+        <li><b>Skill poses for dolls.</b> The <code>actions</code> path already
+        plays a wind-up and a release with the damage on the cut between them;
+        dolls set it to <code>null</code>. Bake two cells per skill and un-null
+        it. This is the entire feedback loop of the four buttons.</li>
+        <li><b>The draw at encounter start.</b> The clash sound already marks the
+        moment; the body should too. <code>Withdrawing Sword</code> has been on
+        disk since the first day of the doll work. Needs an encounter-opening
+        state.</li>
+        <li><b>A camp idle.</b> The camp panel plays the combat guard, which
+        reads as paranoid around a fire. <code>Idle</code> is on disk.</li>
+      </ol>
+      <h3>The identity beat, per class</h3>
+      <p>
+        Beyond the core five, a class earns <b>exactly one</b> animation, where
+        its kit differs — it is listed in each card above as <em>code first</em>.
+        The Warrior's is the battlecry, because his skills are physical and the
+        clip is pure character. The Paladin's is a prayer: one bowed-head cast
+        covers mend and ward both, and his identity is that he barely stops
+        fighting to pray. The Warlock's casts are already his attacks, so his
+        beat is the drain — a cast held mid-phase, arms out, visibly paying the
+        life. The Druid's is the summon; and if he ever shapeshifts, that is two
+        characters cut on the same skeleton behind a cloud, not an animation.
+      </p>
+    </div>
+
+    <div class="rules">
+      <h3>The foes' stack</h3>
+      <p>
+        A foe is read, not befriended, so its animations are <b>threat-grammar</b>:
+        what kind of danger, and when. Fodder needs three clips — walk, one
+        attack, death — because it lives for seconds and an alternating second
+        swing is a hero's luxury. Death is the one place not to economise: it is
+        the most frequent event on the screen and therefore the most-seen
+        animation in the game, and the six-cell collapse is much of why the doll
+        foes already read better than the painted ones. Everything beyond that
+        exists to animate a <em>tell</em>, because the player's only decision is
+        when to spend a cooldown.
+      </p>
+      <ol>
+        <li><b>The bloater's swell.</b> The exploder detonates with no arming
+        tell — it walks, then pops. "That one is about to blow" is precisely the
+        decision the game asks the player to make, and nothing on screen says it.
+        The highest-value enemy animation missing.</li>
+        <li><b>The charger's crouch.</b> The imp's identity is the rush; one beat
+        of gathering before it turns a speed change into a pounce.</li>
+        <li><b>The caster's loose.</b> The wraith fires from its idle. The archer
+        has a firing pose and it is why the archer reads; any standing one-hand
+        cast does the same for the wraith.</li>
+        <li><b>Boss move poses.</b> Slam, charge, nova and summon ring the
+        ground, light it — and then play the same swing as an ordinary hit. One
+        pose per move, and a roar for the enrage: the growl already sounds while
+        nothing moves.</li>
+      </ol>
+      <p>
+        Not worth a cell: walk variety beyond the one cycle each doll already
+        has, turns, and spawn-ins — the <code>emerge</code> field exists on every
+        monster, but a wave arriving through the road's gates already carries its
+        own entrance.
       </p>
     </div>
 
