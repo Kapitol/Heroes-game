@@ -234,6 +234,88 @@
     .stratum > header p { margin-left: 0; text-align: left; }
   }
 
+
+  /* ---- the download stack ---- */
+  .pick {
+    display: grid;
+    grid-template-columns: 0.9rem minmax(11rem, 15rem) minmax(0, 1fr) minmax(9rem, 15rem);
+    align-items: start;
+    gap: 0 1.1rem;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--rule-sf);
+  }
+  .rules {
+    display: flex; flex-direction: column; gap: 0.6rem;
+    padding-top: 1.6rem;
+  }
+  .rules h3 {
+    font-size: 0.78rem; font-weight: 600; margin: 0;
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-mut);
+  }
+  .rules ol {
+    margin: 0; padding-left: 1.3rem;
+    display: flex; flex-direction: column; gap: 0.5rem;
+    max-width: var(--measure);
+  }
+  .rules li { font-size: 0.88rem; color: var(--ink-dim); }
+  .rules li b, .rules p b { color: var(--ink); font-weight: 600; }
+  .rules p { margin: 0; font-size: 0.88rem; color: var(--ink-dim); max-width: var(--measure); }
+  .rules h3 + p, .rules h3 + ol { margin-top: -0.15rem; }
+
+  @media (max-width: 46rem) {
+    .pick { grid-template-columns: 0.9rem minmax(0, 1fr); }
+    .pick .what, .pick .ev { grid-column: 2; margin-top: 0.35rem; }
+  }
+
+
+  /* ---- per-class rosters ---- */
+  .roster {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 1px;
+    background: var(--rule-sf);
+    border-block: 1px solid var(--rule);
+    margin-top: 1.6rem;
+  }
+  .cls {
+    background: var(--ground);
+    padding: 1rem 1.05rem 1.15rem;
+    display: flex; flex-direction: column; gap: 0.55rem;
+  }
+  .chd { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+  .cn { font-family: var(--display); font-size: 1.18rem; }
+  .tag {
+    font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--ink-mut);
+    border: 1px solid var(--rule); padding: 0.1rem 0.4rem;
+  }
+  .tag-live { color: var(--forged); border-color: var(--forged); }
+  .tag-on { color: var(--cast); border-color: var(--cast); }
+  .cb { margin: 0; font-size: 0.86rem; font-style: italic; color: var(--ink-mut); }
+  .cls dl {
+    margin: 0.15rem 0 0;
+    display: grid; grid-template-columns: 4.6rem minmax(0, 1fr);
+    gap: 0.3rem 0.7rem;
+    align-items: baseline;
+  }
+  .cls dt {
+    font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--ink-mut);
+  }
+  .cls dd { margin: 0; font-size: 0.82rem; color: var(--ink); }
+  .cls dd i {
+    font-style: normal; font-family: var(--mono); font-size: 0.6rem;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    margin-left: 0.35rem; white-space: nowrap;
+  }
+  .have { color: var(--forged); }
+  .want { color: var(--rough); }
+  .cn-note {
+    margin: 0.4rem 0 0; font-size: 0.79rem; line-height: 1.5; color: var(--ink-dim);
+    border-top: 1px solid var(--rule-sf); padding-top: 0.6rem;
+  }
+  .cn-note b { color: var(--ink); }
+
   /* ---- closing note ---- */
   .note {
     border-top: 1px solid var(--rule);
@@ -571,6 +653,166 @@
         <div class="what">The one thing that would make real lighting on sprites possible, and the reason three.js was rejected: neither the painted pipeline nor the doll bake produces them.</div>
         <div class="ev">not producible today</div>
       </div>
+    </div>
+  </section>
+
+
+  <section class="stratum stack">
+    <header>
+      <span class="idx">§</span>
+      <h2>The download stack</h2>
+      <p>What to fetch for every new character, in the order the engine can use it.</p>
+    </header>
+
+    <div class="rows">
+      <div class="pick">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Idle or guard<small>1 pose</small></div>
+        <div class="what">Cell 0 of the combat sheet, and the reference every other cell is scaled against. A weapon-specific idle beats a neutral one — it is the pose the character is seen in most.</div>
+        <div class="ev">Great Sword Idle<br>Fighting Idle · Orc Idle</div>
+      </div>
+      <div class="pick">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Locomotion<small>10 frames · loops</small></div>
+        <div class="what">Driven by ground covered, never by a clock, so a slowed foe takes slower steps instead of skating. Must return to its own first pose or the stride hitches once a cycle.</div>
+        <div class="ev">Walking · Standing Run Forward<br>Slow Run</div>
+      </div>
+      <div class="pick">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Two attacks<small>1 pose each</small></div>
+        <div class="what"><b>Two separate swings beat one combo.</b> The engine alternates them per swing, so a long fight reads as work rather than a loop — and a combo gives one usable instant while spending the rest turning.</div>
+        <div class="ev">Stable Sword Inward / Outward Slash<br>Standing Melee Attack Downward</div>
+      </div>
+      <div class="pick">
+        <i class="mark" style="background: var(--forged)"></i>
+        <div class="part">Death<small>6 frames · holds</small></div>
+        <div class="what">Plays once and stops on the last frame. Shares a sheet with the walk — they are index lists into one image, not two files.</div>
+        <div class="ev">Dying · Mutant Dying<br>Standing React Death Backward</div>
+      </div>
+
+      <div class="pick">
+        <i class="mark" style="background: var(--ore)"></i>
+        <div class="part">Hit reaction<small>2 poses</small></div>
+        <div class="what">Taking a blow is a red tint over the sprite today. A recoil would replace the cheapest-looking moment in the game. <b>Needs wiring</b> — nothing reads it yet.</div>
+        <div class="ev">Standing React Large From Front<br>Reaction</div>
+      </div>
+      <div class="pick">
+        <i class="mark" style="background: var(--ore)"></i>
+        <div class="part">Skill poses<small>2 frames each</small></div>
+        <div class="what">Five named slots the painted path already plays — <em>heal, cast, cry, stomp, cleave</em> — as a wind-up and a release, the cut between them being the moment the skill happens. Dolls set them to <code>null</code>, because inheriting the warrior's painted arms was worse than nothing.</div>
+        <div class="ev">Standing 1H Cast Spell 01<br>Standing Taunt Battlecry</div>
+      </div>
+      <div class="pick">
+        <i class="mark" style="background: var(--ore)"></i>
+        <div class="part">Draw the weapon<small>6 frames</small></div>
+        <div class="what">The beat between meeting a foe and swinging at one. Baked for the jointed rig and never given a state on the doll path; an encounter has no art of its own beginning.</div>
+        <div class="ev">Withdrawing Sword</div>
+      </div>
+      <div class="pick">
+        <i class="mark" style="background: var(--ore)"></i>
+        <div class="part">Boss moves<small>1 pose each</small></div>
+        <div class="what">Slam, charge, nova and summon each ring the ground and light it — and then play the same generic attack pose as an ordinary swing. Four telegraphs, one animation.</div>
+        <div class="ev">Standing Melee Attack 360 High<br>Roaring · Mutant Roaring</div>
+      </div>
+    </div>
+
+
+    <div class="rules">
+      <h3>Per class</h3>
+      <p>
+        <b>Five clips each, and that is the whole list.</b> A doll drives exactly four
+        things — one idle cell, the swings it alternates between, a walk and a death — so a
+        sixth download has nowhere to go until code exists to play it. Names in
+        <code>this face</code> are already in <code>art/mixamo/</code>, and a clip fetched on
+        any character dresses any other, reduced to its rotations.
+      </p>
+    </div>
+
+    <div class="roster">
+      <div class="cls">
+        <div class="chd"><span class="cn">Warrior</span><span class="tag tag-on">painted · not dolled</span></div>
+        <p class="cb">Walks in front and stays there.</p>
+        <dl>
+          <dt>idle</dt><dd>Great Sword Idle <i class="have">have</i></dd>
+          <dt>walk</dt><dd>Walking <i class="have">have</i></dd>
+          <dt>swing a</dt><dd>Stable Sword Outward Slash <i class="have">have</i></dd>
+          <dt>swing b</dt><dd>Stable Sword Inward Slash <i class="have">have</i></dd>
+          <dt>death</dt><dd>Dying <i class="have">have</i></dd>
+        </dl>
+        <p class="cn-note">Nothing to fetch. Dolling him trades the five armour rows of the richest painted class in the game for one fixed body — that is the decision, not the assets.</p>
+      </div>
+
+      <div class="cls">
+        <div class="chd"><span class="cn">Paladin</span><span class="tag tag-live">dolled · shipping</span></div>
+        <p class="cb">Holds the line and mends it.</p>
+        <dl>
+          <dt>idle</dt><dd>Great Sword Idle <i class="have">baked</i></dd>
+          <dt>walk</dt><dd>Run With Sword <i class="have">baked</i></dd>
+          <dt>swing a</dt><dd>Stable Sword Outward Slash <i class="have">baked</i></dd>
+          <dt>swing b</dt><dd>Stable Sword Inward Slash <i class="have">baked</i></dd>
+          <dt>death</dt><dd>Dying <i class="want">bake it</i></dd>
+        </dl>
+        <p class="cn-note"><b>He has no death.</b> The walk sheet is ten cells of stride and nothing else, so the hero fades where every foe falls. The clip is already on disk — this is a bake, not a download.</p>
+      </div>
+
+      <div class="cls">
+        <div class="chd"><span class="cn">Warlock</span><span class="tag">needs a character</span></div>
+        <p class="cb">Spends life to spend the dead.</p>
+        <dl>
+          <dt>idle</dt><dd>Idle <i class="have">have</i></dd>
+          <dt>walk</dt><dd>Unarmed Walk Forward <i class="have">have</i></dd>
+          <dt>cast a</dt><dd>Spell Casting <i class="have">have</i></dd>
+          <dt>cast b</dt><dd>Standing 2H Cast Spell 01 <i class="have">have</i></dd>
+          <dt>death</dt><dd>Dying <i class="have">have</i></dd>
+        </dl>
+        <p class="cn-note">The one class the missing-weapon problem never touches — his hands are the weapon, so no prop has to be found or built. Fetch a robed, hooded body; at fifty pixels the silhouette is the entire character.</p>
+      </div>
+
+      <div class="cls">
+        <div class="chd"><span class="cn">Druid</span><span class="tag">needs a character</span></div>
+        <p class="cb">Brings the wood in with them.</p>
+        <dl>
+          <dt>idle</dt><dd>Idle <i class="have">have</i></dd>
+          <dt>walk</dt><dd>Walking <i class="have">have</i></dd>
+          <dt>swing a</dt><dd>Standing Melee Attack Downward <i class="have">have</i></dd>
+          <dt>swing b</dt><dd>Standing 1H Cast Spell 01 <i class="have">have</i></dd>
+          <dt>death</dt><dd>Dying <i class="have">have</i></dd>
+        </dl>
+        <p class="cn-note">A staff is a prop Mixamo will not hand over. Either fetch a <code>WProp</code> character already carrying one, or build it and parent it to the hand — the trick X Bot's sword needed.</p>
+      </div>
+    </div>
+
+    <div class="rules">
+      <h3>The shopping list</h3>
+      <p>
+        <b>Zero animations.</b> Every clip all four classes need is already in the folder;
+        what is missing is two <em>characters</em> — a robed caster and something for the
+        Druid — and one bake of a death the Paladin never got. The slots further up marked
+        as not consumed are not purchases yet: a hit reaction, the five skill poses, the
+        weapon draw and the boss moves each need code before a downloaded file does anything
+        at all.
+      </p>
+    </div>
+
+    <div class="rules">
+      <h3>What makes a clip usable here</h3>
+      <ol>
+        <li><b>It stays in profile.</b> The camera is fixed and side-on. A clip that turns the character to face it has nothing left to draw — two of eight frames of one sword combo came out as a sliver.</li>
+        <li><b>In Place is ticked.</b> The game owns position; root motion fights it and the figure moonwalks.</li>
+        <li><b>Its middle is as good as its ends.</b> Warrok's punch is correct on the first and last frame and tears in between. Strip every clip before trusting it, not just the pose you want.</li>
+        <li><b>The silhouette survives at fifty pixels.</b> Foes are drawn 30–62px tall. Detail below that is weight; outline is everything.</li>
+        <li><b>One beat, not a sequence.</b> Sheets are a handful of cells. A three-hit combo spends most of its length on transitions no cell will show.</li>
+        <li><b>The weapon is in the download.</b> Mixamo animates around a prop the character file may not contain. A <code>WProp</code> character brings its own; anything else mimes, and a blade has to be built and parented to the hand.</li>
+      </ol>
+      <h3>Download settings</h3>
+      <p>
+        <b>Format: FBX Binary.</b> Not “FBX for Unity”, which exports FileVersion 6100 and is
+        refused outright — every file that works here is 7700. The character wants
+        <b>with skin</b>; clips fetched on that character carry their own mesh and drop straight
+        in. A clip taken from another character still works, reduced to its rotations — its
+        positions are in that character's proportions and would drag every joint somewhere it
+        does not belong.
+      </p>
     </div>
   </section>
 
