@@ -44,6 +44,10 @@ export const BIOMES = [
         src: 'art/decals-town.png', cols: 4, rows: 3, scale: 0.30,
         pool: [11, 11, 11, 4, 4, 5, 5, 6, 6, 2, 2, 3, 3, 8, 8, 0, 9, 10, 1, 7],
       },
+      // One windmill (or gallows, or shrine) every 34 tiles of road. The hero
+      // marches MARCH=7.5 tiles between encounters, so that is roughly one
+      // landmark every four or five fights — seldom enough to be an event.
+      landmarkEvery: 34,
       landmarks: [
         { src: 'art/landmarks-town.png', cols: 2, rows: 2, scale: 0.30 },
       ],
@@ -52,7 +56,14 @@ export const BIOMES = [
     ground: '#5f6440', groundAlt: '#686d47', path: '#8d7c58', pathAlt: '#9a8862',
     sky: ['#6f6a48', '#6f6a48'], horizon: '#6f6a48',
     darkness: 0, tint: 'rgba(255,244,214,.03)', accent: '#e0c463',
-    props: ['tree', 'tree', 'grave', 'bones', 'rock', 'fence', 'bush'],
+    props: [
+      { name: 'fence', tier: 'feature', every: 15 },
+      { name: 'grave', tier: 'feature', every: 23 },
+      { name: 'tree', tier: 'scatter', density: 3, edge: 'never' },
+      { name: 'bones', tier: 'scatter', density: 1 },
+      { name: 'rock', tier: 'scatter', density: 1 },
+      { name: 'bush', tier: 'scatter', density: 2, edge: 'only' },
+    ],
   },
   {
     key: 'boneyard', name: 'The Boneyard Road', indoors: false,
@@ -102,7 +113,14 @@ export const BIOMES = [
     ground: '#3a4a2c', groundAlt: '#41522f', path: '#8d7c58', pathAlt: '#9a8862',
     sky: ['#4a5236', '#4a5236'], horizon: '#4a5236',
     darkness: 0, tint: 'rgba(255,244,214,.03)', accent: '#e0c463',
-    props: ['tree', 'tree', 'grave', 'bones', 'rock', 'fence', 'bush'],
+    props: [
+      { name: 'grave', tier: 'feature', every: 13 },
+      { name: 'fence', tier: 'feature', every: 26 },
+      { name: 'tree', tier: 'scatter', density: 2, edge: 'never' },
+      { name: 'bones', tier: 'scatter', density: 3 },
+      { name: 'rock', tier: 'scatter', density: 1 },
+      { name: 'bush', tier: 'scatter', density: 2, edge: 'only' },
+    ],
   },
   {
     key: 'grove', name: 'The Elder Wood', indoors: false,
@@ -110,7 +128,12 @@ export const BIOMES = [
     ground: '#39502f', groundAlt: '#405a34', path: '#6f6247', pathAlt: '#7a6c4f',
     sky: ['#4a6272', '#7d8f8a'], horizon: '#25341f',
     darkness: 0.24, tint: 'rgba(180,210,190,.05)', accent: '#9fd06a',
-    props: ['tree', 'tree', 'tree', 'rock', 'bush'],
+    props: [
+      { name: 'tree', tier: 'scatter', density: 5, edge: 'never' },
+      { name: 'rock', tier: 'scatter', density: 1 },
+      { name: 'bush', tier: 'scatter', density: 3, edge: 'only' },
+    ],
+    scatter: 0.34,   // a wood is thicker than a roadside
   },
   {
     key: 'gate', name: 'The Broken Gate', indoors: false,
@@ -118,7 +141,12 @@ export const BIOMES = [
     ground: '#4a463c', groundAlt: '#535045', path: '#6d6656', pathAlt: '#787060',
     sky: ['#3b3f4c', '#6b6157'], horizon: '#2c2b26',
     darkness: 0.38, tint: 'rgba(255,220,170,.05)', accent: '#c8a24a',
-    props: ['pillar', 'rubble', 'pillar', 'banner', 'rock'],
+    props: [
+      { name: 'pillar', tier: 'feature', every: 11 },
+      { name: 'banner', tier: 'feature', every: 19 },
+      { name: 'rubble', tier: 'scatter', density: 3 },
+      { name: 'rock', tier: 'scatter', density: 2 },
+    ],
   },
   {
     key: 'crypt', name: 'The Crypt', indoors: true,
@@ -183,7 +211,16 @@ export const BIOMES = [
     ground: '#3a201a', groundAlt: '#44251d', path: '#5a2f24', pathAlt: '#65362a',
     sky: ['#1a0705', '#3a100a'], horizon: '#1a0705',
     darkness: 0.6, tint: 'rgba(255,120,60,.09)', accent: '#ff6a3a',
-    props: ['shard', 'shard', 'brazier', 'rock', 'slag', 'bones', 'bush'],
+    props: [
+      // A brazier is in `lights` below: this number is how far apart the fires
+      // stand, which is a lighting decision as much as a scenery one.
+      { name: 'brazier', tier: 'feature', every: 17 },
+      { name: 'shard', tier: 'scatter', density: 3, edge: 'never' },
+      { name: 'slag', tier: 'scatter', density: 2 },
+      { name: 'rock', tier: 'scatter', density: 2 },
+      { name: 'bones', tier: 'scatter', density: 1 },
+      { name: 'bush', tier: 'scatter', density: 1, edge: 'only' },
+    ],
     // The braziers are this biome's sconces: the renderer hangs a warm light on
     // every one it finds, which is most of what makes the cavern read as lit
     // rather than merely dark.
@@ -256,6 +293,93 @@ export const ROAD = {
   walkable(x, y) { return walkable(x, y); },
 };
 
+// --- the placement grammar ---------------------------------------------------
+//
+// Three tiers, and what separates them is frequency discipline:
+//
+//   landmark   one per window of road, from the landmark sheets. The windmill.
+//              Its whole job is to be the thing you have not seen for a while.
+//   feature    one per window, from the prop sheet. Fences, braziers, pillars —
+//              big enough, or bright enough, that two on one screen is clutter.
+//   scatter    a fraction of verge tiles, weighted per prop. Trees, stones,
+//              bones, grass. The old behaviour, now with the number written down.
+//
+// **Every rule here is arithmetic on the tile coordinate.** `propAt` runs for
+// every visible tile every frame, so anything that remembers what it placed
+// last makes scenery appear and vanish as the camera moves. A minimum gap is
+// therefore a *slot* — the road cut into fixed windows, one object per window,
+// its position inside the window hashed — and never a scan of neighbours.
+
+const SCATTER = 0.24;        // fraction of open verge tiles carrying something
+const EDGE_SCATTER = 0.26;   // the row beside the road, which runs busier
+
+/**
+ * The one tile inside this object's window, or null.
+ *
+ * `x / every` names the window; the hash decides where in it the object sits,
+ * which side of the road it stands on, and how far back.
+ *
+ * **The position is confined to the middle half of its window**, and that is
+ * the difference between a guarantee and an average. Allowed anywhere in the
+ * window, one object can sit at the end of its own and the next at the start
+ * of the following one — measured over four thousand tiles, that produced a
+ * real gap of *one tile* for every kind, which is precisely the crowding this
+ * tier exists to prevent. Confined, the worst case is half a window: fences
+ * every fifteen tiles are never closer than eight.
+ */
+function slotAt(x, y, every, salt, near = HALF + 1.5, far = VERGE - 1) {
+  const n = Math.max(2, Math.round(every));
+  const slot = Math.floor(x / n);
+  const lo = Math.floor(n * 0.25);
+  const span = Math.max(1, Math.floor(n * 0.5));
+  if (x !== slot * n + lo + Math.floor(hash2(slot, salt) * span)) return null;
+  const side = hash2(slot, salt + 1) < 0.5 ? -1 : 1;
+  const band = Math.round(near + hash2(slot, salt + 2) * Math.max(0, far - near));
+  return y === side * band ? slot : null;
+}
+
+/**
+ * A biome's prop list, sorted into tiers once and cached.
+ *
+ * Built lazily and held on a WeakMap because `propAt` is one of the hottest
+ * functions in the frame: filtering the list per tile would allocate a few
+ * hundred arrays a frame to answer a question whose answer never changes.
+ *
+ * A bare string is a scatter prop of weight 1, which is what every biome used
+ * to be — and repeating a name is still how a pool says "more of these".
+ */
+const GRAMMAR = new WeakMap();
+
+function grammar(biome) {
+  let g = GRAMMAR.get(biome);
+  if (g) return g;
+  const entries = (biome.props || []).map((e) => (typeof e === 'string'
+    ? { name: e, tier: 'scatter', density: 1 }
+    : { tier: 'scatter', density: 1, ...e }));
+  // `edge` is a preference about the row beside the road: 'only' for low things
+  // that dress the verge, 'never' for anything tall enough to crowd it.
+  const fits = (e, edge) => e.tier === 'scatter'
+    && (e.edge === 'only' ? edge : e.edge === 'never' ? !edge : true);
+  g = {
+    features: entries.filter((e) => e.tier === 'feature'),
+    edge: entries.filter((e) => fits(e, true)),
+    open: entries.filter((e) => fits(e, false)),
+    scatter: biome.scatter ?? SCATTER,
+    edgeScatter: biome.edgeScatter ?? EDGE_SCATTER,
+  };
+  GRAMMAR.set(biome, g);
+  return g;
+}
+
+/** Weighted choice from a tier, by a roll already made. */
+function pick(list, r) {
+  let total = 0;
+  for (const e of list) total += e.density;
+  let acc = r * total;
+  for (const e of list) { acc -= e.density; if (acc <= 0) return e.name; }
+  return list[list.length - 1].name;
+}
+
 /**
  * What stands at tile (x, y), if anything. Deterministic, so scenery never
  * pops or shifts as the camera scrolls past it.
@@ -265,9 +389,6 @@ export function propAt(x, y, biome) {
   if (ay < HALF + 0.6) return null;             // keep the road itself clear
   if (ay > VERGE) return null;
 
-  const h = hash2(x, y);
-  const edge = ay < HALF + 1.8;                 // the row right beside the road
-
   // Indoors *and unpainted* means a corridor: the vector renderer has a wall
   // piece and nothing else, so the verge has to be built out of it. A painted
   // indoor biome brings its own scenery and gets the open scatter instead —
@@ -275,7 +396,8 @@ export function propAt(x, y, biome) {
   // eleven of its twelve props.
   if (biome.indoors && !biome.art) {
     // Indoors the verge is a wall, broken by the occasional sconce or urn.
-    if (edge) {
+    const h = hash2(x, y);
+    if (ay < HALF + 1.8) {
       if (h > 0.93) return 'sconce';
       if (h > 0.88) return 'urn';
       return 'wall';
@@ -283,10 +405,25 @@ export function propAt(x, y, biome) {
     return null;
   }
 
-  if (edge && h > 0.9) return biome.props[Math.abs(x * 7 + (y | 0) * 3 + 99) % biome.props.length];
-  if (edge) return h > 0.74 ? 'bush' : null;
-  if (h > 0.76) return biome.props[Math.abs(x * 3 + (y | 0) * 11 + 7) % biome.props.length];
-  return null;
+  // A landmark clears its own tile. They are drawn from a separate pass, so
+  // without this a windmill gets a tree standing inside it.
+  if (landmarkAt(x, y, biome)) return null;
+
+  const g = grammar(biome);
+  // Features outrank scatter: a brazier is not overwritten by grass, and
+  // earlier entries outrank later ones where two windows collide.
+  for (let i = 0; i < g.features.length; i++) {
+    const e = g.features[i];
+    if (slotAt(x, y, e.every || 18, i * 131 + 17) !== null) return e.name;
+  }
+
+  const edge = ay < HALF + 1.8;
+  const list = edge ? g.edge : g.open;
+  if (!list.length) return null;
+  // Written as a ceiling rather than a floor so the tiles that carry scenery
+  // are the same ones they have always been: this used to read `h > 0.76`.
+  if (hash2(x, y) <= 1 - (edge ? g.edgeScatter : g.scatter)) return null;
+  return pick(list, hash2(x * 3 + 11, y * 7 + 5));
 }
 
 /** A flat marking on the road at this tile, or null. */
@@ -303,20 +440,21 @@ export function decalAt(x, y, biome) {
 }
 
 /**
- * A landmark at this tile, or null. Kept well off the road and deliberately
- * scarce — one every thirty tiles or so — because their whole job is to be
- * the thing you have not seen for a while.
+ * A landmark at this tile, or null.
+ *
+ * One per window of `landmarkEvery` tiles — the answer to "how often should a
+ * windmill appear" is that number and nothing else. Kept further back from the
+ * road than a feature, because their scale reads wrong up close.
  */
 export function landmarkAt(x, y, biome) {
   const set = biome.art && biome.art.landmarks;
   if (!set) return null;
-  const ay = Math.abs(y);
-  if (ay < HALF + 2.5 || ay > VERGE - 1) return null;
-  if (hash2(x * 29 + 3, y * 17 + 9) < 0.985) return null;
-  const si = Math.floor(hash2(x + 5, y + 13) * set.length) % set.length;
+  const slot = slotAt(x, y, biome.art.landmarkEvery || 34, 7717, HALF + 2.5, VERGE - 1);
+  if (slot === null) return null;
+  const si = Math.floor(hash2(slot + 5, 13) * set.length) % set.length;
   const sheet = set[si];
   const n = sheet.cols * sheet.rows;
-  return { sheet, cell: Math.floor(hash2(x + 991, y + 17) * n) % n };
+  return { sheet, cell: Math.floor(hash2(slot + 991, 17) * n) % n };
 }
 
 // Distance the hero marches between one encounter and the next.
