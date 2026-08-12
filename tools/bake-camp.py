@@ -343,6 +343,24 @@ def fire():
         put(f'Rock_{1 + i % 5}', math.cos(a) * r, math.sin(a) * r,
             height=RNG.uniform(0.15, 0.25), tilt=RNG.uniform(-0.2, 0.2))
 
+    # The tripod and its pot, over the flame. `drawCookpot` used to draw these
+    # in flat black on the canvas; a black outline over a lit set is the same
+    # mismatch the vector fire was. Rendered, the pot takes the firelight from
+    # underneath, which is the only interesting thing about a pot on a fire.
+    iron = flat('Iron', (0.030, 0.028, 0.026, 1.0), rough=0.62)
+    for dx, dy in ((-0.30, -0.24), (0.34, -0.16), (0.02, 0.36)):
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.034, depth=1.06, vertices=6)
+        c = bpy.context.object
+        c.location = (dx * 0.5, dy * 0.5, 0.50)
+        c.rotation_euler = (math.atan2(math.hypot(dx, dy), 1.06) * 1.05,
+                            0, math.atan2(dy, dx) - math.pi / 2)
+        c.data.materials.append(iron)
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.17, segments=14, ring_count=8)
+    pot = bpy.context.object
+    pot.location = (0, 0, 0.62)
+    pot.scale = (1, 1, 0.78)
+    pot.data.materials.append(iron)
+
     # Charcoal, and **no ash disc**. A flat disc inside the ring is 0.4m from a
     # 165W lamp pointing straight down it, so it takes ~70 W/m² square on: even
     # at an albedo of 0.013 it came back a pale plate, brighter than the dirt
@@ -678,9 +696,14 @@ def lights():
     Their energies are not the doll's. three.js directional intensity and
     Blender sun irradiance are different units, and this is a night scene lit by
     a fire: these are the moon behind the doll's key, not the doll's key."""
-    for pos, energy, colour in (((3, -3, 5), 1.50, (0.62, 0.70, 0.92)),
-                                ((-3, -2, 1), 0.45, (0.42, 0.50, 0.72)),
-                                ((-2, 2, 2), 0.90, (0.55, 0.62, 0.86))):
+    # **Raised from 1.50/0.45/0.90.** The set was tuned when the fire was baked
+    # into the same render; split into plates, the base is the whole of the
+    # picture wherever the fire does not reach, and at those energies two thirds
+    # of the frame was black rather than dark. Moonlight has to *show* the
+    # treeline, the crest and the shelter — the fire's job is the clearing.
+    for pos, energy, colour in (((3, -3, 5), 1.95, (0.60, 0.68, 0.92)),
+                                ((-3, -2, 1), 0.55, (0.40, 0.48, 0.72)),
+                                ((-2, 2, 2), 1.05, (0.54, 0.61, 0.86))):
         l = bpy.data.lights.new('l', 'SUN')
         l.energy, l.color, l.angle = energy * LIGHT, colour, math.radians(6)
         ob = bpy.data.objects.new('l', l)
@@ -735,8 +758,8 @@ def post():
     kinds = {e.identifier for e in gl.bl_rna.properties['glare_type'].enum_items}
     gl.glare_type = 'BLOOM' if 'BLOOM' in kinds else 'FOG_GLOW'
     gl.quality = 'HIGH'
-    gl.threshold = 1.0
-    gl.mix = -0.2
+    gl.threshold = 1.6
+    gl.mix = -0.45
 
     out = nt.nodes.new('CompositorNodeComposite')
     nt.links.new(rl.outputs['Image'], gl.inputs['Image'])
@@ -776,7 +799,94 @@ def vignette(path, strength):
     return float(fall.min())
 
 
-def bake(out, layers):
+def flames(layers):
+    """One flame per firelight plate, each a different shape.
+
+    **The flame is rendered now, and the canvas one is gone.** `drawCampfire`
+    drew logs and three quadratic tongues in flat colour over a lit set, which
+    is the same mismatch the vector cookpot was: an outline sitting on top of a
+    photograph. The reason it was kept through two passes is that a rendered
+    flame is *still* — and a fire that does not move is the worst thing that can
+    be on this screen.
+
+    The plates answer that. There is one flame per plate and no two are the same
+    shape, so the cross-fade that already swings the light also plays the fire:
+    the tongues rise and fall because plate 2 is fading up while plate 1 fades
+    down, on the same clock, from the same weights. No extra machinery, and the
+    flame and the light it casts can never fall out of step — they are the same
+    render.
+
+    Hidden in the base plate on purpose. The base is the fire *out*; if the
+    flame lived there it would burn at full strength through every flicker."""
+    em = bpy.data.materials.new('Flame')
+    em.use_nodes = True
+    nt = em.node_tree
+    e = nt.nodes.new('ShaderNodeEmission')
+    e.inputs['Color'].default_value = (1.0, 0.42, 0.10, 1.0)
+    e.inputs['Strength'].default_value = 2.1
+    nt.links.new(e.outputs['Emission'], nt.nodes['Material Output'].inputs['Surface'])
+    core = bpy.data.materials.new('FlameCore')
+    core.use_nodes = True
+    nt2 = core.node_tree
+    e2 = nt2.nodes.new('ShaderNodeEmission')
+    e2.inputs['Color'].default_value = (1.0, 0.74, 0.34, 1.0)
+    e2.inputs['Strength'].default_value = 3.8
+    nt2.links.new(e2.outputs['Emission'], nt2.nodes['Material Output'].inputs['Surface'])
+
+    sets = []
+    for i in range(layers):
+        group = []
+        for j in range(4):
+            h = RNG.uniform(0.30, 0.62)
+            r = RNG.uniform(0.07, 0.15)
+            bpy.ops.mesh.primitive_cone_add(radius1=r, depth=h, vertices=7)
+            c = bpy.context.object
+            off = RNG.uniform(0, math.tau)
+            d = RNG.uniform(0, 0.13)
+            c.location = (math.cos(off) * d, math.sin(off) * d, 0.08 + h / 2)
+            # Leaned and twisted, so no tongue is a cone standing to attention.
+            c.rotation_euler = (RNG.uniform(-0.22, 0.22), RNG.uniform(-0.22, 0.22),
+                                RNG.uniform(0, math.tau))
+            c.data.materials.append(core if j == 0 else em)
+            group.append(c)
+        sets.append(group)
+    return sets
+
+
+def moon():
+    """A moon, and the light that comes off it.
+
+    The suns are already named for it — `lights()` calls them the moon behind
+    the doll's key — but there was nothing in the sky to have thrown them, and a
+    night scene lit from a source the picture never shows is a night scene that
+    reads as underexposed rather than as night. A disc, low over the crest and
+    on the side the key comes from, is the whole fix: it costs one plane and it
+    tells the eye that the cold light on the treeline is *supposed* to be there.
+
+    Emissive and unlit, like the sky it sits on, and in the base plate only."""
+    m = bpy.data.materials.new('Moon')
+    m.use_nodes = True
+    nt = m.node_tree
+    e = nt.nodes.new('ShaderNodeEmission')
+    e.inputs['Color'].default_value = (0.86, 0.90, 1.0, 1.0)
+    e.inputs['Strength'].default_value = 1.45
+    nt.links.new(e.outputs['Emission'], nt.nodes['Material Output'].inputs['Surface'])
+    bpy.ops.mesh.primitive_circle_add(radius=0.40, vertices=48, fill_type='NGON')
+    d = bpy.context.object
+    d.name = 'moon'
+    # The key is at blender (3, -3, 5) — up and to the right — so the moon goes
+    # to that side, or the shadows in the frame point away from a light nobody
+    # can see. Not as far right as the key itself: the shelter and the two
+    # right-hand trunks own that corner of the sky, and a moon behind a tree is
+    # a moon that was never rendered.
+    d.rotation_euler = (math.radians(90 - PITCH), 0, 0)
+    d.location = (1.0, Y_MID + 38 * COS_P, -38 * SIN_P + 2.25)
+    d.data.materials.append(m)
+    EMISSIVE.append(d)
+    return d
+
+
+def bake(out, layers, torch):
     """The base plate, then one firelight plate per flame position.
 
     **This is the difference between a picture of a camp and a camp.** A single
@@ -808,6 +918,9 @@ def bake(out, layers):
 
     for ob in FIRE_LIGHTS:
         ob.data.energy = 0.0
+    for group in torch:
+        for ob in group:
+            ob.hide_render = True
     sc.render.filepath = out
     bpy.ops.render.render(write_still=True)
     darkest = vignette(out, float(ARGS['vignette']))
@@ -822,6 +935,9 @@ def bake(out, layers):
         # a quarter of the fire ring, which is enough to swing the stones'
         # shadows visibly and not enough to look like the fire is being carried.
         a = math.tau * i / layers
+        for j, group in enumerate(torch):
+            for ob in group:
+                ob.hide_render = (j != i)
         for ob in FIRE_LIGHTS:
             base = ob['home']
             ob.location = (base[0] + math.cos(a) * 0.16,
@@ -844,6 +960,8 @@ def main():
     scenery()
     camp_kit()
     fire()
+    torch = flames(int(ARGS['layers']))
+    moon()
     lights()
     cam = camera()
     post()
@@ -866,7 +984,7 @@ def main():
     sc.render.image_settings.file_format = 'PNG'
     sc.render.image_settings.color_mode = 'RGB'
     out = resolve(ARGS['out'])
-    darkest, written = bake(out, int(ARGS['layers']))
+    darkest, written = bake(out, int(ARGS['layers']), torch)
 
     print(f'camp: {len(written)} plates — base + {len(written) - 1} firelight')
     print(f'camp: vignette to {darkest:.2f} at the corners')

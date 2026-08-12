@@ -4,7 +4,7 @@ import { heroStats } from './entities.js';
 import { levelFor, levelAt, LEVELS } from './world.js';
 import { SKILLS, skillById, PERKS, MAX_SKILLS, iconOpts, TIER_BANDS } from './perks.js';
 import * as Atlas from './atlas.js';
-import { heroKit, drawActor, drawShadow, drawCampfire,
+import { heroKit, drawActor, drawCampfire,
          drawCookpot, kitFor } from './sprites.js';
 import { SLOTS, slotByKey, attrText, bandName, itemScore, itemArt } from './items.js';
 import * as Audio from './audio.js';
@@ -675,8 +675,20 @@ const FIRE_PLATES = 3;
 let firelight = null;
 
 function loadFirelight(src) {
-  firelight = { stem: src.slice(0, -4), imgs: [], scaled: null, key: '' };
+  firelight = { stem: src.slice(0, -4), base: null, imgs: [], scaled: null, key: '' };
   const mine = firelight;
+  // **The base plate is loaded here too, and drawn on the canvas rather than
+  // left to CSS.** It has to be: the plates are opaque PNGs and `lighter` adds
+  // *alpha* as well as colour, so drawing them over a transparent canvas makes
+  // the canvas opaque — black wherever the fire does not reach — and the
+  // background-image underneath is hidden completely. That bug shipped a camp
+  // lit by nothing but firelight, with the moon, the sky and the whole treeline
+  // sitting behind an opaque black sheet, and it looked exactly like a scene
+  // that was simply too dark. The CSS background stays as the first thing on
+  // screen while these decode; from then on the canvas is the picture.
+  const base = new Image();
+  base.onload = () => { if (firelight === mine) mine.base = base; };
+  base.src = src;
   for (let i = 0; i < FIRE_PLATES; i++) {
     const img = new Image();
     // A missing plate is not an error. A camp set may be a single image — every
@@ -697,8 +709,9 @@ function loadFirelight(src) {
 function scaleFirelight(W, H) {
   const key = `${Math.round(W)}x${Math.round(H)}`;
   if (firelight.key === key && firelight.scaled) return true;
+  if (!firelight.base) return false;
   if (firelight.imgs.length < FIRE_PLATES || firelight.imgs.some((i) => !i)) return false;
-  firelight.scaled = firelight.imgs.map((img) => {
+  const fit = (img) => {
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(W));
     c.height = Math.max(1, Math.round(H));
@@ -708,7 +721,9 @@ function scaleFirelight(W, H) {
     const dw = H * (img.naturalWidth / img.naturalHeight);
     c.getContext('2d').drawImage(img, (W - dw) / 2, 0, dw, H);
     return c;
-  });
+  };
+  firelight.scaled = firelight.imgs.map(fit);
+  firelight.scaledBase = fit(firelight.base);
   firelight.key = key;
   return true;
 }
@@ -734,6 +749,8 @@ function paintFirelight(ctx, W, H) {
   // eye against it at the fire's edge.
   const amp = 1.28 + 0.15 * Math.sin(campT * 7.3) + 0.07 * Math.sin(campT * 11.9);
   ctx.save();
+  // The set with the fire out, and then the fire added to it.
+  ctx.drawImage(firelight.scaledBase, 0, 0, W, H);
   ctx.globalCompositeOperation = 'lighter';
   firelight.scaled.forEach((c, i) => {
     ctx.globalAlpha = Math.max(0, (raw[i] / sum) * amp);
@@ -741,6 +758,59 @@ function paintFirelight(ctx, W, H) {
   });
   ctx.restore();
   return true;
+}
+
+/**
+ * A shadow thrown *by the fire*, rather than a disc under the boots.
+ *
+ * `drawShadow` puts a soft round blot beneath a figure, which is right on the
+ * road — the light there is ambient and comes from nowhere in particular. At
+ * the camp there is exactly one light and everybody can see where it is, so a
+ * round shadow is the one thing in the frame openly disagreeing with the set:
+ * the rendered stones throw theirs outward from the pit and the heroes standing
+ * between them did not.
+ *
+ * Three things make it read:
+ *
+ * - **It is solved on the ground, not on the screen.** The ground is seen at
+ *   24°, so screen-vertical is compressed; the direction away from the fire is
+ *   found with y un-squashed by `GROUND`, and the whole shadow is drawn inside
+ *   a matching squash. Done in screen space the shadows of the two heroes at
+ *   the sides point visibly wrong.
+ * - **It lengthens with distance and fades with it.** A point light throws a
+ *   longer, weaker shadow the further away the caster is, and the falloff is
+ *   what keeps the back row from looking pasted on.
+ * - **It moves on the fire's clock** — the same `campT` the plates are
+ *   cross-faded on, so the shadows breathe with the light that casts them
+ *   rather than on a rhythm of their own.
+ */
+const GROUND = 0.34;
+
+function campShadow(ctx, x, y, scale, fireX, fireY, W) {
+  const gx = x - fireX, gy = (y - fireY) / GROUND;
+  const dist = Math.hypot(gx, gy) || 1;
+  const r = 6 * scale;
+  // Long enough to read at the fire's edge, and bounded: past a couple of
+  // body-lengths it is a smear rather than a shadow.
+  const len = r * (1.5 + Math.min(2.6, dist / (W * 0.13)))
+    * (1 + 0.05 * Math.sin(campT * 7.3));
+  const fade = (0.62 / (1 + dist / (W * 0.26)))
+    * (0.9 + 0.12 * Math.sin(campT * 2.4));
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1, GROUND);
+  ctx.rotate(Math.atan2(gy, gx));
+  // Darkest at the feet and gone at the tip — a shadow has a contact point, and
+  // an evenly filled ellipse is a puddle.
+  const g = ctx.createLinearGradient(0, 0, len, 0);
+  g.addColorStop(0, `rgba(6,4,3,${fade.toFixed(3)})`);
+  g.addColorStop(0.45, `rgba(6,4,3,${(fade * 0.5).toFixed(3)})`);
+  g.addColorStop(1, 'rgba(6,4,3,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(len * 0.42, 0, len * 0.58, r * 0.92, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function dressCamp(area) {
@@ -1042,7 +1112,6 @@ function paintCamp(dt) {
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  drawStars(ctx, W, H);
   const n = camp.slots.length;
   const fireX = W / 2, fireY = H * 0.72;
 
@@ -1061,6 +1130,10 @@ function paintCamp(dt) {
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, H);
   }
+  // **After the set, not before it.** A rendered camp draws its base plate onto
+  // this canvas, and the base is opaque — stars laid down first are painted over
+  // by the sky they are supposed to be in.
+  drawStars(ctx, W, H);
 
   // Everyone standing, back row first so the near ones overlap them.
   const order = camp.slots.map((s, i) => i)
@@ -1069,9 +1142,18 @@ function paintCamp(dt) {
   // sort reaches the near half, so the two who wrapped forward stand in front of
   // the flame and the two behind it are lit through it.
   let fireDown = false;
+  // **A rendered camp brings its own fire.** `bake-camp.py` puts a flame in
+  // every firelight plate and a different one in each, so the cross-fade that
+  // swings the light also plays the fire, and the iron tripod over it is
+  // modelled and lit from underneath. Drawing the canvas fire on top of that is
+  // two fires in one grate — flat quadratic tongues and a black outline sitting
+  // over a lit set, which is exactly the mismatch this whole pass removed
+  // everywhere else. The painted camps have neither and keep both.
   const dropFire = () => {
-    drawCampfire(ctx, fireX, fireY, campT, H / 190);
-    drawCookpot(ctx, fireX, fireY, Math.max(0.8, H / 560));
+    if (!firelight) {
+      drawCampfire(ctx, fireX, fireY, campT, H / 190);
+      drawCookpot(ctx, fireX, fireY, Math.max(0.8, H / 560));
+    }
     fireDown = true;
   };
   for (const i of order) {
@@ -1122,7 +1204,7 @@ function paintCamp(dt) {
       continue;
     }
 
-    drawShadow(ctx, x, y, 6 * scale * 0.5, 0.5);
+    campShadow(ctx, x, y, scale, fireX, fireY, W);
     // Everyone else stands back into the dark. Dimming the unselected is what
     // makes the selected one obvious at a glance — a highlight on its own has
     // to be found, a contrast does not.
@@ -1159,7 +1241,12 @@ function paintCamp(dt) {
       // different poses, so the hero changed size as the cycle crossed over.
       const ref = an ? an.fh : (sheet.cells[heroCell(s.tier || 1, false, cols, 0)] || {}).h;
       const k = ref ? (44 * 0.92 * scale) / ref : 1;
-      Atlas.drawSprite(ctx, sheet, idx, x, y, k, false);
+      // **Turned to face the fire.** The doll bakes facing screen-right —
+      // doll.html puts the camera on -X so the character's +Z is to the right —
+      // and every sheet in the game inherits that, so a figure standing on the
+      // fire's right has to be mirrored or he is looking out of the picture.
+      // A ring of people all facing the same way is a queue, not a camp.
+      Atlas.drawSprite(ctx, sheet, idx, x, y, k, x > fireX);
     }
     // **No stand-in.** This used to fall back to the vector kit while a sheet
     // decoded, which meant every visit to the camp opened on four simple
