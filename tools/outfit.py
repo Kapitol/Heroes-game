@@ -165,6 +165,13 @@ def import_character(path):
                     used.add(g.group)
         return len(used)
     body = max(meshes, key=reach)
+    # **Every mesh the FBX brought, kept for deletion later.** X Bot ships two:
+    # the body, and a `Beta_Joints` pad mesh with no texture and a flat dark red
+    # base colour. Only `body` was ever removed, so the joint pads were being
+    # subdivided, exported and *rendered* — dark red blobs poking through the
+    # outfit at every elbow and knee. It is the same grey-box failure this file
+    # opens by rejecting, smuggled in through the character rather than the kit.
+    import_character.extras = [o for o in meshes if o is not body]
 
     # Blender takes a Y-up Mixamo file in by rotating the armature object 90°
     # about X and scaling it by a hundredth; the glTF exporter then applies its
@@ -204,6 +211,23 @@ def base_head(path, xf):
     if not meshes:
         raise SystemExit(f'no skinned mesh in {path}')
     head = max(meshes, key=lambda o: len(o.data.vertices))
+    # **The eyes and the brows are part of the head.** The pack splits the face
+    # into three skinned meshes — body, `Eyes`, `Eyebrows` — and taking the one
+    # with the most vertices takes the body and throws the other two away. Every
+    # doll in the game has been baking with empty sockets and no brows, which is
+    # invisible under an armet and is the entire face on the two tiers that have
+    # no helm. They are joined in before the neck-down cull, which then leaves
+    # them alone because they are already weighted to `Head`.
+    face = [o for o in meshes if o is not head
+            and any(m and m.name.split('.')[0] in ('MI_Eyes', 'MI_Hair_1')
+                    for m in o.data.materials)]
+    if face:
+        bpy.ops.object.select_all(action='DESELECT')
+        for o in face:
+            o.select_set(True)
+        head.select_set(True)
+        bpy.context.view_layer.objects.active = head
+        bpy.ops.object.join()
 
     keep = {g.index for g in head.vertex_groups if g.name in ('Head', 'neck_01')}
     bm = bmesh.new()
@@ -223,8 +247,26 @@ def base_head(path, xf):
     head.name = 'Head'
     apply_fit([head], xf)
 
-    spare = [o for o in fresh if o is not head]
-    for o in spare:
+    # **Guarded, because the join above already removed some of these.**
+    # `bpy.ops.object.join` deletes the objects it merges, and every Python
+    # reference to one of them becomes a stale StructRNA that raises on touch —
+    # not on access, on *use*. So the survivors are re-derived from the scene
+    # rather than from the list `fresh` was built into.
+    # **The pack's glTF asks for files that are not there.** It references
+    # `T_Eye_Normal_png.png` and `T_Hair_1_Normal_png.png`; what is on disk is
+    # `T_Eye_Normal.png` and `T_Hair_1_Normal.png`. Blender reports it as two
+    # lines of `Error: Cannot read` in the middle of a long build and carries on
+    # with a pink placeholder, which is easy to read as noise — and it is the
+    # normal map for the eyes, on the one part of the figure a player looks at.
+    for img in bpy.data.images:
+        if img.filepath and not os.path.exists(bpy.path.abspath(img.filepath)):
+            fixed = bpy.path.abspath(img.filepath).replace('_png.png', '.png')
+            if os.path.exists(fixed):
+                img.filepath = fixed
+                img.reload()
+
+    live = set(bpy.context.scene.objects)
+    for o in [o for o in fresh if o in live and o is not head]:
         bpy.data.objects.remove(o, do_unlink=True)
     return head
 
@@ -449,9 +491,19 @@ def add_weapon(name, length, tier, arm, body):
         if not mat or not mat.use_nodes:
             continue
         mat.blend_method = 'OPAQUE'
+        # **And they arrive as flat paint.** The weapon FBXs carry no textures
+        # at all — seven materials with a diffuse colour and nothing else — so
+        # next to armour built from 4096-sourced maps the blade was a solid grey
+        # shape. There is no map to restore, but there is a material: steel and
+        # gold are metal, wood is not, and saying so is the whole difference
+        # between a prop and a blade. Keyed off the pack's own material names.
+        family = mat.name.split('.')[0]
+        metal = family in ('Steel', 'LightSteel', 'DarkSteel', 'Gold', 'LightGold')
         for node in mat.node_tree.nodes:
             if node.type == 'BSDF_PRINCIPLED':
                 node.inputs['Alpha'].default_value = 1.0
+                node.inputs['Metallic'].default_value = 1.0 if metal else 0.0
+                node.inputs['Roughness'].default_value = 0.28 if metal else 0.74
 
     # Rigid: every vertex on the hand bone, no transfer and no falloff. A
     # weapon that flexes is a weapon made of rubber, and Data Transfer would
@@ -556,6 +608,13 @@ def smooth(objs):
         # Keeps plate edges from melting: the limit surface rounds every
         # corner, and armour is meant to have corners.
         mod.use_limit_surface = False
+        # **Every kit part is an open shell** — cuffs, collar, waist, boot tops
+        # — and Catmull-Clark's default `boundary_smooth='ALL'` rounds and pulls
+        # in exactly those borders, which is where one part is meant to butt
+        # against the next. It opens hairline gaps at the wrist and the neck and
+        # shrinks the helmet rim.
+        mod.boundary_smooth = 'PRESERVE_CORNERS'
+        mod.uv_smooth = 'PRESERVE_CORNERS'
 
 
 def main():
@@ -578,6 +637,12 @@ def main():
     skin(head, arm, body)
     dedupe_images()
     bpy.data.objects.remove(body, do_unlink=True)
+    # …and the joint pads with it. See `import_character`.
+    for o in getattr(import_character, 'extras', []):
+        try:
+            bpy.data.objects.remove(o, do_unlink=True)
+        except ReferenceError:
+            pass
 
     smooth([o for o in bpy.context.scene.objects if o.type == 'MESH'])
 

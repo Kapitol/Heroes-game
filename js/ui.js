@@ -848,32 +848,37 @@ function silhouette(sheet, idx, k, flip, h, colour, taper) {
 }
 
 /**
- * Which hero is selected, said on the hero rather than on the floor.
+ * Which hero is selected: a thick black ring on the ground he stands in.
  *
- * It used to be a pool of gold light on the ground with a ring around it, and
- * that pool is a second light source in a scene whose whole argument is that
- * there is exactly one. It lit the dirt from directly above, in a colour
- * nothing in the frame is, and it did it hardest on the one figure the eye was
- * already going to.
+ * This started as a pool of gold light and then as a warm halo on the figure.
+ * The pool was wrong because it is a second light source in a scene whose whole
+ * argument is that there is one; the halo was wrong for the opposite reason —
+ * it competed with the fire for the same job, warm light on the same body.
  *
- * This is the same silhouette, in the fire's own colour, blurred and laid
- * *behind* the figure — a warm edge that reads as the chosen one catching more
- * of the light than the rest. It touches no ground, and it cannot disagree with
- * the set about where the light is, because it is the colour of the fire.
+ * A ring is neither. It is not light at all, it is a *mark* — the one thing on
+ * this screen that is allowed to be a piece of interface rather than a piece of
+ * the world, and drawn dark it takes light away rather than adding any. Thick,
+ * because at 300 pixels a hairline reads as a scratch on the lens, and squashed
+ * onto the same 0.34 the party ellipse uses so it lies on the ground the feet
+ * are on.
  */
-function campHalo(ctx, sheet, idx, k, flip, x, y, scale) {
-  const h = 44 * 0.92 * scale;
-  const pad = silhouette(sheet, idx, k, flip, h, '#ffb347', false);
+function campRing(ctx, x, y, scale) {
+  const r = 15 * scale;
   ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  // Twice, at two radii: the tight pass is the edge and the wide one is the
-  // bloom off it. One pass alone is either a hard outline or a smudge.
-  for (const [blur, alpha] of [[h * 0.035, 0.5], [h * 0.11, 0.28]]) {
-    ctx.filter = `blur(${blur.toFixed(1)}px)`;
-    ctx.globalAlpha = alpha * (0.86 + 0.14 * Math.sin(campT * 2.2));
-    ctx.drawImage(shadowBuf, x - pad, y - pad);
-  }
-  ctx.filter = 'none';
+  ctx.translate(x, y);
+  ctx.scale(1, GROUND);
+  ctx.lineWidth = Math.max(3, 2.6 * scale);
+  ctx.strokeStyle = 'rgba(0,0,0,.86)';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.stroke();
+  // A hair of warm inside the black, on the fire's clock, so the ring is lit by
+  // the same fire as everything else rather than sitting on top of the picture.
+  ctx.lineWidth = Math.max(1, 0.7 * scale);
+  ctx.strokeStyle = `rgba(224,196,99,${(0.30 + 0.12 * Math.sin(campT * 2.2)).toFixed(3)})`;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.93, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -1304,10 +1309,12 @@ function paintCamp(dt) {
       continue;
     }
 
-    // Everyone else stands back into the dark. Dimming the unselected is what
-    // makes the selected one obvious at a glance — a highlight on its own has
-    // to be found, a contrast does not.
-    if (i !== camp.sel) ctx.globalAlpha = 0.62;
+    // **Everybody is drawn solid.** The unselected used to be dimmed to 0.62 on
+    // the reasoning that a contrast is found faster than a highlight — which is
+    // true of a list and false of a camp. At 0.62 the ground shows through the
+    // three who are not chosen and they read as ghosts standing at the fire,
+    // which is a worse thing to say about a class than "not this run". The halo
+    // marks the chosen one; the plate names him.
 
     // **Two loops of the plain idle, then one of the variation**, walked from
     // the clock rather than from a counter: a counter needs state that has to
@@ -1353,7 +1360,7 @@ function paintCamp(dt) {
       // The shadow is this same cell, laid down on the ground first, and the
       // selection halo sits between the two.
       campShadow(ctx, sheet, idx, k, flip, x, y, scale, fireX, fireY, W);
-      if (i === camp.sel) campHalo(ctx, sheet, idx, k, flip, x, y, scale);
+      if (i === camp.sel) campRing(ctx, x, y, scale);
       Atlas.drawSprite(ctx, sheet, idx, x, y, k, flip);
     }
     // **No stand-in.** This used to fall back to the vector kit while a sheet
