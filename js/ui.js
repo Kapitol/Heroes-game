@@ -792,10 +792,30 @@ function campShadow(ctx, x, y, scale, fireX, fireY, W) {
   const r = 6 * scale;
   // Long enough to read at the fire's edge, and bounded: past a couple of
   // body-lengths it is a smear rather than a shadow.
-  const len = r * (1.5 + Math.min(2.6, dist / (W * 0.13)))
-    * (1 + 0.05 * Math.sin(campT * 7.3));
-  const fade = (0.62 / (1 + dist / (W * 0.26)))
+  const len = r * (2.0 + Math.min(3.4, dist / (W * 0.11)))
+    * (1 + 0.06 * Math.sin(campT * 7.3));
+  const fade = (0.86 / (1 + dist / (W * 0.30)))
     * (0.9 + 0.12 * Math.sin(campT * 2.4));
+
+  // **The contact patch, which is the half that makes it read.** A cast shadow
+  // alone is a soft smear leaving the boots, and at this size the eye does not
+  // reliably attach it to the figure — the first pass had one and the shadows
+  // were, fairly, reported missing. What says *standing on the ground* is the
+  // hard dark directly under the feet, where no light reaches at all. So there
+  // are two: a small near-opaque blob at the soles, and the long throw below.
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1, GROUND);
+  const contact = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.15);
+  contact.addColorStop(0, 'rgba(4,3,2,.72)');
+  contact.addColorStop(0.55, 'rgba(4,3,2,.42)');
+  contact.addColorStop(1, 'rgba(4,3,2,0)');
+  ctx.fillStyle = contact;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 1.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(1, GROUND);
