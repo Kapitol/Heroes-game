@@ -54,12 +54,20 @@ export const CLASSES = [
   // this run can be.
   //
   // One outfit each, so `rows: 1` — the five-row ladder is the warrior's
-  // armoury and nobody else has one. Two idle sheets each, on the same
-  // three-loops-then-one cadence as the hero (`breakAt: 4`), and **on a clip
-  // that matches what they are holding**: the Paladin is on `Shield-Idle`, the
-  // Warlock and Druid on `Staff-Idle`. They were all on the warrior's
-  // two-handed greatsword idle before, which is why the Warlock gripped a
-  // scythe like a claymore. Built by:
+  // armoury and nobody else has one. Two idle sheets each on the hero's
+  // three-loops-then-one cadence (`breakAt: 4`): standing is what they are
+  // doing, and the variation is the occasional thing that is not standing.
+  //
+  // **On a clip that matches what they hold** — Paladin on `Shield-Idle`,
+  // Warlock and Druid on `Staff-Idle`. All three were on the warrior's
+  // two-handed greatsword idle, which is why the Warlock gripped a scythe like
+  // a claymore.
+  //
+  // **And `cols` is the clip's own length, not a round number.** A cell count
+  // is `seconds * 12`, so it differs per clip: `Staff-Idle-02` is 1.83s and
+  // takes 22, `Shield-Idle-01` is 2.53s and takes 30. Baking a fixed 24 of
+  // everything does not shorten a long clip, it speeds it up — 24 cells of a
+  // 9.3s idle is that idle at 4.7x, which is why these two were dancing. Built by:
   //
   //   blender --background --python tools/outfit.py -- --out art/armour/<k>.glb \
   //     --parts <the kit's part names> --weapon <Model@length>
@@ -72,18 +80,18 @@ export const CLASSES = [
   // 320 is as far as it goes while 24 cells still fit inside the 16k texture
   // width a browser will hold.
   { key: 'paladin', name: 'Paladin', sheet: 'art/Pixel-Paladin.png', ready: true,
-    camp: { a: { src: 'art/paladin-camp.png', cols: 24 },
-           b: { src: 'art/paladin-camp2.png', cols: 24 },
+    camp: { a: { src: 'art/paladin-camp.png', cols: 30 },
+           b: { src: 'art/paladin-camp2.png', cols: 30 },
            rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Holds the line and mends it.' },
   { key: 'warlock', name: 'Warlock', sheet: 'art/Pixel-Warlock.png',
-    camp: { a: { src: 'art/warlock-camp.png', cols: 24 },
-           b: { src: 'art/warlock-camp2.png', cols: 24 },
+    camp: { a: { src: 'art/warlock-camp.png', cols: 22 },
+           b: { src: 'art/warlock-camp2.png', cols: 30 },
            rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Spends life to spend the dead.' },
   { key: 'druid',   name: 'Druid',   sheet: 'art/Pixel-Druid.png',
-    camp: { a: { src: 'art/druid-camp.png', cols: 24 },
-           b: { src: 'art/druid-camp2.png', cols: 24 },
+    camp: { a: { src: 'art/druid-camp.png', cols: 22 },
+           b: { src: 'art/druid-camp2.png', cols: 30 },
            rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Brings the wood in with them.' },
 ];

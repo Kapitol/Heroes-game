@@ -49,6 +49,17 @@ const clip = opt('clip', null);
 const poses = all('pose');
 const frames = Number(opt('frames', 8));
 const loop = has('loop');
+// **A window of a clip, in phase.** Mixamo's idles are not all two seconds:
+// `staff-Idle-01` is 9.33s and `Shield-Idle-02` is 8.67s, and a sheet holding
+// one whole at 12fps would be 112 cells — 39,000 pixels wide, twice what a
+// browser will hold as a texture. Baking 24 cells of it instead does not make
+// it shorter, it makes it *faster*: the same nine seconds of movement played in
+// two, which is why the Warlock and the Druid came out dancing rather than
+// waiting. So a long clip is cut down to the part worth showing, at the right
+// speed, and the arithmetic stays honest — `frames` is still `seconds * fps` of
+// whatever window is asked for.
+const from = Number(opt('from', 0));
+const to = Number(opt('to', 1));
 // X Bot's texture map is not embedded in the copy we have, so his own material
 // bakes out a flat red. `--clay` is the neutral maquette the comparison sheet
 // used, and for this character it is the honest look rather than a stylisation.
@@ -204,6 +215,7 @@ const url = (o) => {
   });
   // A chunked strip has to sample the phases it would have sampled whole.
   if (o.of) { q.set('at', String(o.at)); q.set('of', String(o.of)); }
+  if (from !== 0 || to !== 1) { q.set('p0', String(from)); q.set('p1', String(to)); }
   if (o.p != null) q.set('p', String(o.p));
   if (glb) q.set('glb', String(glb));
   if (o.tier) q.set('tier', String(o.tier));

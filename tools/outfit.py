@@ -101,7 +101,7 @@ def parse_args():
     argv = sys.argv
     argv = argv[argv.index('--') + 1:] if '--' in argv else []
     out = {'out': None, 'kit': KIT, 'fbx': 'art/mixamo/X Bot.fbx', 'tex': '512', 'head': HEAD,
-           'subdiv': '1', 'parts': None, 'weapon': None, 'shield': None}
+           'subdiv': '1', 'parts': None, 'weapon': None, 'shield': None, 'grip': 'fist', 'stiff': None}
     i = 0
     while i < len(argv):
         k = argv[i].lstrip('-')
@@ -603,6 +603,37 @@ def add_weapon(name, length, tier, arm, body):
         return None
     at, along, flat, side, palm = grip
 
+    # **A polearm is carried, not pointed.** The fist seating below runs the
+    # model out along the knuckle line, which is right for a sword — a blade
+    # leaves the hand in the direction the fingers curl — and wrong for anything
+    # with a shaft. On the staff idles it laid the Druid's spear flat across his
+    # waist and hung the Warlock's scythe off his shoulder like a rifle, because
+    # in those clips the knuckle line happens to run horizontally.
+    #
+    # A shaft stands up instead. Both models are already gripped near their own
+    # origin — the spear's runs from 22% up its length, the scythe's from 40% —
+    # so the origin goes near the palm and the shaft is stood along the figure's
+    # own up, with the blade turned to face out. It is still bound to the hand,
+    # so the clip still carries it; it simply starts upright rather than flat.
+    if ARGS['grip'] == 'pole':
+        st = stance(arm)
+        if st:
+            up, across, facing = st
+            # Out from the body as well as down. A shaft seated on the palm
+            # alone runs straight through the hip and the thigh — the Warlock's
+            # scythe crossed his whole torso and the curl of the snath came out
+            # at the far hip looking like a second, badly deformed hand. The
+            # right fist is on the character's right, so *away* is `-across`.
+            seat = (palm - up * (length * body_h * 0.22)
+                    + facing * (length * body_h * 0.05)
+                    - across * (length * body_h * 0.07))
+            ob.matrix_world = (Matrix.Translation(seat)
+                               @ Matrix((facing, across, up)).transposed().to_4x4()
+                               @ Matrix.Scale(s, 4))
+            ob.name = f'T{tier}_weapon'
+            dress_prop(ob)
+            return bind_prop(ob, arm, 'mixamorig:RightHand')
+
     # **The fist has to close *around* the grip, not beside the pommel.** Two
     # corrections, and the first render needed both. The knuckle midpoint is the
     # top of the fist, so the hilt is pulled back a third of the way towards the
@@ -618,6 +649,43 @@ def add_weapon(name, length, tier, arm, body):
 
     dress_prop(ob)
     return bind_prop(ob, arm, 'mixamorig:RightHand')
+
+
+def stiffen_fingers(ob):
+    """Make a sleeve follow the wrist instead of the fingers.
+
+    **Data Transfer copies the nearest surface's weights, and a cuff is nearest
+    the fingers.** The Wizard's sleeves fall past the wrist and end in a wide
+    open cuff; the vertices of that cuff sit closest to the index and little
+    finger, so they inherit those bones and the cuff is pulled apart into a pair
+    of curved horns the moment the hand closes. Both of the Warlock's hands came
+    out as hooks, which is what it looks like from the front.
+
+    Collapsing every bone below the wrist into the wrist itself fixes it without
+    touching anything else: cloth that hangs past the hand should move as one
+    piece with the wrist, which is also true of a gauntlet cuff and a vambrace.
+    Only applied where it is asked for — a glove with modelled fingers wants the
+    fingers.
+    """
+    for hand in ('Left', 'Right'):
+        want = f'mixamorig:{hand}Hand'
+        wrist = ob.vertex_groups.get(want) or ob.vertex_groups.get(want.replace(':', ''))
+        if not wrist:
+            continue
+        digits = [g for g in ob.vertex_groups
+                  if g.name.replace(':', '').startswith(want.replace(':', ''))
+                  and g is not wrist]
+        if not digits:
+            continue
+        idx = {g.index for g in digits}
+        for v in ob.data.vertices:
+            extra = sum(g.weight for g in v.groups if g.group in idx)
+            if extra <= 0:
+                continue
+            here = next((g.weight for g in v.groups if g.group == wrist.index), 0.0)
+            wrist.add([v.index], min(1.0, here + extra), 'REPLACE')
+        for g in digits:
+            ob.vertex_groups.remove(g)
 
 
 def skin(ob, arm, body):
@@ -731,6 +799,8 @@ def main():
     xf = fit(worn, body)
     for m in worn:
         top = skin(m, arm, body)
+        if ARGS['stiff']:
+            stiffen_fingers(m)
         print(f'outfit {m.name}: ' + (', '.join(f'{n}={w:.0f}' for n, w in top) or 'NO WEIGHTS'))
 
     for n, (name, length) in enumerate(WEAPONS, start=1):

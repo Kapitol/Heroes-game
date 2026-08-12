@@ -127,6 +127,9 @@ const AT = Q.has('p') ? +Q.get('p') : null;
 // every long animation would replay the first.
 const AT_OFF = +(Q.get('at') || 0);
 const AT_OF = +(Q.get('of') || 0);
+// The slice of the clip to walk, as phase. See `--from`/`--to` in bake-doll.
+const P0 = +(Q.get('p0') || 0);
+const P1 = Q.has('p1') ? +Q.get('p1') : 1;
 
 // `preserveDrawingBuffer` is not optional here. The shot is taken with
 // `canvas.toDataURL` — for the reason given in `tools/gauntlet/shot.mjs`, that
@@ -621,9 +624,8 @@ function frame(i) {
   if (mixer) {
     const n = AT_OF || STRIP;
     const at = AT_OFF + i;
-    const phase = AT != null ? AT
-      : LOOP ? at / n
-        : at / Math.max(1, n - 1);
+    const walk = LOOP ? at / n : at / Math.max(1, n - 1);
+    const phase = AT != null ? AT : P0 + (P1 - P0) * walk;
     mixer.setTime(0);
     mixer.update(phase * duration);
     turnHead(phase);
