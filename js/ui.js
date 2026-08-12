@@ -706,20 +706,29 @@ function loadFirelight(src) {
  * moves. They are redrawn only when the canvas changes size — which is a resize
  * and nothing else.
  */
-function scaleFirelight(W, H) {
-  const key = `${Math.round(W)}x${Math.round(H)}`;
+function scaleFirelight(W, H, dpr) {
+  const key = `${Math.round(W * dpr)}x${Math.round(H * dpr)}`;
   if (firelight.key === key && firelight.scaled) return true;
   if (!firelight.base) return false;
   if (firelight.imgs.length < FIRE_PLATES || firelight.imgs.some((i) => !i)) return false;
+  // **Cached at device pixels, not CSS pixels.** The canvas is sized
+  // `W * dpr` and drawn through a `setTransform(dpr, …)`, so a cache built at
+  // CSS size is upscaled by the device ratio on the way to the screen — the
+  // 3200-wide set was being squeezed to 1015 and blown back up to 2030, which
+  // is the whole backdrop running at half resolution on any retina display.
+  // Building the cache at device size makes the final blit 1:1.
   const fit = (img) => {
     const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(W));
-    c.height = Math.max(1, Math.round(H));
+    c.width = Math.max(1, Math.round(W * dpr));
+    c.height = Math.max(1, Math.round(H * dpr));
+    const g = c.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.scale(dpr, dpr);
     // Laid out exactly as `background-size: auto 100%; background-position:
     // 50% 50%` lays the set out, or the light lands a few pixels off the thing
     // it is supposed to be coming off.
     const dw = H * (img.naturalWidth / img.naturalHeight);
-    c.getContext('2d').drawImage(img, (W - dw) / 2, 0, dw, H);
+    g.drawImage(img, (W - dw) / 2, 0, dw, H);
     return c;
   };
   firelight.scaled = firelight.imgs.map(fit);
@@ -728,8 +737,8 @@ function scaleFirelight(W, H) {
   return true;
 }
 
-function paintFirelight(ctx, W, H) {
-  if (!firelight || !scaleFirelight(W, H)) return false;
+function paintFirelight(ctx, W, H, dpr) {
+  if (!firelight || !scaleFirelight(W, H, dpr)) return false;
   // Three slow waves that never line up, normalised so the total light stays
   // put while its *direction* wanders — then one fast flicker over all of it.
   // Normalising matters: without it the three sum to a brightness that pumps,
@@ -1157,6 +1166,12 @@ function paintCamp(dt) {
   if (key !== camp.geom) { camp.geom = key; placeCampSlots(W, H); }
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // **Every figure on this screen is upscaled**, so the filter used to do it is
+  // not a detail. The camp draws a hero ~300 CSS pixels tall, which is 600
+  // device pixels on a retina display against a sheet baked at 300, and the
+  // default `imageSmoothingQuality` is `'low'` — a cheap bilinear that leaves
+  // the doubled pixels visibly mushy. It costs nothing to ask for the good one.
+  ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, W, H);
   const n = camp.slots.length;
   const fireX = W / 2, fireY = H * 0.72;
@@ -1164,7 +1179,7 @@ function paintCamp(dt) {
   // No ground and no scenery are painted here any more: the camp set is the
   // set, and a drawn clearing on top of a rendered one is two grounds. All that
   // is left is the fire's own light, which has to be live because it moves.
-  if (!paintFirelight(ctx, W, H)) {
+  if (!paintFirelight(ctx, W, H, dpr)) {
     // The painted camps have no plates, so they keep the gradient. It is a
     // glow rather than light: it brightens the picture without anything in the
     // picture being lit, which is exactly the difference the plates buy.
