@@ -146,6 +146,35 @@ no edge of any kind: the engine cuts the shape and draws its own rim.
 - **lava** — cracked black basalt crust with molten orange in the fissures, the
   crust dominant and the glow only in the cracks
 
+### 1c. Doll bake settings — the look, recorded
+
+**The hero is not requested, he is built**, so his "brief" is a command line.
+Recorded here because the last set was not, and re-baking the Paladin's sheets
+became a risk rather than a chore.
+
+```bash
+blender --background --python tools/outfit.py -- --out art/armour/knight.glb
+
+node tools/bake-doll.mjs --out art/knight-combat.png --glb art/armour/knight.glb \
+  --tiers 5 --key '#ffe6bd' --posterize 10 --light 1.35 \
+  --pose "Idle@0" --pose "Stable Sword Outward Slash@0.45" \
+  --pose "Stable Sword Inward Slash@0.45" --pose "Getting-Hit@0.3"
+
+node tools/bake-doll.mjs --out art/knight-walk.png --glb art/armour/knight.glb \
+  --tiers 5 --key '#ffe6bd' --posterize 10 --light 1.35 \
+  --seg "Run With Sword:10:loop" --seg "Dying:6"
+```
+
+| setting | value | why |
+|---|---|---|
+| `--key` | `#ffe6bd` | the key warmed towards the town's daylight; a figure lit by neutral white belongs to no biome |
+| `--posterize` | `10` | shading steps like paint rather than ramping like plastic. **6 was tried and is too coarse** — it mottles the armour and muddies the colour |
+| `--light` | `1.35` | these outfits are darker than X Bot's clay; a sheet baked dark cannot be brightened later |
+| `--cellw` | `420` (default) | 320 was sized for a primitive sword and crops a real greatsword |
+| `fh` | `230` (default) | crown-to-sole in pixels — **must not change between a class's sheets** or the hero changes height when he changes state |
+
+Judge at `h=56` over a road screenshot, never from a 320px cell.
+
 ### 2. Prop sheet — `props-<area>.png` — **4 columns × 3 rows**
 
 The engine scatters these itself from a tile hash, choosing between variants

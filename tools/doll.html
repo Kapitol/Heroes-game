@@ -101,6 +101,11 @@ const SWORD = Q.has('sword') && Q.get('sword') !== '0';
 // cannot be recovered later, because the game tints and fades it but never
 // brightens it.
 const LIGHT = qNum('light', 1);
+// **The key's colour, warmed to the biome the sheet will be seen in.** Phase 4
+// of the plan is a direction refresh and its first rule is that every look
+// change happens in the bake, where it costs nothing at runtime: a figure lit
+// by the same daylight in the town and the inferno belongs to neither.
+const KEY = Q.get('key');
 // **A cycle is sampled `i / STRIP`; a one-shot is sampled `i / (STRIP - 1)`.**
 // The difference is one frame and it is the difference between a walk and a
 // limp: a loop's last sample is its first one again, so including the endpoint
@@ -135,7 +140,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera();
 camera.up.set(0, 1, 0);
 
-const key = new THREE.DirectionalLight(0xfff0dc, 2.6);
+const key = new THREE.DirectionalLight(KEY ? new THREE.Color(KEY) : 0xfff0dc, 2.6);
 key.position.set(-3, 5, 3);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);

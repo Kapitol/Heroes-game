@@ -1128,7 +1128,19 @@ node tools/bake-doll.mjs --out art/knight-combat.png --glb art/armour/knight.glb
       some characters have broken bind poses — check <code>clip=none</code>
       first. One-shots already clamp; keep <code>fh</code> constant per class
       across every sheet or the hero changes height when he changes state.</p>
-      <h3>Phase 4 — one light, one palette: the direction refresh</h3>
+      <h3>Phase 4 — one light, one palette: the direction refresh
+        — the bake half done, 11 Aug</h3>
+      <p><b>Done:</b> the ground lies on the tile grid (<code>fillIso</code>),
+        the verge has height and pools, <code>?grid</code> and
+        <code>?grid=over</code> exist to judge against, the hero carries real
+        weapons per tier, and the bake now takes <code>--key</code> and
+        <code>--posterize</code> — a warmed key and a canvas quantise, exactly
+        where the direction below says they belong. Settings recorded in
+        ART-BRIEF.md §1c, including that posterize 6 is too coarse and 10 is
+        the number. <b>Not done, and it needs new painted art rather than
+        code:</b> the grove, gate and crypt sets to match the town's seven, the
+        four missing camps, and non-directional ground textures to replace the
+        ploughed-looking grain the iso fill exposed.</p>
       <p>
         The dolls read as figures but not yet as <em>this world's</em> figures.
         The fix is in the bake, where it costs nothing at runtime: key light
@@ -1148,7 +1160,18 @@ node tools/bake-doll.mjs --out art/knight-combat.png --glb art/armour/knight.glb
       never approve art from a 320px cell. Record the chosen
       <code>--light</code> and posterize per character in ART-BRIEF.md, or the
       look stops being reproducible.</p>
-      <h3>Phase 5 — deferred: the live hero</h3>
+      <h3>Phase 5 — deferred: the live hero — recommend closing it unbuilt</h3>
+      <p><b>The condition for deciding has been met: phase 3 has been seen on
+        the road, and it answers the question phase 5 was asked to answer.</b>
+        Five tiers of armour and five weapons read at 56 pixels, driven by
+        <code>row = wornTier − 1</code> with no runtime 3D at all. What phase 5
+        would add over that is *per-slot* truth — a gold gauntlet on a leather
+        chest — and the kit that arrived makes even that reachable in the bake,
+        since its parts are modular per slot: a handful of mixed sets is a
+        `TIERS` edit, not a renderer. Against which phase 5 costs the project
+        its first runtime 3D dependency and has to thread a WebGL canvas
+        through <code>drawDepthPass</code> as a sprite. <b>Recommend it stays
+        unbuilt until something is actually blocked by sheets.</b></p>
       <p>
         True per-slot mix-and-match — a gold gauntlet on a leather chest,
         visible — means rendering the hero from meshes at runtime instead of

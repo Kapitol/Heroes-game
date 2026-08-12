@@ -60,11 +60,23 @@ const sword = has('sword');
 // See LIGHT in tools/doll.html: characters do not arrive at a common
 // brightness and a sheet baked dark cannot be brightened later.
 const light = Number(opt('light', 1));
+// Phase 4: the key light's colour, and how hard the shading is stepped.
+// `--key '#ffe0b0'` warms the figure to a biome; `--posterize 6` quantises each
+// channel to six levels so the shading steps like paint instead of ramping like
+// plastic. Both are bake-side by design — nothing at runtime learns about them.
+const keyColour = opt('key', null);
+const posterize = Number(opt('posterize', 0));
 // The cell is generous on purpose. A slash reaches well past the silhouette of
 // a standing figure, and a cell that fits the idle clips the swing — which is
 // invisible in the sheet and obvious in the game. `sliceGrid` trims the slack
 // back off, so the only cost of headroom is file size.
-const CELL_W = Number(opt('cellw', 320));
+//
+// **320 was sized for a hero holding a sword built out of primitives.** Since
+// `tools/outfit.py` started hanging real weapons off the hand, a two-handed
+// blade at full extension runs off the right-hand edge and the bake quietly
+// ships a cropped sword. 420 clears the longest weapon in the pack with room
+// to spare, and costs nothing but bytes.
+const CELL_W = Number(opt('cellw', 420));
 const CELL_H = Number(opt('cellh', 380));
 const FH = Number(opt('fh', 230));       // bind-pose height in pixels
 const BY = Number(opt('by', 0.88));      // ground line within the cell
@@ -144,6 +156,7 @@ const url = (o) => {
   if (clay) q.set('clay', '1');
   if (sword) q.set('sword', '1');
   if (light !== 1) q.set('light', String(light));
+  if (keyColour) q.set('key', String(keyColour));
   if (o.loop) q.set('loop', '1');
   return `${BASE}/tools/doll.html?${q}`;
 };
@@ -196,7 +209,7 @@ const png = await withPage(async (page) => {
   //
   // Rows are stacked in the same grid `Atlas.sheet` slices, so a tiered sheet
   // is a plain sheet with more rows — `sliceGrid` needs telling nothing new.
-  return page.evaluate(async (rows, cellW, cellH) => {
+  return page.evaluate(async (rows, cellW, cellH, levels) => {
     const load = (src) => new Promise((res) => {
       const im = new Image(); im.onload = () => res(im); im.src = src;
     });
@@ -209,8 +222,23 @@ const png = await withPage(async (page) => {
       let at = 0;
       for (const im of row) { x.drawImage(im, at, r * cellH); at += im.width; }
     });
+
+    // **Posterize is a canvas pass over the finished sheet, not a shader.**
+    // Quantising in the material would fight the lighting per-fragment and
+    // change with every light added later; doing it here means the step count
+    // is a property of the *sheet*, which is the thing being art-directed.
+    // Alpha is left alone — stepping it would tear the silhouette's edge.
+    if (levels > 1) {
+      const img = x.getImageData(0, 0, c.width, c.height);
+      const d = img.data, q = levels - 1;
+      for (let i = 0; i < d.length; i += 4) {
+        if (!d[i + 3]) continue;
+        for (let k = 0; k < 3; k++) d[i + k] = Math.round(Math.round(d[i + k] / 255 * q) / q * 255);
+      }
+      x.putImageData(img, 0, 0);
+    }
     return c.toDataURL('image/png').split(',')[1];
-  }, rows, CELL_W, CELL_H);
+  }, rows, CELL_W, CELL_H, posterize);
 });
 
 writeFileSync(out, Buffer.from(png, 'base64'));

@@ -38,7 +38,7 @@ import bpy
 import bmesh
 import sys
 import os
-from mathutils import Vector
+from mathutils import Vector, Matrix
 
 KIT = ('/Volumes/Z-Drive/Youtube-game/crypt-heroes/Modular Character Outfits - '
        'Fantasy[Source]/Exports/glTF (Godot-Unreal)/Modular Parts')
@@ -46,6 +46,28 @@ KIT = ('/Volumes/Z-Drive/Youtube-game/crypt-heroes/Modular Character Outfits - '
 # carry. Only the head above the neck is kept; see `base_head`.
 HEAD = ('/Volumes/Z-Drive/Youtube-game/crypt-heroes/Universal Base Characters[Standard]/'
         'Base Characters/Godot - UE/Superhero_Male_FullBody.gltf')
+
+# The armoury's other half: what he holds.
+#
+# **Real weapons, sized and hung off the hand bone in Blender.** Until now the
+# knight swung a sword built out of primitives by `attachSword` in
+# `tools/doll.html` — the same grey-box problem the plates had, and still
+# visible in every sheet. These are modelled, and they arrive through the same
+# door the outfits do: skinned rigidly to `mixamorig:RightHand`, named
+# `T<n>_weapon`, so the tier that shows the armour shows the blade that goes
+# with it and nothing downstream learns a new concept.
+#
+# `length` is the finished weapon in hero-heights, not in the pack's units: the
+# pack ships a 5.5-unit sword and the hero is 1.8 tall, so a raw import is a
+# telegraph pole. A longsword is a bit over half a man; a dagger a fifth.
+WEAPONS = [
+    ('Dagger', 0.22),
+    ('Sword', 0.52),
+    ('Sword_2', 0.55),
+    ('Sword_Big', 0.68),
+    ('Sword_Golden', 0.60),
+]
+WEAPON_DIR = ('/Volumes/Z-Drive/Youtube-game/crypt-heroes/art/Story/kit/waepons/FBX')
 
 # The ladder, ordered by how much metal is on it rather than by the pack's own
 # naming: cloth, leather with a pauldron, court dress with a gorget, mail under
@@ -291,6 +313,109 @@ def apply_fit(objs, xf):
             v.co = inv @ ((p - xf['from']) * xf['s'] + xf['to'])
 
 
+def hand_grip(arm):
+    """
+    Where a weapon sits in the fist, and which way it points.
+
+    Measured off the hand's own bones rather than typed in, the same way
+    `attachSword` does it in tools/doll.html: **the grip runs across the fist
+    along the knuckles**, index to little finger, and the blade leaves on the
+    index side. Everything is derived from that one measurement, so a weapon is
+    the right size and angle for whatever hand it is put in.
+    """
+    bone = lambda n: arm.data.bones.get(n) or arm.data.bones.get(n.replace(':', ''))
+    hand = bone('mixamorig:RightHand')
+    index = bone('mixamorig:RightHandIndex1')
+    pinky = bone('mixamorig:RightHandPinky1')
+    middle = bone('mixamorig:RightHandMiddle1')
+    if not (hand and index and pinky and middle):
+        return None
+    m = arm.matrix_world
+    pi, pp, pm = m @ index.head_local, m @ pinky.head_local, m @ middle.head_local
+    grip = (pi - pp).normalized()                       # little finger → index
+    fingers = (pm - (m @ hand.head_local)).normalized()
+    flat = grip.cross(fingers).normalized()             # across the palm
+    side = flat.cross(grip).normalized()
+
+    # **Right-handed, or the weapon renders as nothing.** A basis with a
+    # negative determinant is a mirror: it flips every face's winding, and with
+    # ordinary front-face culling the mesh becomes invisible rather than
+    # obviously wrong. The first pass built `side = grip × flat`, whose
+    # determinant is −1, and the sword was in the fist at the right size and
+    # simply could not be seen. `attachSword` in tools/doll.html carries the
+    # same warning for the same reason.
+    if side.cross(flat).dot(grip) < 0:
+        side = -side
+    return (pi + pp) / 2, grip, flat, side
+
+
+def add_weapon(name, length, tier, arm, body):
+    """One weapon, scaled to the hero and rigid in his fist."""
+    path = os.path.join(WEAPON_DIR, f'{name}.fbx')
+    if not os.path.exists(path):
+        return None
+    before = set(bpy.context.scene.objects)
+    bpy.ops.import_scene.fbx(filepath=path)
+    fresh = [o for o in bpy.context.scene.objects if o not in before]
+    meshes = [o for o in fresh if o.type == 'MESH']
+    if not meshes:
+        return None
+
+    # One object, whatever the file split it into.
+    bpy.ops.object.select_all(action='DESELECT')
+    for m in meshes:
+        m.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+    if len(meshes) > 1:
+        bpy.ops.object.join()
+    ob = bpy.context.view_layer.objects.active
+    for o in fresh:
+        if o.type != 'MESH' and o.name in bpy.data.objects:
+            bpy.data.objects.remove(o, do_unlink=True)
+
+    # **The pack models blade-along-+Z with the grip at the origin**, which is
+    # what makes this placeable at all: the origin is the thing to put in the
+    # fist and +Z is the direction to point out of it.
+    pts = [ob.matrix_world @ v.co for v in ob.data.vertices]
+    span = max(p.z for p in pts) - min(p.z for p in pts)
+    body_h = bounds([body])[1].z - bounds([body])[0].z
+    s = (length * body_h) / max(1e-6, span)
+
+    grip = hand_grip(arm)
+    if not grip:
+        return None
+    at, along, flat, side = grip
+    ob.matrix_world = (Matrix.Translation(at)
+                       @ Matrix((side, flat, along)).transposed().to_4x4()
+                       @ Matrix.Scale(s, 4))
+    ob.name = f'T{tier}_weapon'
+
+    # **The pack's materials arrive with an alpha of zero.** Blender's FBX
+    # importer reads a transparency factor these files did not mean, the glTF
+    # exporter writes `baseColorFactor` alpha 0, and three obeys it — so the
+    # weapon renders lit, depth-written and completely invisible, because the
+    # doll bakes on a transparent background and zero-alpha pixels take the
+    # background's nothing with them. It is the most confusing possible failure:
+    # the mesh is in the fist, the right size, `visible === true`, and not there.
+    for mat in ob.data.materials:
+        if not mat or not mat.use_nodes:
+            continue
+        mat.blend_method = 'OPAQUE'
+        for node in mat.node_tree.nodes:
+            if node.type == 'BSDF_PRINCIPLED':
+                node.inputs['Alpha'].default_value = 1.0
+
+    # Rigid: every vertex on the hand bone, no transfer and no falloff. A
+    # weapon that flexes is a weapon made of rubber, and Data Transfer would
+    # give it the flesh's weights — which is exactly the wrong answer here.
+    g = ob.vertex_groups.new(name='mixamorig:RightHand')
+    g.add(range(len(ob.data.vertices)), 1.0, 'REPLACE')
+    mod = ob.modifiers.new('Armature', 'ARMATURE')
+    mod.object = arm
+    ob.parent = arm
+    return ob
+
+
 def skin(ob, arm, body):
     """
     Give the outfit the body's weights, then the body's armature.
@@ -369,6 +494,10 @@ def main():
     for m in worn:
         top = skin(m, arm, body)
         print(f'outfit {m.name}: ' + (', '.join(f'{n}={w:.0f}' for n, w in top) or 'NO WEIGHTS'))
+
+    for n, (name, length) in enumerate(WEAPONS, start=1):
+        w = add_weapon(name, length, n, arm, body)
+        print(f'outfit T{n} weapon: {name}' + ('' if w else ' — MISSING'))
 
     head = base_head(ARGS['head'], xf)
     skin(head, arm, body)
