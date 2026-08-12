@@ -18,6 +18,8 @@
 // with a broken-image icon; when it is re-exported it joins the sequence with
 // no code change. The same rule covers a half-finished panel added later.
 
+import * as Audio from './audio.js';
+
 const SEEN = 'cryptheroes.intro';
 
 /**
@@ -62,6 +64,7 @@ export const seen = () => localStorage.getItem(SEEN) === '1';
  */
 export function play(done) {
   const finish = () => {
+    Audio.stopNarration();
     localStorage.setItem(SEEN, '1');
     window.removeEventListener('keydown', onKey);
     if (node) node.remove();
@@ -88,6 +91,43 @@ export function play(done) {
 
   let at = 0;
   const next = () => { at += 1; at >= shots.length ? finish() : show(); };
+
+  /**
+   * The line for the panel on screen.
+   *
+   * **It advances the panel when it ends, and the panel stops it when it is
+   * advanced.** Those are the same relationship read from both ends, and both
+   * halves are needed: a reader who is faster than the narrator must be able to
+   * click on without the previous line talking over the next picture, and a
+   * reader who is slower must not have the panel taken away mid-sentence.
+   *
+   * `speak` is guarded on `token` because `onEnd` fires on a *stopped* line as
+   * well as a finished one — without it, clicking forward would advance twice.
+   *
+   * No files, no wait. `narrate` returns null when nothing decoded, so an intro
+   * with no voice-over behaves exactly as it did before there was one: it sits
+   * on the panel until somebody clicks.
+   */
+  let token = 0;
+  const speak = () => {
+    const mine = ++token;
+    // **The bank is still decoding when the first panel goes up.** `Audio.init`
+    // runs on the same click that starts this, so the opening line is a few
+    // hundred milliseconds behind the picture it belongs to — and `narrate`
+    // reports "no such sample" and "not decoded yet" the same way, as null. So
+    // the first panel asks again for a couple of seconds before accepting that
+    // there is no voice-over. Guarded on `mine`, or a retry lands on a panel
+    // the player has already clicked past.
+    const tries = { left: 14 };
+    const attempt = () => {
+      if (mine !== token) return;
+      const spoke = Audio.narrate(`intro${shots[at].i + 1}`, {
+        onEnd: () => { if (mine === token) next(); },
+      });
+      if (!spoke && --tries.left > 0) setTimeout(attempt, 150);
+    };
+    attempt();
+  };
   const onKey = (e) => {
     if (e.key === 'Escape') finish();
     else if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') next();
@@ -115,6 +155,7 @@ export function play(done) {
       window.addEventListener('keydown', onKey);
     }
 
+    speak();
     const s = shots[at];
     const plate = node.querySelector('.introPlate');
     // The plate takes the panel's own aspect, so the caption box painted into

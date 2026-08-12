@@ -18,7 +18,7 @@
 // level-ups and the boss stinger stay synthetic, where the same argument does
 // not apply and the files would only be weight.
 
-let ctx = null, master = null, musicGain = null;
+let ctx = null, master = null, musicGain = null, voiceGain = null;
 let enabled = true;
 let volume = 0.5, muted = false, musicVolume = 0.4;
 
@@ -30,6 +30,14 @@ export function init() {
   master = ctx.createGain();
   master.gain.value = muted ? 0 : volume;
   master.connect(ctx.destination);
+  // **A third bus, above the music and beside the effects.** A spoken line is
+  // not an effect: it carries words, so it cannot be one of several things
+  // competing at the same weight, and it is not music either — it must not sit
+  // under the score's own volume control, or a player who has turned the music
+  // down has silenced the story with it.
+  voiceGain = ctx.createGain();
+  voiceGain.gain.value = 1;
+  voiceGain.connect(master);
   startMusic();
   loadBank();
 }
@@ -54,7 +62,10 @@ export function isMuted() { return muted; }
 // master volume: settable before the graph exists.
 export function setMusicVolume(v) {
   musicVolume = Math.max(0, Math.min(1, v));
-  if (musicGain) musicGain.gain.value = musicVolume;
+  // Respects the duck. Writing the raw value while a line is being spoken would
+  // undo it — the score would jump back up under the words the moment somebody
+  // touched the slider, which is exactly when they are least likely to want it.
+  if (musicGain) musicGain.gain.value = speaking ? musicVolume * DUCK : musicVolume;
 }
 export function getMusicVolume() { return musicVolume; }
 
@@ -360,6 +371,11 @@ const VOICES = {
   boss: 'audio/boss-01.mp3',
   bossLight: 'audio/boss-light-01.mp3',
   bossHybrid: 'audio/boss-hybrid-01.mp3',
+  // The founding, one line per panel of `js/intro.js`. **Either extension**:
+  // the boss lines arrived as mp3 and a recording session may deliver m4a, and
+  // renaming a performance to satisfy a loader is the wrong way round.
+  ...Object.fromEntries(Array.from({ length: 9 }, (_, i) =>
+    [`intro${i + 1}`, [`audio/intro-${i + 1}.m4a`, `audio/intro-${i + 1}.mp3`]])),
 };
 
 function loadBank() {
@@ -373,7 +389,15 @@ function loadBank() {
   for (const [name, url] of Object.entries(VOICES)) {
     const list = [];
     bank.set(name, list);
-    loadOne(url).then((s) => list.push(s), () => {});
+    // A string is one file; an array is the same line under either extension,
+    // first one that decodes wins. Both failing is silence, which is the same
+    // thing every other missing file in here means.
+    const urls = Array.isArray(url) ? url : [url];
+    (async () => {
+      for (const u of urls) {
+        try { list.push(await loadOne(u)); return; } catch { /* try the next */ }
+      }
+    })();
   }
 }
 
@@ -417,6 +441,77 @@ function sample(name, gain = 1, spread = 0.07, rate = 1) {
   src.connect(g).connect(master);
   src.start(0, s.offset);
   return true;
+}
+
+/**
+ * Speak one line, and duck the music under it.
+ *
+ * **Returns a handle rather than a promise.** The intro advances on a click as
+ * well as on the end of a line — a player who reads faster than the reader must
+ * be able to move on — so the caller needs to *stop* this, and a promise cannot
+ * be cancelled. `stop()` is idempotent and safe after the line has ended.
+ *
+ * **The duck is on the music bus, not on the master.** Pulling the master down
+ * would take the fire and the wind with it, and the camp's own sounds are part
+ * of what the words are spoken over. It ramps rather than steps: an instant
+ * -8dB on a sustained pad is audible as a click in the pad, which is precisely
+ * the artefact a duck is supposed to hide.
+ *
+ * A missing file is silence and `null` — same as every other sample here — and
+ * the caller is expected to carry on rather than wait for a line that is never
+ * coming.
+ */
+const DUCK = 0.35;                 // what the score falls to while a line runs
+let speaking = null;
+
+export function narrate(name, { onEnd } = {}) {
+  stopNarration();
+  // **Nothing to play is `null`, and nothing else.** Reporting it as an *ending*
+  // instead looks helpful and is not: the intro advances its panel when a line
+  // ends, so a missing file became "this panel is over" and the whole founding
+  // played itself out in three frames. A caller that wants to carry on without
+  // audio can see the null; a caller that waits for `onEnd` is waiting for a
+  // thing that did not happen.
+  if (!ctx || !enabled) return null;
+  const list = bank.get(name);
+  if (!list || !list.length) return null;
+  const s = list[0];
+  const src = ctx.createBufferSource();
+  src.buffer = s.buffer;
+  const g = ctx.createGain();
+  g.gain.value = s.gain;
+  src.connect(g).connect(voiceGain);
+  if (musicGain) {
+    musicGain.gain.cancelScheduledValues(ctx.currentTime);
+    musicGain.gain.setTargetAtTime(musicVolume * DUCK, ctx.currentTime, 0.12);
+  }
+  const done = () => {
+    if (speaking !== handle) return;
+    speaking = null;
+    if (musicGain) {
+      musicGain.gain.cancelScheduledValues(ctx.currentTime);
+      musicGain.gain.setTargetAtTime(musicVolume, ctx.currentTime, 0.35);
+    }
+    onEnd && onEnd();
+  };
+  const handle = {
+    stop() {
+      if (speaking !== handle) return;
+      // Faded, not cut. A voice stopped dead mid-word is a glitch; over 80ms it
+      // is someone being interrupted, which is what actually happened.
+      g.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
+      try { src.stop(ctx.currentTime + 0.12); } catch { /* already ended */ }
+      done();
+    },
+  };
+  src.onended = done;
+  speaking = handle;
+  src.start(0, s.offset);
+  return handle;
+}
+
+export function stopNarration() {
+  if (speaking) speaking.stop();
 }
 
 export const sfx = {
