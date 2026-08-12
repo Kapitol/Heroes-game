@@ -101,7 +101,7 @@ def parse_args():
     argv = sys.argv
     argv = argv[argv.index('--') + 1:] if '--' in argv else []
     out = {'out': None, 'kit': KIT, 'fbx': 'art/mixamo/X Bot.fbx', 'tex': '512', 'head': HEAD,
-           'subdiv': '1', 'parts': None, 'weapon': None, 'shield': None, 'grip': 'fist', 'stiff': None}
+           'subdiv': '1', 'parts': None, 'weapon': None, 'shield': None, 'grip': 'fist', 'stiff': None, 'hand': 'Right'}
     i = 0
     while i < len(argv):
         k = argv[i].lstrip('-')
@@ -598,7 +598,14 @@ def add_weapon(name, length, tier, arm, body):
     body_h = bounds([body])[1].z - bounds([body])[0].z
     s = (length * body_h) / max(1e-6, span)
 
-    grip = hand_grip(arm)
+    # **Which fist.** A clip decides this, not the character: `Staff-Idle`
+    # closes the *left* hand around a shaft and leaves the right open, and a
+    # staff bound to the right hand therefore leaves a left hand curled around
+    # nothing — three long fingers hooked shut, which at 300 pixels reads as a
+    # claw. It was reported twice as a deformed hand and it is a grip with
+    # nothing in it.
+    hand = ARGS['hand'] if ARGS['hand'] in ('Left', 'Right') else 'Right'
+    grip = hand_grip(arm, hand)
     if not grip:
         return None
     at, along, flat, side, palm = grip
@@ -623,16 +630,18 @@ def add_weapon(name, length, tier, arm, body):
             # alone runs straight through the hip and the thigh — the Warlock's
             # scythe crossed his whole torso and the curl of the snath came out
             # at the far hip looking like a second, badly deformed hand. The
-            # right fist is on the character's right, so *away* is `-across`.
+            # `across` runs right to left, so *away from the body* is `-across`
+            # for the right fist and `+across` for the left.
+            out = 1.0 if hand == 'Left' else -1.0
             seat = (palm - up * (length * body_h * 0.22)
                     + facing * (length * body_h * 0.05)
-                    - across * (length * body_h * 0.07))
+                    + across * (out * length * body_h * 0.07))
             ob.matrix_world = (Matrix.Translation(seat)
                                @ Matrix((facing, across, up)).transposed().to_4x4()
                                @ Matrix.Scale(s, 4))
             ob.name = f'T{tier}_weapon'
             dress_prop(ob)
-            return bind_prop(ob, arm, 'mixamorig:RightHand')
+            return bind_prop(ob, arm, f'mixamorig:{hand}Hand')
 
     # **The fist has to close *around* the grip, not beside the pommel.** Two
     # corrections, and the first render needed both. The knuckle midpoint is the
@@ -648,7 +657,7 @@ def add_weapon(name, length, tier, arm, body):
     ob.name = f'T{tier}_weapon'
 
     dress_prop(ob)
-    return bind_prop(ob, arm, 'mixamorig:RightHand')
+    return bind_prop(ob, arm, f'mixamorig:{hand}Hand')
 
 
 def stiffen_fingers(ob):
