@@ -717,17 +717,45 @@ body.camp #belt { opacity:0; pointer-events:none; }
 /* Opaque, unlike the other overlays: the road is still painted on the canvas
    underneath, and a lit strip of pavement showing through the camp's own dark
    ground is the one thing that breaks the place completely. */
-#campPanel {
-  background:radial-gradient(ellipse at 50% 74%, #140e08, #060504 62%);
-  background-color:#060504;
+/* **No panel background any more.** It was a radial vignette drawn to frame a
+   letterboxed set; with the set filling the viewport it simply painted over
+   the top of it, and the camp came up almost black. The flat colour stays as
+   what shows for the frame before the backdrop decodes. */
+#campPanel { background:#060504; }
+ /* The plate and the road button ride at the foot of the screen now that the
+    set is full-bleed — centred over it, they sat on the fire. */
+.campInner {
+  position:fixed; left:0; right:0; bottom:3.5vh; z-index:2;
+  width:100%; text-align:center;
 }
-.campInner { width:min(1240px,100%); text-align:center; }
 /* 16/9, not 16/7: the set needs sky to stand against, and the shallower
    box left the top quarter of the frame as dead black. */
+/* **The set fills the viewport.** It used to be a 3:2 box inside a centred
+   column, which put a thick black border round a night scene that is already
+   dark — and, worse, fixed the scene's scale independently of the figures
+   standing in it, so the hero read as a miniature in a diorama. Filling the
+   screen ties the two together: the camp is the screen, and the figures are
+   sized against it. `cover` keeps the backdrop's own proportions and crops
+   rather than stretching. */
 #campScene {
-  position:relative; width:100%; aspect-ratio:3/2; max-height:66vh;
-  background:url("../art/camp-boneyard.png") center / cover no-repeat;
+  position:fixed; inset:0; width:100vw; height:100vh; max-height:none;
+  aspect-ratio:auto;
+  /* **A rendered set is shown at its own size, and that is the default now.**
+     `tools/bake-camp.py` builds the scene at the game's own metres-per-pixel:
+     the 2.6 in `campGeom` is an *input* to the camera rather than something the
+     backdrop has to be magnified to match, so this fills the viewport's height
+     and needs no percentage at all. `#campScene` also carries a black backing
+     colour, because at `auto 100%` a viewport wider than 2.22:1 would otherwise
+     show the page through the ends of the image — and the set's own edges are
+     already vignetted to near-black, so the seam does not read. */
+  background:#000 url("../art/camp-wood.png") 50% 50% / auto 100% no-repeat;
 }
+
+/* The painted camps' `background-size: 215%` lived here and is gone with them.
+   It was the number a painting has to be magnified by so the figures look
+   right on it — measured off a cart wheel and a headstone — and the rendered
+   set needs no such number, because it is built at the game's own
+   metres-per-pixel. See `CAMP_SETS` in js/ui.js. */
 #campCanvas { position:absolute; inset:0; width:100%; height:100%; }
 
 /* The hit areas over the figures. Each is a column the width of one place at
@@ -805,7 +833,7 @@ body.camp #belt { opacity:0; pointer-events:none; }
 .csPlate b, .csPlate i { white-space:nowrap; }
 
 @media (max-width:620px) {
-  #campScene { aspect-ratio:1/1; max-height:56vh; }
+  #campScene { aspect-ratio:auto; max-height:none; }
   /* Four names across a phone collided: each slot is ~45px wide and the plates
      were 65px, so "Warrior / Level 2" printed across "Paladin / Not this run".
      They shrink and wrap inside their own slot instead. */
@@ -935,3 +963,206 @@ body.camp #belt { opacity:0; pointer-events:none; }
   border:1px solid #3d3025; border-radius:3px;
 }
 #mapClose:hover { border-color:var(--gild-dim); }
+
+/* ── The founding, told once ──────────────────────────────────────────────
+   The panels carry their own caption cartouche painted into the bottom fifth
+   of the picture, so `.introText` is positioned against the *plate* — which
+   holds the panel's aspect ratio — and not against the screen. Get this wrong
+   and the words sit on the art while the box built for them stays empty. */
+#intro {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1.2vh; padding: 2.5vh 2.5vw;
+  background: #0a0806;
+  cursor: pointer;
+  animation: introIn .5s ease both;
+}
+@keyframes introIn { from { opacity: 0 } to { opacity: 1 } }
+.introPlate {
+  position: relative;
+  max-width: min(100%, 62vh * 1.5);
+  max-height: 84vh;
+  min-height: 0;
+  display: flex;
+}
+.introArt {
+  display: block; width: 100%; height: 100%;
+  object-fit: contain;
+  /* The paper is cream and the game is not; a warm shadow keeps the panel from
+     reading as a browser rendering a picture. */
+  box-shadow: 0 2vh 6vh rgba(0, 0, 0, .8);
+}
+.introText {
+  position: absolute; left: 6%; right: 6%;
+  /* The cartouche runs from roughly 80% to 97% of the panel's height in every
+     one of the nine; centring inside that band survives the small differences
+     between them better than pinning to the bottom edge does. */
+  top: 80%; height: 17%;
+  margin: 0;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  color: #2b2016;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(13px, 1.7vh, 22px);
+  line-height: 1.45;
+}
+.introBar {
+  display: flex; align-items: center; gap: 2vw;
+  color: #8a7f6d; font-size: clamp(11px, 1.4vh, 15px); letter-spacing: .18em;
+}
+.introDots { opacity: .75 }
+.introSkip {
+  background: none; border: 1px solid rgba(200, 180, 140, .35);
+  color: #c9bda6; padding: .5em 1.4em; border-radius: 2px;
+  letter-spacing: .18em; text-transform: uppercase;
+  font-size: inherit; font-family: inherit; cursor: pointer;
+}
+.introSkip:hover { border-color: rgba(220, 200, 160, .7); color: #efe4cc }
+
+
+/* ── The boss, and what he is winding up ──────────────────────────────────
+   Centred under the wave bar, because that is where the eye already is when
+   a fight starts. Hidden entirely when there is no boss: an empty bar is a
+   promise the game does not always keep. */
+#bossWrap {
+  position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+  width: min(420px, 62vw); margin-top: 6px; text-align: center;
+  pointer-events: none;
+}
+#bossName {
+  font-size: 13px; letter-spacing: .16em; text-transform: uppercase;
+  color: #d8cbb2; text-shadow: 0 2px 6px #000;
+}
+/* Bright enough to read against the boss's own bar under it — the first
+   pass used the bar's red and vanished into it. */
+#bossRank { color: #ff8a6a; letter-spacing: .18em; font-weight: 600 }
+#bossRank.enraged { color: #ffb03a }
+#bossBar {
+  height: 12px; margin-top: 4px; border: 1px solid rgba(0, 0, 0, .8);
+  background: rgba(10, 6, 4, .82); border-radius: 2px; overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .6);
+}
+#bossBar { position: relative }
+#bossHp {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; font-size: 10px; letter-spacing: .1em;
+  color: #f4ead4; text-shadow: 0 1px 2px #000, 0 0 3px #000;
+}
+#bossBar i {
+  display: block; height: 100%; width: 100%;
+  background: linear-gradient(#e4523a, #8c1f14);
+  transition: width .12s linear;
+}
+
+/* The cast bar sits under the health bar and carries the move's own colour,
+   so it and the ring painted on the ground read as one event. */
+#castWrap { margin-top: 5px }
+#castName {
+  display: inline-block; padding: 1px 12px; border-radius: 2px;
+  background: rgba(28, 44, 68, .9); border: 1px solid rgba(150, 190, 240, .35);
+  color: #cfe2ff; font-size: 12px; letter-spacing: .2em;
+}
+#castBar {
+  height: 6px; width: 62%; margin: 3px auto 0;
+  background: rgba(10, 6, 4, .8); border: 1px solid rgba(0, 0, 0, .7);
+  border-radius: 2px; overflow: hidden;
+}
+#castBar i { display: block; height: 100%; width: 0%; background: #ff7a3a }
+
+/* Kills, beside the purse — a count of what you have done, next to a count of
+   what it earned. */
+.killCount { color: #c9bda6 }
+
+/* ── Less chrome ──────────────────────────────────────────────────────────
+   The place-name loses its plate and sits as type on the world, the way the
+   mockup has it. The plate was there to guarantee contrast; a hard shadow
+   does the same job without putting a box on the screen. */
+#depthPlate {
+  background: none !important; border: none !important; box-shadow: none !important;
+  padding: 4px 2px !important;
+}
+#stageName {
+  font-size: 17px; letter-spacing: .06em; color: #e6dcc6;
+  text-shadow: 0 2px 8px #000, 0 0 2px #000;
+}
+#stageSub {
+  letter-spacing: .22em; text-transform: uppercase; color: #9c907a;
+  text-shadow: 0 2px 6px #000;
+}
+
+/* The wave counter shrinks to a tab: it is a label, not a panel. */
+#waveWrap { max-width: 250px !important; padding: 3px 10px 5px !important }
+#waveText { font-size: 12px; letter-spacing: .12em }
+
+/* An empty hand should read as fillable, not as a dead square. */
+.rune.empty {
+  border-style: dashed !important;
+  border-color: rgba(200, 180, 140, .28) !important;
+  background: rgba(0, 0, 0, .18) !important;
+  box-shadow: none !important;
+  color: rgba(200, 180, 140, .35);
+}
+
+/* ── The belt, read at a glance ───────────────────────────────────────────
+   These four came out of the mockup, and each is about *peripheral* reading:
+   during a fight nobody looks at the belt, they glance at it. */
+
+/* Attack runes read steel, healing reads gold — colour tells you which is
+   which before the glyph resolves. Keyed off the skill's own id, set on the
+   button when the loadout is built. */
+.rune.k-cleave, .rune.k-fire, .rune.k-quake, .rune.k-volley, .rune.k-frenzy {
+  color: #bcd4ea;
+  border-color: rgba(150, 190, 230, .42);
+  background: linear-gradient(rgba(70, 104, 140, .22), rgba(18, 26, 38, .5));
+}
+.rune.k-mend, .rune.k-ward {
+  color: #f2d99a;
+  border-color: rgba(230, 196, 110, .45);
+  background: linear-gradient(rgba(140, 110, 44, .24), rgba(38, 28, 12, .5));
+}
+
+/* The armoury orb was the dimmest thing on a screen full of lit ones, which
+   read as disabled. It is a button; it should look like one. */
+#xpGlobe {
+  box-shadow: 0 0 0 2px rgba(224, 196, 99, .35), 0 6px 18px rgba(0, 0, 0, .6),
+              inset 0 0 22px rgba(255, 200, 90, .12);
+}
+#xpGlobe .globeBtn {
+  color: #ffe9b8; font-size: 22px;
+  text-shadow: 0 2px 4px #000, 0 0 10px rgba(255, 190, 90, .5);
+}
+
+/* The pool is the number you check most and it was the hardest to read. */
+#hpText {
+  font-weight: 700; font-size: 15px; letter-spacing: .04em;
+  text-shadow: 0 2px 4px #000, 0 0 6px rgba(0, 0, 0, .9);
+}
+
+/* **The experience bar goes to the floor.** Floating above the belt it sat in
+   the same band as the runes and the globes and competed with both; pinned to
+   the very bottom edge it becomes a rule under the whole screen — noticed
+   when it moves, ignored when it does not. */
+#xpStrip {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  width: 100%; height: 10px; border-radius: 0;
+  border: none; border-top: 1px solid rgba(0, 0, 0, .7);
+  background: rgba(8, 6, 4, .85);
+  z-index: 5;
+}
+#xpStrip i { background: linear-gradient(#f0cd72, #a4761f) }
+#xpText {
+  font-size: 10px; letter-spacing: .14em; color: #d8c9a4;
+  text-shadow: 0 1px 2px #000;
+}
+
+
+/* The camp arrives rather than appearing: js/ui.js drives the opacity from 0
+   once every figure's sheet has decoded, and this makes that a fade rather
+   than a step. Kept short — this is a loader, not a transition. */
+#campScene { transition: opacity .18s linear }
+
+
+/* With the set full-bleed, the scene has to sit above the panel's own colour
+   and below the plate. */
+#campScene { z-index:1 }
+

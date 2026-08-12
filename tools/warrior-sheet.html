@@ -1,0 +1,1056 @@
+<!--
+  The warrior's character sheet -- one tier, one stance, on the flat angled
+  plane, with the numbers every screen should scale him from.
+
+    node serve.js  ->  http://localhost:8123/tools/warrior-sheet.html
+
+  **It reads art/knight-camp.png, which is the warrior's ladder.** knight.glb
+  is his five-rung progression, which is why there is no warrior-camp.png to
+  look for. Cells are 350x540, 24 columns by 5 rows; this page draws column
+  `frame`, row `ROW`, and nothing slices or trims.
+
+  Two numbers here are measured off the pixels rather than taken from the
+  bake's own arguments, and both matter:
+
+  - **The sole is at 465 of 540, not the 475** `bake-doll.mjs` implies with
+    `BY 0.88`. Ten rows, every frame, every tier. Place him by the baker's
+    number and he floats.
+  - **The anchor is the cell centre, 175** -- the axis the bake's camera sits
+    on, not the middle of his boots. Across the eight stances the footprint
+    centre runs 160 to 198, and pinning to any one of them slides every other
+    stance sideways by up to 23px on the switch. (`sliceGrid` in the game does
+    re-anchor per cell on purpose: trimmed cells and a walk cycle want the feet
+    centred every frame. Different technique, different job.)
+
+  The sun is drawn on the ray doll.html's key light actually comes down --
+  (-1.6, 5, 4.6) against a camera at (-8, 0, 0), so up and to the right, 45.7
+  degrees of elevation. It does not move with `--yaw`: `doll.rotation.y`
+  turns the doll and leaves the lights alone, so -45 changes which side of him
+  is lit and never where the light is.
+
+  The shadow is the sprite's own alpha, projected: a point `h` above the sole
+  lands `h / tan(elevation)` away, so the cell's y axis maps onto the shadow's
+  direction and the sole line stays fixed. It is rebuilt per frame, which is
+  why it moves with him -- it is the pose, not a shape standing in for it. The
+  game draws the hero no shadow at all; this one belongs to the sheet.
+
+  All five rungs and all eight baked stances are live here. The stance list
+  also carries the 36 clips in art/mixamo with no bake behind them, disabled
+  and labelled with the cell count each would need -- a sheet that hid what it
+  does not have would read as complete.
+
+  Only the sole is fixed across stances. The lowest pixel moves by 70 on the
+  casting and 38 on the inward slash, because he lunges and leaves the ground;
+  that is the motion, and pinning it out would be the bug rather than the fix.
+-->
+<title>The Warrior &mdash; Idle</title>
+<style>
+/* Crypt Heroes' own palette and type rule (css/style.css): one serif, no
+   exceptions. Components read only the page tokens, so the themes are a swap
+   of that one block. */
+:root {
+  --page:#0a0806; --card:#14100c; --rule:#33291d;
+  --text:#d8c9a8; --text-dim:#9c8e73; --text-faint:#6f6350; --accent:#c8a24a;
+
+  /* The five rarity bands, straight from the stylesheet. The armour ladder
+     reads gray-to-gold everywhere else in the UI and does so here too. */
+  --band-gray:#9a9184; --band-green:#5fa860; --band-blue:#4f86c6;
+  --band-purple:#9a5fc0; --band-gold:#d8b45c;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --page:#e3d8bd; --card:#efe6d0; --rule:#c2b291;
+    --text:#2a2118; --text-dim:#5f5340; --text-faint:#8a7c64; --accent:#8a6d2c;
+  }
+}
+:root[data-theme="light"] {
+  --page:#e3d8bd; --card:#efe6d0; --rule:#c2b291;
+  --text:#2a2118; --text-dim:#5f5340; --text-faint:#8a7c64; --accent:#8a6d2c;
+}
+:root[data-theme="dark"] {
+  --page:#0a0806; --card:#14100c; --rule:#33291d;
+  --text:#d8c9a8; --text-dim:#9c8e73; --text-faint:#6f6350; --accent:#c8a24a;
+}
+
+* { box-sizing:border-box; }
+
+body {
+  margin:0; background:var(--page); color:var(--text);
+  font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  font-size:17px; line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+
+.wrap {
+  max-width:940px; margin:0 auto;
+  padding:clamp(26px,5vw,56px) clamp(18px,4vw,32px) 64px;
+  display:flex; flex-direction:column; gap:22px;
+}
+
+.eyebrow {
+  margin:0; font-size:11px; letter-spacing:.20em; text-transform:uppercase;
+  color:var(--text-faint);
+}
+h1 {
+  margin:0; font-size:clamp(32px,5.5vw,48px); font-weight:400;
+  letter-spacing:-.015em; line-height:1.05;
+}
+h1 em { font-style:italic; color:var(--accent); }
+.standfirst { margin:0; max-width:58ch; color:var(--text-dim); text-wrap:pretty; }
+
+/* The stage stays the crypt in both themes -- it is a viewport onto the game,
+   not part of the document's chrome. */
+.stage {
+  position:relative; background:#070504;
+  border:1px solid var(--rule); border-radius:2px; overflow:hidden;
+  margin-top:6px;
+}
+.stage canvas { display:block; width:100%; height:clamp(400px,62vh,620px); }
+/* Left, because the sun owns the top-right corner. */
+.readout {
+  position:absolute; left:14px; top:11px; text-align:left;
+  font-size:12px; letter-spacing:.05em; color:#7d715c;
+  font-variant-numeric:tabular-nums; pointer-events:none;
+}
+
+/* The transport rides the plane it controls. Its own dark bar rather than a
+   wash over the ground: the lattice is a ruler and a translucent strip laid
+   over it reads as a second, wrong grey. */
+.transport {
+  position:absolute; left:0; right:0; bottom:0;
+  display:flex; align-items:center; gap:14px;
+  padding:9px 14px;
+  background:linear-gradient(180deg,#0a08069e,#0a0806e8 42%);
+  border-top:1px solid #ffffff14;
+  backdrop-filter:blur(2px);
+}
+.transport button {
+  background:#ffffff10; border-color:#ffffff26; color:#d8c9a8;
+  padding:5px 14px; font-size:13px; flex:none;
+}
+.transport button:hover { border-color:var(--band-gold); color:var(--band-gold); }
+.transport input[type=range] { accent-color:var(--band-gold); }
+.transport .count {
+  font-size:12px; letter-spacing:.08em; color:#9c8e73;
+  font-variant-numeric:tabular-nums; flex:none; min-width:76px; text-align:right;
+}
+
+.controls { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; }
+button {
+  font:inherit; font-size:14px; color:var(--text); background:var(--card);
+  border:1px solid var(--rule); border-radius:2px; padding:7px 15px;
+  cursor:pointer; letter-spacing:.02em;
+}
+button:hover { border-color:var(--accent); color:var(--accent); }
+button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:var(--page); }
+button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.seg { display:flex; }
+.seg button { border-radius:0; margin-left:-1px; }
+.seg button:first-child { margin-left:0; border-radius:2px 0 0 2px; }
+.seg button:last-child { border-radius:0 2px 2px 0; }
+.label { font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--text-faint); }
+
+/* The tier switcher. Only the cut tier is live; the rest are the places the
+   other four rows will land, shown as their rarity band so the ladder reads
+   gray-to-gold before any of it is loaded. */
+.seg.tiers button { padding:7px 0; width:38px; text-align:center; position:relative; }
+.seg.tiers button::after {
+  content:""; position:absolute; left:5px; right:5px; bottom:4px; height:2px;
+  background:var(--band); opacity:.85;
+}
+.seg.tiers button:disabled {
+  color:var(--text-faint); cursor:not-allowed; background:transparent;
+}
+.seg.tiers button:disabled::after { opacity:.3; }
+.seg.tiers button:disabled:hover { border-color:var(--rule); color:var(--text-faint); }
+.seg.tiers button[aria-pressed="true"]::after { background:var(--page); opacity:.5; }
+.scrub { flex:1 1 180px; min-width:150px; display:flex; align-items:center; gap:10px; }
+.hint { font-size:14px; color:var(--text-faint); }
+
+/* The stance list. Everything but the idle is a clip that exists in
+   art/mixamo but has not been baked into a sheet, so it is listed and
+   disabled rather than hidden -- the gap is the point. */
+select {
+  font:inherit; font-size:14px; color:var(--text); background:var(--card);
+  border:1px solid var(--rule); border-radius:2px; padding:7px 30px 7px 12px;
+  cursor:pointer; letter-spacing:.02em;
+  appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
+                   linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 16px) calc(50% + 1px), calc(100% - 11px) calc(50% + 1px);
+  background-size:5px 5px, 5px 5px;
+  background-repeat:no-repeat;
+}
+select:hover { border-color:var(--accent); color:var(--accent); }
+/* The clip names are long and a select sizes itself to the longest option,
+   which pushed the whole control onto its own line. */
+#stance { max-width:min(340px, 100%); text-overflow:ellipsis; }
+select option:disabled { color:var(--text-faint); }
+input[type=range] { flex:1; accent-color:var(--accent); }
+
+dl {
+  margin:10px 0 0; display:grid; gap:0 28px;
+  grid-template-columns:repeat(auto-fit,minmax(290px,1fr));
+  border-top:1px solid var(--rule);
+}
+dl div { display:flex; justify-content:space-between; gap:16px; padding:8px 0;
+         border-bottom:1px solid var(--rule); }
+dt { color:var(--text-dim); }
+dt code {
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:13px; white-space:nowrap;
+}
+dd { margin:0; font-variant-numeric:tabular-nums; color:var(--text); }
+dd b { font-weight:400; color:var(--accent); }
+
+/* ---------- the sequence builder ---------- */
+/* A work list, not a timeline widget. Rows in order, each one a clip and a
+   number of times to run it; the chain is the order they are written in. */
+.builder {
+  display:flex; flex-direction:column; gap:14px;
+  border:1px solid var(--rule); border-radius:2px;
+  padding:16px clamp(12px,2.5vw,20px);
+  background:color-mix(in srgb, var(--card) 55%, transparent);
+}
+.builder .top { display:flex; flex-wrap:wrap; align-items:center; gap:10px 12px; }
+.builder .top .label { margin-right:2px; }
+.builder input[type=text] {
+  font:inherit; font-size:14px; color:var(--text); background:var(--card);
+  border:1px solid var(--rule); border-radius:2px; padding:7px 12px; min-width:190px;
+}
+.builder input[type=text]::placeholder { color:var(--text-faint); }
+
+ol.steps { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+ol.steps:empty { display:none; }
+.step { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.step .n {
+  font-size:11px; letter-spacing:.14em; color:var(--text-faint);
+  font-variant-numeric:tabular-nums; width:22px; flex:none;
+}
+.step select { flex:1 1 320px; min-width:0; }
+.step .times { font-size:13px; color:var(--text-faint); flex:none; }
+.step input[type=number] {
+  font:inherit; font-size:14px; color:var(--text); background:var(--card);
+  border:1px solid var(--rule); border-radius:2px; padding:7px 6px 7px 10px;
+  width:66px; flex:none; font-variant-numeric:tabular-nums;
+}
+.step .len {
+  font-size:12px; color:var(--text-faint); font-variant-numeric:tabular-nums;
+  flex:none; min-width:60px; text-align:right;
+}
+.step .drop {
+  padding:6px 10px; font-size:13px; line-height:1; color:var(--text-faint); flex:none;
+}
+.step .drop:hover { border-color:var(--blood-lit); color:var(--blood-lit); }
+/* A step whose clip has no sheet yet: it stays in the sequence and is stepped
+   over on playback, because the sequence is a plan as much as a preview. */
+.step.unbaked select { border-style:dashed; color:var(--text-faint); }
+
+.builder .foot { max-width:none; }
+
+.foot { margin:0; color:var(--text-faint); font-size:14px; max-width:64ch; text-wrap:pretty; }
+.foot code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; }
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">Crypt Heroes &middot; Character sheet</p>
+  <h1>The <em>Warrior</em></h1>
+
+  <div class="stage">
+    <canvas id="stage" aria-label="The warrior's idle animation on a flat angled plane"></canvas>
+    <div class="readout" id="readout"></div>
+    <div class="transport">
+      <button id="play" type="button" aria-pressed="true">Pause</button>
+      <input id="scrub" type="range" min="0" max="23" value="0" aria-label="Frame"
+             style="flex:1; min-width:80px">
+      <span class="count" id="count">01 / 24</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <span class="label">Scale</span>
+    <span class="seg" role="group" aria-label="Scale">
+      <button id="s-read" aria-pressed="true">Read the pose</button>
+      <button id="s-true" aria-pressed="false">True, on the road</button>
+    </span>
+
+    <span class="hint">The sun marks the key light the doll was baked under.</span>
+  </div>
+
+  <div class="controls">
+    <span class="label">Tier</span>
+    <span class="seg tiers" id="tierSeg" role="group" aria-label="Armour tier"></span>
+    <span class="label" style="margin-left:auto">Stance</span>
+    <select id="stance" aria-label="Stance animation"></select>
+  </div>
+
+  <section class="builder">
+    <div class="top">
+      <span class="label">Sequence</span>
+      <button id="seqAdd" type="button">Add a clip</button>
+      <button id="seqPlay" type="button" aria-pressed="false">Play sequence</button>
+      <input id="seqName" type="text" placeholder="Name this sequence"
+             aria-label="Sequence name" style="margin-left:auto">
+      <button id="seqSave" type="button">Save</button>
+      <select id="seqLoad" aria-label="Saved sequences"></select>
+      <button id="seqDel" type="button">Delete</button>
+    </div>
+
+    <ol class="steps" id="seqSteps"></ol>
+
+    <p class="foot" id="seqNote"></p>
+  </section>
+
+  <dl>
+    <div><dt>Cell</dt><dd><b>350 &times; 540</b></dd></div>
+    <div><dt>Source clip</dt><dd id="specClip">2.000s, authored at <b>30 fps</b></dd></div>
+    <div><dt>Cells</dt><dd id="specCells"><b>24</b> &nbsp;(2.000s &times; 12)</dd></div>
+    <div><dt>Playback</dt><dd id="specSpeed">12 fps, looped &mdash; 1.00&times; speed</dd></div>
+    <div><dt>Sole, measured</dt><dd><b>465</b> of 540</dd></div>
+    <div><dt>Anchor, footprint centre</dt><dd><b>183</b> &nbsp;(cell centre 175)</dd></div>
+    <div><dt>Figure height <code>--fh</code></dt><dd>300, crown to sole</dd></div>
+    <div><dt>Yaw</dt><dd>&minus;45&deg;</dd></div>
+    <div><dt>Tile</dt><dd>64 &times; 32</dd></div>
+    <div><dt>Hero, in world pixels</dt><dd>44 tall</dd></div>
+  </dl>
+
+  <p class="foot">
+    Cells are 350 &times; 540 throughout, and the sole line is fixed at 465 for
+    every stance. What moves inside the cell is the man: the lowest pixel rises
+    70 on the casting and 38 on the inward slash, because he lunges and leaves
+    the ground. The anchor is the cell centre &mdash; the bake's camera axis &mdash;
+    since the footprint centre swings from 160 on the run to 198 on the casting,
+    and pinning to any one of those slides all the others sideways. The shadow
+    is his own outline projected onto the plane, leaned away from the sun by
+    <code>height / tan(elevation)</code>, so it moves when he does. It belongs
+    to this page: the bake carries none and the game draws the hero none.
+  </p>
+
+  <p class="foot">
+    <b>24 is a duration, not a frame rate.</b> Mixamo authored this idle at 30
+    fps and it runs 2.000 seconds &mdash; 61 keys. The sheet holds
+    2.000 &times; 12 = 24 cells and plays them at 12, so it lasts exactly as
+    long as the clip does: nothing is sped up and nothing is cut. What 12 costs
+    is three keys in every five, which an idle can spare and a swing could not.
+    Thirty would want 60 cells, and 60 &times; 350 is 21,000 pixels in one row
+    &mdash; past the 16,384 a browser will hold as a texture, which is the
+    actual reason the rate is 12 and not the other way about.
+  </p>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // js/iso.js -- the 2:1 diamond, the only projection in the game.
+  const TILE_W = 64, TILE_H = 32;
+  // js/render.js -- the camera the road is played at, and the hero's drawn
+  // height in world pixels.
+  const GAME_ZOOM = 1.6, HERO_H = 44;
+  // js/render.js drawGridGround -- the flat plane and its lattice, the ruler
+  // `?grid` already draws.
+  const PLANE = '#4a4744', FINE = '#6b665f', COARSE = '#94897c';
+
+  // **Where the light actually is.** tools/doll.html puts the camera at
+  // (-8, 0, 0) looking along +X with +Y up, so +Z is screen-right and +Y is
+  // screen-up; its key light sits at (-1.6, 5, 4.6). Screen-right is therefore
+  // the light's z and screen-up its y, which puts the sun up and to the right,
+  // 42.6 degrees off vertical, at an elevation of 45.7.
+  //
+  // It does not move with `--yaw`. `doll.rotation.y = YAW` turns the *doll*
+  // and leaves the camera and all three lights where they are, so -45 changes
+  // which side of him is lit and never where the light comes from. A sun that
+  // swung with the yaw would be drawing a rig this bake does not have.
+  const KEY = { right: 4.6, up: 5, elevation: 45.7, offVertical: 42.6 };
+  const KEY_LEN = Math.hypot(KEY.right, KEY.up);
+  // Canvas y runs downward, so screen-up is negative.
+  const SUN = { x: KEY.right / KEY_LEN, y: -KEY.up / KEY_LEN };
+
+  // Measured off the sheet rather than taken from the bake's arguments.
+  const FPS = 12;
+  /**
+   * Cell size is per stance now, and that is the fix for the cropped sword.
+   *
+   * `--cellw` is a window, not a scale: the same frame baked at 350 and at 900
+   * has the same crown, the same sole and the same height to the pixel, so a
+   * stance can be given more room without any other stance changing size. The
+   * battlecry reaches 300px from the camera axis and was being cut off at 175.
+   *
+   * `--cellh` moves the ground line, because the baker's `by` is a fraction of
+   * the cell. So the sole is stored per stance rather than assumed: 465.5 in a
+   * 540 cell, 536 in the 620 the casting needs to get the blade in.
+   */
+  const cw = () => S().cellw;
+  const ch = () => S().cellh;
+  const sole = () => S().sole;
+  // The camera axis, which is the middle of the cell whatever its width.
+  const anchor = () => S().cellw / 2;
+  // Which rungs of the ladder this build can show, and where the chosen one
+  // starts in the sheet. The published copy carries pre-cut tier-5 strips, so
+  // its row is always 0 and its ladder is one rung long; the repo copy opens
+  // the whole five-row bake and indexes into it.
+  const TIERS = [1, 2, 3, 4, 5];
+  const rowY = () => (state.tier - 1) * ch();
+  /**
+   * How big a cell is *in the image being read*, against the 350x540 the bake
+   * writes. The repo copy opens the sheets at full size and this is 1; the
+   * published copy carries strips cut down to fit under 16MB, so its cells are
+   * smaller than the geometry everywhere else on this page assumes.
+   *
+   * It scales the source rectangle only. SOLE, ANCHOR and FH stay in bake
+   * units, so every measurement on the page means the same thing in both.
+   */
+  const SS = 1;
+
+  /**
+   * Which sheet holds frame `f`, and where it sits in it.
+   *
+   * Two stances are split across a pair of images. A sheet may not be wider
+   * than the 16,384px a browser will hold as a texture, and the battlecry at
+   * the 700px cell it needs would be 23,800 in one row. Splitting it keeps the
+   * whole clip at the right speed; windowing it would have thrown a third of
+   * the taunt away to save a file.
+   */
+  function partOf(f) {
+    const parts = S().parts;
+    let off = 0;
+    for (const p of parts) {
+      if (f < off + p.cols) return { part: p, i: f - off };
+      off += p.cols;
+    }
+    const last = parts[parts.length - 1];
+    return { part: last, i: last.cols - 1 };
+  }
+
+  /**
+   * The anchor is the **cell centre**, which is the axis the bake's camera
+   * sits on -- not the middle of his boots.
+   *
+   * Measured across the eight stances, the footprint centre runs from 160 on
+   * the run to 198 on the casting: a 38px swing. That is the man moving, and
+   * pinning the sheet to any one stance's footprint slides all the others
+   * sideways by up to 23px when you switch. The rig's origin does not move,
+   * so that is what to draw against.
+   *
+   * (`sliceGrid` in the game does re-anchor per cell, on purpose: trimmed
+   * cells and a walk cycle want the feet centred every frame. Different
+   * technique, different job.)
+   */
+  const FH = 300;
+
+  const toScreen = (x, y) => ({ x: (x - y) * (TILE_W / 2), y: (x + y) * (TILE_H / 2) });
+  const toWorld = (sx, sy) => {
+    const a = sx / (TILE_W / 2), b = sy / (TILE_H / 2);
+    return { x: (b + a) / 2, y: (b - a) / 2 };
+  };
+
+  /**
+   * The stances, and how long each one is.
+   *
+   * `cols` is not a setting -- it is the clip's own length: seconds times the
+   * 12fps the sheets are baked at. The two idles differ because the clips do
+   * (2.000s against 3.767s), and a page that assumed one number would play the
+   * long one at nearly twice speed, which is the failure that had the warlock
+   * and the druid dancing at the fire.
+   *
+   * Cell size is shared, which is the only reason one page can play both
+   * without knowing anything about either.
+   */
+  /**
+   * The whole clip library, measured. `stances.mjs` builds this off the FBX
+   * files themselves: `cells` is the clip's own length times 12, and `over`
+   * marks the ones whose strip would be wider than the 16,384 a browser will
+   * hold as a texture. `key` is set only where a bake exists.
+   */
+  const CLIPS = [{"file":"Great-Sword-Idle-02","group":"Greatsword","seconds":3.767,"cells":45,"over":false,"key":"idle2"},{"file":"Great-Sword-Walk","group":"Greatsword","seconds":1.367,"cells":16,"over":false,"key":"walk"},{"file":"paladin-Great Sword Idle","group":"Greatsword","seconds":2,"cells":24,"over":false,"key":"idle"},{"file":"X Bot@Great Sword Casting","group":"Greatsword","seconds":4.8,"cells":58,"over":true,"key":"cast"},{"file":"X Bot@Run With Sword","group":"Greatsword","seconds":0.8,"cells":10,"over":false,"key":"run"},{"file":"X Bot@Stable Sword Inward Slash","group":"Greatsword","seconds":2.2,"cells":26,"over":false,"key":"slashIn"},{"file":"X Bot@Stable Sword Outward Slash","group":"Greatsword","seconds":2.033,"cells":24,"over":false,"key":"slashOut"},{"file":"X Bot@Withdrawing Sword","group":"Greatsword","seconds":1.5,"cells":18,"over":false,"key":"draw"},{"file":"X Bot@Standing Taunt Battlecry","group":"Unarmed and spell","seconds":2.833,"cells":34,"over":false,"key":"battlecry"},{"file":"Paladin WProp J Nordstrom@Great Sword Casting","group":"Greatsword","seconds":4.8,"cells":58,"over":true,"key":null},{"file":"Paladin-Great-Sword-Idle","group":"Greatsword","seconds":7.567,"cells":91,"over":true,"key":null},{"file":"Stable Sword Inward Slash","group":"Greatsword","seconds":2.2,"cells":26,"over":false,"key":null},{"file":"Combo-pickup-01","group":"Unarmed and spell","seconds":4.867,"cells":58,"over":true,"key":null},{"file":"Combo-pickup-02","group":"Unarmed and spell","seconds":7.2,"cells":86,"over":true,"key":null},{"file":"Combo-pickup-03","group":"Unarmed and spell","seconds":2.4,"cells":29,"over":false,"key":null},{"file":"paladin-Idle","group":"Unarmed and spell","seconds":1.967,"cells":24,"over":false,"key":null},{"file":"paladin-Reaction","group":"Unarmed and spell","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"Standing 1H Cast Spell 01","group":"Unarmed and spell","seconds":2.267,"cells":27,"over":false,"key":null},{"file":"Unarmed Turn Left 90bash","group":"Unarmed and spell","seconds":4,"cells":48,"over":true,"key":null},{"file":"Unarmed Turn Left 90Idle","group":"Unarmed and spell","seconds":4,"cells":48,"over":true,"key":null},{"file":"Unarmed Turn Left 90Walking-01","group":"Unarmed and spell","seconds":1.033,"cells":12,"over":false,"key":null},{"file":"X Bot@Idle","group":"Unarmed and spell","seconds":10,"cells":120,"over":true,"key":null},{"file":"X Bot@Spell Casting","group":"Unarmed and spell","seconds":4.2,"cells":50,"over":true,"key":null},{"file":"X Bot@Standing 2H Cast Spell 01","group":"Unarmed and spell","seconds":2.167,"cells":26,"over":false,"key":null},{"file":"Shield-Idle-01","group":"Shield","seconds":2.533,"cells":30,"over":false,"key":null},{"file":"Shield-Idle-02","group":"Shield","seconds":8.667,"cells":104,"over":true,"key":null},{"file":"Shield-Idle-03","group":"Shield","seconds":7.533,"cells":90,"over":true,"key":null},{"file":"staff-Idle-01","group":"Staff","seconds":9.333,"cells":112,"over":true,"key":null},{"file":"Staff-Idle-02","group":"Staff","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"Staff-Idle-03","group":"Staff","seconds":7.833,"cells":94,"over":true,"key":null},{"file":"Warrok W Kurniawan@Dying","group":"Borrowed from Warrok","seconds":4.4,"cells":53,"over":true,"key":null},{"file":"Warrok W Kurniawan@Getting-Hit","group":"Borrowed from Warrok","seconds":1.067,"cells":13,"over":false,"key":null},{"file":"Warrok W Kurniawan@Mutant Punch","group":"Borrowed from Warrok","seconds":1.1,"cells":13,"over":false,"key":null},{"file":"Warrok W Kurniawan@Standing Walk Back","group":"Borrowed from Warrok","seconds":1.2,"cells":14,"over":false,"key":null},{"file":"Warrok W Kurniawan@Unarmed Turn Left 90","group":"Borrowed from Warrok","seconds":1.5,"cells":18,"over":false,"key":null},{"file":"Warrok W Kurniawan@Unarmed Walk Forward","group":"Borrowed from Warrok","seconds":1.367,"cells":16,"over":false,"key":null},{"file":"Warrok W Kurniawan@Walking-02","group":"Borrowed from Warrok","seconds":1.4,"cells":17,"over":false,"key":null},{"file":"monster-01-Mutant Dying","group":"Foes","seconds":4.6,"cells":55,"over":true,"key":null},{"file":"monster-01-One Hand Sword Combo","group":"Foes","seconds":4.533,"cells":54,"over":true,"key":null},{"file":"monster-01-Walking","group":"Foes","seconds":1.633,"cells":20,"over":false,"key":null},{"file":"monster-02-Mutant Dying","group":"Foes","seconds":4.6,"cells":55,"over":true,"key":null},{"file":"monster-02-Reaction","group":"Foes","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"monster-02-Standing Melee Attack Downward","group":"Foes","seconds":2.267,"cells":27,"over":false,"key":null},{"file":"monster-02-Standing React Large From Front","group":"Foes","seconds":1,"cells":12,"over":false,"key":null},{"file":"monster-02-Standing Run Forward","group":"Foes","seconds":0.833,"cells":10,"over":false,"key":null}];
+  const byFile = new Map(CLIPS.map((c) => [c.file, c]));
+
+  /**
+   * The baked stances. `cols` is each clip's own length times 12 -- not a
+   * setting, a measurement -- so the long casting runs 46 cells and the run
+   * runs 10, and both play at their own speed.
+   */
+  const STANCES = {"idle": {"label": "Idle", "cols": 24, "seconds": 2, "loop": true, "file": "paladin-Great Sword Idle", "cellw": 350, "cellh": 540, "sole": 465.5, "parts": [{"cols": 24}]}, "idle2": {"label": "Idle, second", "cols": 45, "seconds": 3.767, "loop": true, "file": "Great-Sword-Idle-02", "cellw": 350, "cellh": 540, "sole": 465.5, "parts": [{"cols": 45}]}, "walk": {"label": "Walk", "cols": 16, "seconds": 1.367, "loop": true, "file": "Great-Sword-Walk", "cellw": 500, "cellh": 540, "sole": 465.5, "parts": [{"cols": 16}]}, "run": {"label": "Run", "cols": 10, "seconds": 0.8, "loop": true, "file": "X Bot@Run With Sword", "cellw": 350, "cellh": 540, "sole": 465.5, "parts": [{"cols": 10}]}, "battlecry": {"label": "Battlecry", "cols": 34, "seconds": 2.833, "loop": false, "file": "X Bot@Standing Taunt Battlecry", "cellw": 700, "cellh": 540, "sole": 465.5, "parts": [{"cols": 17}, {"cols": 17}]}, "slashOut": {"label": "Slash, outward", "cols": 24, "seconds": 2.033, "loop": false, "file": "X Bot@Stable Sword Outward Slash", "cellw": 680, "cellh": 540, "sole": 465.5, "parts": [{"cols": 24}]}, "slashIn": {"label": "Slash, inward", "cols": 26, "seconds": 2.2, "loop": false, "file": "X Bot@Stable Sword Inward Slash", "cellw": 500, "cellh": 540, "sole": 465.5, "parts": [{"cols": 26}]}, "draw": {"label": "Draw sword", "cols": 18, "seconds": 1.5, "loop": false, "file": "X Bot@Withdrawing Sword", "cellw": 620, "cellh": 540, "sole": 465.5, "parts": [{"cols": 18}]}, "cast": {"label": "Casting", "cols": 58, "seconds": 4.8, "loop": false, "file": "X Bot@Great Sword Casting", "cellw": 560, "cellh": 620, "sole": 536, "parts": [{"cols": 29}, {"cols": 29}]}};
+  // Where the pixels come from differs by build: the published page inlines a
+  // tier-5 strip per stance, the repo page opens the whole 5-row bake.
+  const SRC = {"idle": ["../art/knight-camp.png"], "idle2": ["../art/knight-camp2.png"], "walk": ["../art/knight-gs-walk.png"], "run": ["../art/knight-run.png"], "battlecry": ["../art/knight-battlecry-1.png", "../art/knight-battlecry-2.png"], "slashOut": ["../art/knight-slash-out.png"], "slashIn": ["../art/knight-slash-in.png"], "draw": ["../art/knight-draw.png"], "cast": ["../art/knight-cast-1.png", "../art/knight-cast-2.png"]};
+  const IMAGES = [];
+  for (const k of Object.keys(STANCES)) {
+    STANCES[k].parts.forEach((part, i) => {
+      const im = new Image();
+      im.src = SRC[k][i];
+      part.img = im;
+      IMAGES.push(im);
+    });
+  }
+  // The stance being drawn, and its sheet. In sequence mode that is whatever
+  // step is currently running, not what the dropdown says.
+  const S = () => STANCES[playing_key()];
+  function playing_key() {
+    if (state.mode === 'seq') {
+      const run = runnable();
+      if (run.length) return byFile.get(run[state.step % run.length].file).key;
+    }
+    return state.stance;
+  }
+
+  const cols = () => S().cols;
+
+  const $ = (id) => document.getElementById(id);
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const state = {
+    frame: 0, playing: !reduced, scale: 'read', stance: 'idle',
+    // 'stance' loops one clip; 'seq' walks the sequence below the stage.
+    mode: 'stance', seq: [], step: 0, rep: 0,
+    tier: TIERS[TIERS.length - 1],
+  };
+
+  const cv = $('stage'), ctx = cv.getContext('2d');
+  let W = 0, H = 0;
+
+  function resize() {
+    const r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function lattice(x0, x1, y0, y1, z) {
+    ctx.lineWidth = 1 / z;
+    // Two weights: the fine one reads one tile, the coarse one every eight.
+    for (const [step, colour] of [[1, FINE], [8, COARSE]]) {
+      ctx.strokeStyle = colour;
+      ctx.beginPath();
+      for (let x = Math.ceil(x0); x <= x1; x++) {
+        if (x % step) continue;
+        const a = toScreen(x, y0), b = toScreen(x, y1);
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      }
+      for (let y = Math.ceil(y0); y <= y1; y++) {
+        if (y % step) continue;
+        const a = toScreen(x0, y), b = toScreen(x1, y);
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * The key light, sitting off the edge of the frame.
+   *
+   * Drawn on the ray the light actually comes down, so it is a statement about
+   * the bake rather than decoration: follow the sun back to his feet and that
+   * is the line the shading on the figure was made along. It is deliberately
+   * clipped by the frame -- the light is outside the shot in the render too.
+   */
+  function drawSun(feetX, feetY) {
+    // Walk the ray out from his feet until it leaves the frame, and put the
+    // disc on that edge. Whatever the stage is shaped like, the sun sits where
+    // the light would cross it.
+    const tTop = SUN.y < 0 ? -feetY / SUN.y : Infinity;
+    const tRight = SUN.x > 0 ? (W - feetX) / SUN.x : Infinity;
+    const t = Math.min(tTop, tRight);
+    const sx = feetX + SUN.x * t, sy = feetY + SUN.y * t;
+    const r = Math.max(30, Math.min(W, H) * 0.062);
+
+    // The shaft of light, faint enough to be a note rather than a beam.
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,240,220,.10)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 9]);
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(feetX, feetY); ctx.stroke();
+    ctx.restore();
+
+    // Halo first, disc over it. `0xfff0dc` is the key's own colour in
+    // doll.html -- the warm the figure is actually lit by.
+    const halo = ctx.createRadialGradient(sx, sy, 0, sx, sy, r * 5.2);
+    halo.addColorStop(0, 'rgba(255,240,220,.30)');
+    halo.addColorStop(.32, 'rgba(255,224,176,.10)');
+    halo.addColorStop(1, 'rgba(255,224,176,0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(sx, sy, r * 5.2, 0, Math.PI * 2); ctx.fill();
+
+    const disc = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+    disc.addColorStop(0, '#fff6e6');
+    disc.addColorStop(.6, '#fff0dc');
+    disc.addColorStop(1, 'rgba(255,224,176,.35)');
+    ctx.fillStyle = disc;
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+
+    // Below and inboard of the disc. The sun is clipped by whichever edge it
+    // crossed, so anything level with its centre risks being clipped too.
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,240,220,.52)';
+    ctx.font = '11px "Iowan Old Style", Palatino, Georgia, serif';
+    ctx.textAlign = 'right';
+    const lx = Math.min(sx + r * 0.6, W - 12), ly = sy + r + 20;
+    ctx.fillText('key light', lx, ly);
+    // Escaped, not literal: canvas text takes the document's decoding with it,
+    // and a stray degree sign is how you find that out.
+    ctx.fillText(KEY.elevation + '\u00B0 elevation', lx, ly + 14);
+    ctx.restore();
+  }
+
+  /**
+   * The current frame as a soft dark silhouette, in cell space.
+   *
+   * Built by drawing the cell and then filling it through `source-in`, which
+   * keeps the sprite's alpha and throws its colour away -- the outline comes
+   * from the art, so it can never disagree with the pose being drawn.
+   *
+   * The fade up the cell is the penumbra. A real shadow is sharpest where the
+   * caster touches the ground and softens with distance from it, and in this
+   * projection distance from the ground *is* height up the sprite: his boots
+   * are the contact and the blade tip is the far end. Doing it here rather
+   * than after the transform means the gradient is measured in the figure's
+   * own units and holds at any zoom.
+   */
+  let shadowCv = null, shadowFor = '';
+  function silhouette(frame) {
+    const tag = state.tier + ':' + playing_key() + ':' + frame;
+    if (shadowFor === tag && shadowCv) return shadowCv;
+    if (!shadowCv) {
+      shadowCv = document.createElement('canvas');
+    }
+    const W0 = cw(), H0 = ch();
+    if (shadowCv.width !== W0 || shadowCv.height !== H0) {
+      shadowCv.width = W0; shadowCv.height = H0;
+    }
+    const s = shadowCv.getContext('2d');
+    s.setTransform(1, 0, 0, 1, 0, 0);
+    s.clearRect(0, 0, W0, H0);
+    s.globalCompositeOperation = 'source-over';
+    const { part, i } = partOf(frame);
+    s.drawImage(part.img, i * W0 * SS, rowY() * SS, W0 * SS, H0 * SS, 0, 0, W0, H0);
+
+    s.globalCompositeOperation = 'source-in';
+    s.fillStyle = '#0a0806';
+    s.fillRect(0, 0, W0, H0);
+
+    // Thin it out towards the top of the cell -- the end of the shadow that
+    // lands furthest from his feet.
+    s.globalCompositeOperation = 'destination-out';
+    const fade = s.createLinearGradient(0, sole(), 0, 0);
+    fade.addColorStop(0, 'rgba(0,0,0,0)');
+    fade.addColorStop(.45, 'rgba(0,0,0,.30)');
+    fade.addColorStop(1, 'rgba(0,0,0,.72)');
+    s.fillStyle = fade;
+    s.fillRect(0, 0, W0, H0);
+    s.globalCompositeOperation = 'source-over';
+
+    shadowFor = tag;
+    return shadowCv;
+  }
+
+  /**
+   * Lay that silhouette down on the plane.
+   *
+   * Under a directional light a point `h` above the sole lands `h / tan(el)`
+   * away along the ground. So the sprite's y axis maps onto the shadow's
+   * direction and its x axis is left alone, which is an affine with the sole
+   * line as its fixed line -- his feet stay put and everything above them
+   * leans away from the sun.
+   *
+   * The direction's vertical is squashed by the tile's own 2:1 on the way in,
+   * or the shadow lies across a plane at a different angle from the one drawn
+   * underneath it.
+   */
+  function drawCastShadow(feetX, feetY, fig) {
+    if (!partOf(state.frame).part.img.complete) return;
+    const L = 1 / Math.tan(KEY.elevation * Math.PI / 180);
+    const dx = -SUN.x, dy = -SUN.y * (TILE_H / TILE_W);
+
+    const a = fig, b = 0;
+    const c = -fig * L * dx, d = -fig * L * dy;
+    const e = feetX - fig * anchor() - c * sole();
+    const f = feetY - d * sole();
+
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    // Blur in device pixels, so the softness does not swell with the zoom.
+    ctx.filter = 'blur(' + Math.max(1.5, 5 * fig).toFixed(1) + 'px)';
+    ctx.transform(a, b, c, d, e, f);
+    ctx.drawImage(silhouette(state.frame), 0, 0);
+    ctx.restore();
+  }
+
+  function draw() {
+    if (!W) return;
+    ctx.clearRect(0, 0, W, H);
+
+    // Figure and plane are scaled by one number, so the ratio between the man
+    // and the tile he stands on is the same in both modes. "True" is the
+    // camera the road actually runs at.
+    const z = state.scale === 'true' ? GAME_ZOOM : Math.min(H * 0.55, 360) / HERO_H;
+    // High enough in the frame that his own shadow has somewhere to fall and
+    // the transport does not sit on his boots.
+    const feetX = W * 0.46, feetY = H * 0.58;
+
+    ctx.save();
+    ctx.translate(feetX, feetY);
+    ctx.scale(z, z);
+
+    // Visible tile bounds from all four corners: the projection rotates, so
+    // the screen's corners are not world space's corners.
+    const l = -feetX / z, tp = -feetY / z, w = W / z, h = H / z;
+    const cs = [toWorld(l, tp), toWorld(l + w, tp), toWorld(l, tp + h), toWorld(l + w, tp + h)];
+    const x0 = Math.min(...cs.map((c) => c.x)) - 1, x1 = Math.max(...cs.map((c) => c.x)) + 1;
+    const y0 = Math.min(...cs.map((c) => c.y)) - 1, y1 = Math.max(...cs.map((c) => c.y)) + 1;
+
+    ctx.fillStyle = PLANE;
+    ctx.fillRect(l, tp, w, h);
+    lattice(x0, x1, y0, y1, z);
+    ctx.restore();
+
+    const fig = (HERO_H * z) / FH;
+
+    drawSun(feetX, feetY);
+
+    // **The shadow is his own silhouette, laid down on the plane.** A blob
+    // says "something roughly this wide is here"; the figure's outline says
+    // which way he is facing, where the blade is, and that his feet are apart
+    // -- and it cannot drift out of agreement with the pose, because it *is*
+    // the pose.
+    //
+    // The projection is the one a directional light actually makes. A point
+    // `h` above the sole lands `h / tan(elevation)` away along the ground, so
+    // the sprite's vertical axis maps to the shadow's direction and its
+    // horizontal axis stays put: an affine, and the sole is its fixed line.
+    drawCastShadow(feetX, feetY, fig);
+
+    const { part, i } = partOf(state.frame);
+    if (part.img.complete && part.img.naturalWidth) {
+      ctx.drawImage(
+        part.img, i * cw() * SS, rowY() * SS, cw() * SS, ch() * SS,
+        feetX - anchor() * fig, feetY - sole() * fig, cw() * fig, ch() * fig,
+      );
+    }
+
+    $('count').textContent = String(state.frame + 1).padStart(2, '0') + ' / ' + cols();
+    $('readout').innerHTML =
+      'hero ' + Math.round(HERO_H * z) + 'px &middot; tile ' + Math.round(TILE_W * z) + 'px'
+      + (state.scale === 'true' ? '<br>camera zoom 1.6' : '');
+  }
+
+  let last = 0, acc = 0;
+  function tick(t) {
+    if (state.playing) {
+      if (last) {
+        acc += t - last;
+        const step = 1000 / FPS;
+        while (acc >= step) {
+          acc -= step;
+          advance();
+          $('scrub').value = state.frame;
+        }
+      }
+      last = t;
+      draw();
+    } else {
+      last = 0;
+    }
+    requestAnimationFrame(tick);
+  }
+
+  /**
+   * One frame on.
+   *
+   * In stance mode that is a loop and nothing else. In sequence mode the end
+   * of a clip is also the end of a repeat, and the end of the last repeat is
+   * the end of a step -- so the three counters roll over into each other like
+   * a clock, and the sequence itself loops.
+   */
+  function advance() {
+    const n = cols();
+    if (state.frame + 1 < n) { state.frame++; return; }
+    state.frame = 0;
+    if (state.mode !== 'seq') return;
+
+    const run = runnable();
+    if (!run.length) return;
+    const cur = run[state.step % run.length];
+    if (state.rep + 1 < cur.reps) { state.rep++; return; }
+    state.rep = 0;
+    state.step = (state.step + 1) % run.length;
+    syncScrub();
+    markStep();
+  }
+
+  const press = (el, on) => el.setAttribute('aria-pressed', on ? 'true' : 'false');
+  const stop = () => {
+    state.playing = false;
+    $('play').textContent = 'Play';
+    press($('play'), false);
+  };
+
+  $('play').addEventListener('click', () => {
+    state.playing = !state.playing;
+    $('play').textContent = state.playing ? 'Pause' : 'Play';
+    press($('play'), state.playing);
+    if (!state.playing) draw();
+  });
+
+  $('s-read').addEventListener('click', () => {
+    state.scale = 'read'; press($('s-read'), true); press($('s-true'), false); draw();
+  });
+  $('s-true').addEventListener('click', () => {
+    state.scale = 'true'; press($('s-read'), false); press($('s-true'), true); draw();
+  });
+
+  $('scrub').addEventListener('input', (e) => {
+    state.frame = +e.target.value; stop(); draw();
+  });
+
+  $('stance').addEventListener('change', (e) => {
+    const c = byFile.get(e.target.value);
+    if (!c || !c.key) return;
+    state.stance = c.key;
+    state.mode = 'stance';
+    press($('seqPlay'), false);
+    $('seqPlay').textContent = 'Play sequence';
+    // Back to the top. 3.77s and 2.00s do not share a frame index, and
+    // carrying one over lands past the end of the shorter clip.
+    state.frame = 0;
+    syncScrub();
+    draw();
+  });
+
+  // The scrubber's range is the clip's length, not a constant.
+  function syncScrub() {
+    const sc = $('scrub');
+    sc.max = cols() - 1;
+    sc.value = state.frame;
+    syncSpec();
+  }
+
+  /**
+   * The three rows that describe the clip rather than the cell.
+   *
+   * Cell size, sole and anchor are properties of the bake and hold across
+   * every stance. Length, cell count and speed are properties of the *clip*,
+   * so they have to follow the dropdown -- a sheet that kept showing 2.000s
+   * while playing the 3.767s idle would be asserting the exact error the bake
+   * pipeline exists to avoid.
+   */
+  function syncSpec() {
+    const c = S();
+    const exact = Math.round(c.seconds * FPS);
+    $('specClip').innerHTML = c.seconds.toFixed(3) + 's, authored at <b>30 fps</b>';
+    $('specCells').innerHTML = '<b>' + c.cols + '</b> &nbsp;('
+      + c.seconds.toFixed(3) + ' &times; 12)';
+    $('specSpeed').innerHTML = '12 fps, looped &mdash; '
+      + (exact / c.cols).toFixed(2) + '&times; speed';
+  }
+
+  // ---- the sequence builder ----------------------------------------------
+
+  /** The steps that can actually be shown: the ones whose clip has a bake. */
+  const runnable = () => state.seq.filter((st) => byFile.get(st.file)?.key);
+
+  /** Clip options, grouped, for both the stance list and every step row. */
+  function clipOptions(selected, playableOnly) {
+    const groups = [];
+    for (const c of CLIPS) {
+      const label = c.key ? 'Baked &mdash; playable' : c.group + ' &mdash; not baked';
+      let g = groups.find((x) => x.label === label);
+      if (!g) groups.push(g = { label, items: [] });
+      g.items.push(c);
+    }
+    return groups.map((g) => {
+      // Unbaked clips are shown and disabled, never dropped. The list is the
+      // work list: what is missing is as much of the point as what is there.
+      const opts = g.items
+        .map((c) => '<option value="' + esc(c.file) + '"'
+          + (c.file === selected ? ' selected' : '')
+          + (playableOnly && !c.key ? ' disabled' : '')
+          + '>' + esc(c.file) + ' &mdash; ' + c.seconds.toFixed(2) + 's, '
+          + c.cells + ' cells' + (c.over ? ', needs a window' : '') + '</option>')
+        .join('');
+      return opts ? '<optgroup label="' + g.label + '">' + opts + '</optgroup>' : '';
+    }).join('');
+  }
+
+  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  function renderSteps() {
+    const ol = $('seqSteps');
+    ol.innerHTML = state.seq.map((st, i) => {
+      const c = byFile.get(st.file);
+      return '<li class="step' + (c && c.key ? '' : ' unbaked') + '" data-i="' + i + '">'
+        + '<span class="n">' + String(i + 1).padStart(2, '0') + '</span>'
+        + '<select aria-label="Clip for step ' + (i + 1) + '">'
+        + clipOptions(st.file, false) + '</select>'
+        + '<span class="times">&times;</span>'
+        + '<input type="number" min="1" max="99" value="' + st.reps
+        + '" aria-label="Repeats for step ' + (i + 1) + '">'
+        + '<span class="len">' + (c ? (c.seconds * st.reps).toFixed(2) + 's' : '--') + '</span>'
+        + '<button type="button" class="drop" aria-label="Remove step ' + (i + 1) + '">Remove</button>'
+        + '</li>';
+    }).join('');
+
+    ol.querySelectorAll('.step').forEach((li) => {
+      const i = +li.dataset.i;
+      li.querySelector('select').addEventListener('change', (e) => {
+        state.seq[i].file = e.target.value;
+        resetSeq(); renderSteps(); draw();
+      });
+      li.querySelector('input').addEventListener('change', (e) => {
+        state.seq[i].reps = Math.max(1, Math.min(99, +e.target.value || 1));
+        resetSeq(); renderSteps(); draw();
+      });
+      li.querySelector('.drop').addEventListener('click', () => {
+        state.seq.splice(i, 1);
+        resetSeq(); renderSteps(); draw();
+      });
+    });
+
+    markStep();
+    noteSeq();
+  }
+
+  /** Which step is on screen, so the list reads as a playhead. */
+  function markStep() {
+    const run = runnable();
+    const cur = state.mode === 'seq' && run.length ? run[state.step % run.length] : null;
+    $('seqSteps').querySelectorAll('.step').forEach((li) => {
+      const st = state.seq[+li.dataset.i];
+      li.style.opacity = (!cur || st === cur) ? '1' : '.55';
+    });
+  }
+
+  function noteSeq() {
+    const total = state.seq.reduce(
+      (t, st) => t + (byFile.get(st.file)?.seconds || 0) * st.reps, 0);
+    const dead = state.seq.filter((st) => !byFile.get(st.file)?.key).length;
+    if (!state.seq.length) {
+      $('seqNote').innerHTML = 'Add a clip to start building a sequence. '
+        + 'Any clip can go in one; the ones without a bake behind them are kept '
+        + 'in the order and stepped over on playback.';
+      return;
+    }
+    $('seqNote').innerHTML = state.seq.length + ' step' + (state.seq.length > 1 ? 's' : '')
+      + ', ' + total.toFixed(2) + 's a cycle'
+      + (dead ? ' &mdash; <b>' + dead + ' not baked yet and skipped when played</b>' : '')
+      + '<br><code>' + esc(JSON.stringify(state.seq)) + '</code>';
+  }
+
+  function resetSeq() { state.step = 0; state.rep = 0; state.frame = 0; syncScrub(); }
+
+  $('seqAdd').addEventListener('click', () => {
+    // Default to something that plays, so a new row shows something.
+    state.seq.push({ file: 'paladin-Great Sword Idle', reps: 1 });
+    resetSeq(); renderSteps(); draw();
+  });
+
+  $('seqPlay').addEventListener('click', () => {
+    state.mode = state.mode === 'seq' ? 'stance' : 'seq';
+    press($('seqPlay'), state.mode === 'seq');
+    $('seqPlay').textContent = state.mode === 'seq' ? 'Stop sequence' : 'Play sequence';
+    resetSeq();
+    if (state.mode === 'seq') {
+      state.playing = true;
+      $('play').textContent = 'Pause';
+      press($('play'), true);
+    }
+    renderSteps(); draw();
+  });
+
+  // ---- saving -------------------------------------------------------------
+  //
+  // localStorage where it is allowed, and the JSON under the list either way:
+  // a published page can be sandboxed out of storage, and a sequence that only
+  // exists in a tab is not saved in any sense worth the word.
+  const STORE = 'cryptHeroes.warrior.sequences';
+  const load = () => {
+    try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (e) { return {}; }
+  };
+  const save = (all) => {
+    try { localStorage.setItem(STORE, JSON.stringify(all)); return true; } catch (e) { return false; }
+  };
+
+  function refreshSaved(pick) {
+    const all = load();
+    const names = Object.keys(all).sort();
+    $('seqLoad').innerHTML = '<option value="">Saved sequences&hellip;</option>'
+      + names.map((n) => '<option value="' + esc(n) + '"'
+        + (n === pick ? ' selected' : '') + '>' + esc(n) + '</option>').join('');
+  }
+
+  $('seqSave').addEventListener('click', () => {
+    const name = $('seqName').value.trim();
+    if (!name) { $('seqName').focus(); return; }
+    if (!state.seq.length) return;
+    const all = load();
+    all[name] = state.seq.map((st) => ({ file: st.file, reps: st.reps }));
+    const ok = save(all);
+    refreshSaved(name);
+    $('seqNote').innerHTML = ok
+      ? 'Saved as <b>' + esc(name) + '</b>.<br><code>' + esc(JSON.stringify(state.seq)) + '</code>'
+      : 'This page cannot write to storage here &mdash; copy the line below to keep it.'
+        + '<br><code>' + esc(JSON.stringify(state.seq)) + '</code>';
+  });
+
+  $('seqLoad').addEventListener('change', (e) => {
+    const all = load();
+    const seq = all[e.target.value];
+    if (!seq) return;
+    state.seq = seq.map((st) => ({ file: st.file, reps: st.reps }));
+    $('seqName').value = e.target.value;
+    resetSeq(); renderSteps(); draw();
+  });
+
+  $('seqDel').addEventListener('click', () => {
+    const name = $('seqLoad').value;
+    if (!name) return;
+    const all = load();
+    delete all[name];
+    save(all);
+    refreshSaved();
+    noteSeq();
+  });
+
+  // ---- the ladder ---------------------------------------------------------
+  const BANDS = ['--band-gray', '--band-green', '--band-blue', '--band-purple', '--band-gold'];
+  const RUNGS = ['Cloth', 'Hood and leather', 'Court dress', 'Mail under plate', 'Horned plate'];
+
+  function renderTiers() {
+    $('tierSeg').innerHTML = [1, 2, 3, 4, 5].map((t) => {
+      const has = TIERS.includes(t);
+      return '<button type="button" data-t="' + t + '"'
+        + (has ? '' : ' disabled')
+        + ' aria-pressed="' + (t === state.tier) + '"'
+        + ' style="--band:var(' + BANDS[t - 1] + ')"'
+        + ' title="' + RUNGS[t - 1] + (has ? '' : ' &mdash; not in this copy') + '">'
+        + t + '</button>';
+    }).join('');
+    $('tierSeg').querySelectorAll('button:not([disabled])').forEach((b) => {
+      b.addEventListener('click', () => {
+        state.tier = +b.dataset.t;
+        renderTiers();
+        draw();
+      });
+    });
+  }
+
+  const start = () => {
+    resize();
+    renderTiers();
+    $('stance').innerHTML = clipOptions('paladin-Great Sword Idle', true);
+    refreshSaved();
+    renderSteps();
+    syncScrub();
+    $('play').textContent = state.playing ? 'Pause' : 'Play';
+    press($('play'), state.playing);
+    draw();
+    requestAnimationFrame(tick);
+  };
+  let pending = IMAGES.length;
+  const ready = () => { if (--pending === 0) start(); };
+  for (const im of IMAGES) {
+    if (im.complete) ready(); else im.addEventListener('load', ready);
+  }
+
+  addEventListener('resize', () => { resize(); draw(); });
+})();
+</script>

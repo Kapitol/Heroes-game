@@ -18,7 +18,7 @@
 // level-ups and the boss stinger stay synthetic, where the same argument does
 // not apply and the files would only be weight.
 
-let ctx = null, master = null, musicGain = null;
+let ctx = null, master = null, musicGain = null, voiceGain = null;
 let enabled = true;
 let volume = 0.5, muted = false, musicVolume = 0.4;
 
@@ -30,6 +30,14 @@ export function init() {
   master = ctx.createGain();
   master.gain.value = muted ? 0 : volume;
   master.connect(ctx.destination);
+  // **A third bus, above the music and beside the effects.** A spoken line is
+  // not an effect: it carries words, so it cannot be one of several things
+  // competing at the same weight, and it is not music either — it must not sit
+  // under the score's own volume control, or a player who has turned the music
+  // down has silenced the story with it.
+  voiceGain = ctx.createGain();
+  voiceGain.gain.value = 1;
+  voiceGain.connect(master);
   startMusic();
   loadBank();
 }
@@ -54,7 +62,10 @@ export function isMuted() { return muted; }
 // master volume: settable before the graph exists.
 export function setMusicVolume(v) {
   musicVolume = Math.max(0, Math.min(1, v));
-  if (musicGain) musicGain.gain.value = musicVolume;
+  // Respects the duck. Writing the raw value while a line is being spoken would
+  // undo it — the score would jump back up under the words the moment somebody
+  // touched the slider, which is exactly when they are least likely to want it.
+  if (musicGain) musicGain.gain.value = speaking ? musicVolume * DUCK : musicVolume;
 }
 export function getMusicVolume() { return musicVolume; }
 
@@ -238,10 +249,14 @@ function pluck(freq, t0) {
   lp.connect(g).connect(musicGain);
 }
 
-// A breath of filtered noise under everything. It is the one part that never
-// changes, so it is kept far too quiet to hear on its own — it only stops the
-// silences between phrases from sounding like the game has crashed.
+// **Removed: the bed used to breathe, and the breathing was the problem.**
+// A loop of noise through a 240Hz lowpass whose cutoff was swung ±90Hz by an
+// LFO at 0.05Hz — one swell every twenty seconds — was meant to keep the
+// silences between phrases from sounding like a crash. What it actually
+// sounded like was an engine idling somewhere off screen, and once heard it
+// could not be unheard. The silences can sound like silence.
 function startBed() {
+  return;
   const len = ctx.sampleRate * 4;
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
   const d = buf.getChannelData(0);
@@ -337,6 +352,32 @@ async function loadOne(url) {
  * it — and the caller cannot tell the difference anyway, because it falls
  * through to the synth either way.
  */
+/**
+ * Spoken lines, which are files rather than a numbered bank.
+ *
+ * **Named, not counted, and `.mp3` rather than `.m4a`.** Everything in `BANK`
+ * is a library effect that arrived as a numbered set and got converted; these
+ * are recorded lines that arrive one at a time under their own names, and
+ * forcing them into `name-N.m4a` would mean renaming a performance to fit a
+ * loader.
+ *
+ * The three keys are the Butcher saying the same thing to three different
+ * heroes — see `LORE.md`, where a class picks Light, Hybrid or Evil. Only
+ * `boss` is reachable today because nothing in the game records a branch yet;
+ * the other two are loaded and waiting rather than left on disk, so wiring
+ * them later is a lookup and not a hunt.
+ */
+const VOICES = {
+  boss: 'audio/boss-01.mp3',
+  bossLight: 'audio/boss-light-01.mp3',
+  bossHybrid: 'audio/boss-hybrid-01.mp3',
+  // The founding, one line per panel of `js/intro.js`. **Either extension**:
+  // the boss lines arrived as mp3 and a recording session may deliver m4a, and
+  // renaming a performance to satisfy a loader is the wrong way round.
+  ...Object.fromEntries(Array.from({ length: 9 }, (_, i) =>
+    [`intro${i + 1}`, [`audio/intro-${i + 1}.m4a`, `audio/intro-${i + 1}.mp3`]])),
+};
+
 function loadBank() {
   for (const [name, count] of Object.entries(BANK)) {
     const list = [];
@@ -344,6 +385,19 @@ function loadBank() {
     for (let i = 1; i <= count; i++) {
       loadOne(`audio/${name}-${i}.m4a`).then((s) => list.push(s), () => {});
     }
+  }
+  for (const [name, url] of Object.entries(VOICES)) {
+    const list = [];
+    bank.set(name, list);
+    // A string is one file; an array is the same line under either extension,
+    // first one that decodes wins. Both failing is silence, which is the same
+    // thing every other missing file in here means.
+    const urls = Array.isArray(url) ? url : [url];
+    (async () => {
+      for (const u of urls) {
+        try { list.push(await loadOne(u)); return; } catch { /* try the next */ }
+      }
+    })();
   }
 }
 
@@ -387,6 +441,77 @@ function sample(name, gain = 1, spread = 0.07, rate = 1) {
   src.connect(g).connect(master);
   src.start(0, s.offset);
   return true;
+}
+
+/**
+ * Speak one line, and duck the music under it.
+ *
+ * **Returns a handle rather than a promise.** The intro advances on a click as
+ * well as on the end of a line — a player who reads faster than the reader must
+ * be able to move on — so the caller needs to *stop* this, and a promise cannot
+ * be cancelled. `stop()` is idempotent and safe after the line has ended.
+ *
+ * **The duck is on the music bus, not on the master.** Pulling the master down
+ * would take the fire and the wind with it, and the camp's own sounds are part
+ * of what the words are spoken over. It ramps rather than steps: an instant
+ * -8dB on a sustained pad is audible as a click in the pad, which is precisely
+ * the artefact a duck is supposed to hide.
+ *
+ * A missing file is silence and `null` — same as every other sample here — and
+ * the caller is expected to carry on rather than wait for a line that is never
+ * coming.
+ */
+const DUCK = 0.35;                 // what the score falls to while a line runs
+let speaking = null;
+
+export function narrate(name, { onEnd } = {}) {
+  stopNarration();
+  // **Nothing to play is `null`, and nothing else.** Reporting it as an *ending*
+  // instead looks helpful and is not: the intro advances its panel when a line
+  // ends, so a missing file became "this panel is over" and the whole founding
+  // played itself out in three frames. A caller that wants to carry on without
+  // audio can see the null; a caller that waits for `onEnd` is waiting for a
+  // thing that did not happen.
+  if (!ctx || !enabled) return null;
+  const list = bank.get(name);
+  if (!list || !list.length) return null;
+  const s = list[0];
+  const src = ctx.createBufferSource();
+  src.buffer = s.buffer;
+  const g = ctx.createGain();
+  g.gain.value = s.gain;
+  src.connect(g).connect(voiceGain);
+  if (musicGain) {
+    musicGain.gain.cancelScheduledValues(ctx.currentTime);
+    musicGain.gain.setTargetAtTime(musicVolume * DUCK, ctx.currentTime, 0.12);
+  }
+  const done = () => {
+    if (speaking !== handle) return;
+    speaking = null;
+    if (musicGain) {
+      musicGain.gain.cancelScheduledValues(ctx.currentTime);
+      musicGain.gain.setTargetAtTime(musicVolume, ctx.currentTime, 0.35);
+    }
+    onEnd && onEnd();
+  };
+  const handle = {
+    stop() {
+      if (speaking !== handle) return;
+      // Faded, not cut. A voice stopped dead mid-word is a glitch; over 80ms it
+      // is someone being interrupted, which is what actually happened.
+      g.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
+      try { src.stop(ctx.currentTime + 0.12); } catch { /* already ended */ }
+      done();
+    },
+  };
+  src.onended = done;
+  speaking = handle;
+  src.start(0, s.offset);
+  return handle;
+}
+
+export function stopNarration() {
+  if (speaking) speaking.stop();
 }
 
 export const sfx = {
@@ -487,11 +612,28 @@ export const sfx = {
    * fallback — silence is the right failure here, where a tone twice a second
    * would be worse than nothing.
    */
-  step()       { sample('step', 0.3, 0.12); },
+  // **Quieter again.** This fires two or three times a second for the whole
+  // game, and a footfall the player can pick out individually is one they will
+  // come to hate. It was 0.3 and read as boots on a stage.
+  step()       { sample('step', 0.16, 0.12); },
 
   encounter()  { if (sample('clash', 0.6)) return;
                  noise({ dur: 0.4, gain: 0.22, freq: 700, q: 0.6, type: 'bandpass' });
                  tone(96, { type: 'sawtooth', dur: 0.45, gain: 0.2, slide: -30 }); },
+
+  /**
+   * The Butcher's line, once a fight.
+   *
+   * **Not on arrival.** `boss()` already fires there, and a sting and a spoken
+   * line landing on the same frame fight each other — the line loses, because
+   * the sting is the louder of the two and the banner is still animating. This
+   * plays on the first blow of the fight instead, which is a beat later, quiet,
+   * and is the moment the fight becomes real rather than announced.
+   *
+   * No synth fallback and no throttle key: a line either plays or it does not,
+   * and `game.js` guarantees the once by only calling it once per boss.
+   */
+  bossLine(which = 'boss') { sample(which, 0.9, 0, 1); },
 
   enrage()     { if (sample('growl', 0.75, 0.03, 0.9)) return;
                  tone(70, { type: 'sawtooth', dur: 0.7, gain: 0.24, slide: -20 }); },

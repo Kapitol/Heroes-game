@@ -5,7 +5,7 @@
 // three cards decide what the hero becomes. The player's hands are on the
 // skills, the drop and the cards — never on the walking.
 
-import { BIOMES, biomeFor, levelFor, ROAD, onRoad, HALF, MARCH } from './world.js';
+import { BIOMES, biomeFor, levelFor, levelAt, ROAD, onRoad, HALF, MARCH } from './world.js';
 import { toWorld, toScreen, clamp, lerp, TILE_W } from './iso.js';
 import { makeHero, heroStats, moveToward, faceTo, separate, nearestFoe, CLASSES, classByKey } from './entities.js';
 import {
@@ -16,6 +16,8 @@ import { SKILLS, skillById, rollDraft, applyCard, MAX_SKILLS } from './perks.js'
 import * as UI from './ui.js';
 import * as Audio from './audio.js';
 import * as Coffin from './coffin.js';
+import { DOLL_CAMP } from './render.js';
+import * as Intro from './intro.js';
 import * as Rig from './rig.js';
 import * as Particles from './particles.js';
 import { rollBossLoot, bossSkullBonus, wornTier, startingKit, bandIndex } from './items.js';
@@ -79,6 +81,10 @@ const DEV_DROP = new URLSearchParams(location.search).has('drop')
 // is otherwise one click deep and gone for the rest of the session, which makes
 // tuning its layout a reload-and-click each time; this is a reload and nothing
 // else. `?overview` is the same door under its old name.
+// `?camp=wood` also *dresses* it as that area. A camp set belongs to a level
+// five sections down the road, so judging one used to mean surviving to it —
+// the same reason `?biome=` exists.
+const DEV_CAMP_AREA = new URLSearchParams(location.search).get('camp') || null
 const DEV_CAMP = new URLSearchParams(location.search).has('camp')
   || new URLSearchParams(location.search).has('overview');
 
@@ -182,7 +188,12 @@ UI.init(S, {
   // a context from inside the gesture that asked for it.
   overview() {
     Audio.init(); Audio.resume();
-    showCamp();
+    // The founding plays before the camp on a first launch, and never again
+    // unless `?intro` asks for it. It is told here rather than over the title
+    // because this is the click — a story that starts before anyone has
+    // touched anything is a story played to an empty chair.
+    if (Intro.seen() && !new URLSearchParams(location.search).has('intro')) return showCamp();
+    Intro.play(showCamp);
   },
   // …and the camp's own button is what actually starts the march.
   // The class in the plate is the class the run is walked as, so it is set
@@ -392,6 +403,13 @@ function beginEncounter() {
   S.queue.length = 0;
   S.spawnTimer = 0.35;
 
+  // The sword comes out when something blocks the road. Pure theatre, on the
+  // same act channel the skills use — so a skill pressed in the first second
+  // simply wins the slot, and dying drops it like any other act. The hold
+  // covers the spawn delay: the draw finishes about when the first foe
+  // arrives, which is the fiction working out to be the timing.
+  S.hero.act = { pose: 'draw', t: 0.9, hold: 0.9 };
+
   if (isBossWave()) {
     S.formation = { id: 'boss', name: bossFor(S.stage).name, gap: 0 };
     S.queue.push({ boss: true });
@@ -475,6 +493,11 @@ function hurtMonster(m, amount, crit) {
         crit ? '#ffd76a' : '#f0e6d2', crit);
   Audio.sfx[crit ? 'crit' : 'hit']();
   Audio.sfx.foeHurt(m.scale || 1);
+  // The boss speaks once, on the first blow of his fight rather than on his
+  // arrival — the arrival already has a sting and a banner, and a line landing
+  // under those is a line nobody hears. The flag lives on the monster, so it
+  // dies with him and the next boss says his piece too.
+  if (m.boss && !m.spoke) { m.spoke = true; Audio.sfx.bossLine(); }
   if (m.boss && !m.enraged && m.hp <= m.maxHp * 0.3) {
     m.enraged = true;
     m.atk *= 0.65;
@@ -876,10 +899,25 @@ function showCamp() {
 
   UI.showCamp(CLASSES.map((c) => {
     const mine = c.key === S.hero.class;
+    const doll = mine ? DOLL_CAMP : c.camp;
     return {
       key: c.key,
       name: c.name,
-      sheet: c.sheet,
+      // **The camp shows what the road shows.** `c.sheet` is the painted
+      // class art from before the doll; a player who picks a warrior at the
+      // fire and then watches a knight walk away has been shown the wrong
+      // man. `DOLL_ART` is the same sheet the hero is drawn from — four
+      // columns, five tiered rows — so the camp figure changes with his
+      // armour for free.
+      // Two idle sheets for the run's own class; everyone else keeps their
+      // painted portrait. `anim` is passed whole so ui.js can walk the cycle.
+      // The run's own hero gets the tiered two-idle bake; everybody else gets
+      // the one-outfit doll on their class. `c.sheet` — the painted portrait —
+      // is only reached by a class that has neither.
+      sheet: doll ? doll.a.src : c.sheet,
+      cols: doll ? doll.a.cols : 2,
+      rows: doll ? doll.rows : 5,
+      anim: doll || null,
       // Not ready yet: no body is drawn, only the worn ground of a place.
       locked: !c.ready,
       // Takeable is what the button reads: this run can only be walked by the
@@ -896,7 +934,7 @@ function showCamp() {
         ? `${levelFor(S.section)} \u00b7 Stage ${S.stage} \u00b7 ${st.maxHp} life \u00b7 \u2620 ${S.skulls.toLocaleString()}`
         : c.blurb,
     };
-  }), S.section);
+  }), DEV_CAMP_AREA || (levelAt(S.section) || {}).area);
 }
 
 function start() {
@@ -1529,7 +1567,10 @@ function bossAI(m, h, d, dt) {
       m.casting = mv;
       m.castT = 0;
       m.telegraph = { x: mv.id === 'charge' ? h.x : m.x, y: mv.id === 'charge' ? h.y : m.y };
-      UI.toast(mv.text);
+      // No toast: the cast bar under the boss's health says the same word, in
+      // the move's own colour, with the wind-up actually running down. Two
+      // announcements of one event is one too many, and the toast was the
+      // weaker — no timing, and nowhere near the thing doing it.
       Audio.sfx.buff();
       return;
     }

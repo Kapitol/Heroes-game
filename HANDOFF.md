@@ -710,3 +710,375 @@ new ones are competent headgear, the painted ones are a threat. Whatever is
 generated next for the head slot should be pushed considerably further in that
 direction: horns, crests, and a silhouette that is doing something above the
 crown. Judge a helm on its outline at thumbnail size, not on its detail.
+
+---
+
+## Where the eighth session left it — the camp is rendered
+
+**The camp set is built in Blender now, not painted.** `tools/bake-camp.py`, on
+the pattern of `tools/bake-trees.py`, and `art/camp-wood.png` is the first one —
+The Elder Wood. It is the **fallback for every area without a set of its own**,
+replacing the painted boneyard: nine of the ten levels used to be shown a
+graveyard whatever they were called.
+
+### Why a render, and what stops being negotiated
+
+A painting has to be *matched* to the figures by eye, and that match is the
+1.35 → 2.6 figure multiplier and the `cover` → 215% backdrop change — one
+decision made twice, badly, in two files. A render is built at the game's own
+metres-per-pixel instead:
+
+- `campGeom` draws a body `44 * 0.92 * (H/300) * 2.6 * (1 - depth*0.34)` tall,
+  so the figure at the middle of the ring is **0.291 of the viewport's height**
+  and a metre is 0.162 of it. The camera therefore sees **5.65m top to bottom**,
+  and the set is shown at `auto 100%` with no percentage anywhere. The 215%
+  stays with the painted sets, in `#campScene.painted`; `PAINTED` in ui.js is
+  the list, and it currently holds only `town`.
+- Pitch is **24°**, out of the party ellipse: a ground circle projects to
+  `rx 0.30W by ry 0.15H` when `sin(pitch) = 0.5 * H/W`, which is 16° on 16:9 and
+  29° on a square window — so it has no single answer and 24° is the middle of
+  the range actually played.
+- Lights are doll.html's own three, converted axis for axis. It looks along +X
+  with +Y up; this looks along +Y with +Z up; so `blender = (three.z, three.x,
+  three.y)`. Same directions on the figure and on the ground they stand on.
+
+### The firelight is a separate render, and it moves
+
+The set is baked **four times**: once with the fire out, and three more with the
+fire *alone*, its flame moved a hand's width between each. Light is additive, so
+`paintFirelight` in ui.js draws the base and adds the three plates with
+`lighter` at weights that wander. The scene is relit from the middle every
+frame — stones' shadows swing, rocks take the light and give it up. Measured
+over 1.7s: the ground beside the fire swings 63 of 255, the treeline 31.
+
+Three things there are load-bearing:
+
+- **The base plate is drawn on the canvas, not left to CSS.** `lighter` adds
+  *alpha* as well as colour, so opaque plates over a transparent canvas make the
+  canvas opaque and hide the background-image completely. That shipped a camp
+  lit by nothing but firelight for three commits and looked exactly like a scene
+  that was too dark.
+- **Weights are normalised**, or three waves sum to a brightness that pumps in
+  step with its own movement — a lamp on a dimmer, not a flame.
+- **Amplitude is 1.28, not 1.0.** Blender tone-maps each pass separately, so the
+  sum of two tone-mapped plates is dimmer than one tone-mapped sum.
+
+There is a flame in each plate and no two are the same shape, so the cross-fade
+plays the fire as well as the light — they cannot fall out of step, being one
+render. `drawCampfire` and `drawCookpot` are therefore **skipped for any camp
+that has plates**; the painted camps keep both.
+
+### The bake commands — run these, do not improvise
+
+```bash
+blender --background --python tools/bake-camp.py -- --out art/camp-wood.png
+```
+
+Characters, all at `fh 300` and `--yaw -45`. **Both numbers are shared by every
+camp doll**, or the hero changes height or angle by being the one you picked:
+
+```bash
+blender --background --python tools/outfit.py -- --out art/armour/paladin.glb \
+  --parts Male_Knight_Body_Armor,Male_Knight_Arms,Male_Knight_Legs_Armor,\
+Male_Knight_Feet_Armor,Male_Noble_Acc_Pauldron_Lion,Male_Noble_Acc_Gorget,\
+Male_Knight_Head_Armet --weapon Hammer_Double@0.92
+blender --background --python tools/outfit.py -- --out art/armour/warlock.glb \
+  --parts Male_Wizard_Body,Male_Wizard_Arms,Male_Wizard_Legs,Male_Wizard_Feet \
+  --weapon Scythe@1.05
+blender --background --python tools/outfit.py -- --out art/armour/druid.glb \
+  --parts Male_Ranger_Body,Male_Ranger_Arms,Male_Ranger_Legs,\
+Male_Ranger_Feet_Boots,Male_Ranger_Head_Hood --weapon Spear@1.02
+
+node tools/bake-doll.mjs --out art/knight-camp.png  --glb art/armour/knight.glb \
+  --tiers 5 --clip "Great Sword Idle"   --frames 24 --loop \
+  --fh 300 --cellw 350 --cellh 540 --alias Paladin --yaw -45
+node tools/bake-doll.mjs --out art/knight-camp2.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Great-Sword-Idle-02" --frames 45 --loop \
+  --fh 300 --cellw 350 --cellh 540 --alias Paladin --yaw -45
+# …and paladin / warlock / druid, --tiers 1, "Great Sword Idle", 24 frames.
+```
+
+`--parts` and `--weapon` are new on `outfit.py`. The five-rung ladder in that
+file is the *warrior's* progression; the other three are one character each.
+
+### Four at the fire
+
+Every class has a `camp` doll now, whether or not the road can be walked as
+them. The old rule — draw the place, not the person — was written when the only
+stand-in was the vector kit, and a dim vector figure at a fire does read as
+somebody lurking. A baked doll reads as a person who cannot be chosen, and the
+plate underneath says so. **They are placeholders**: knight plate with a noble's
+gorget, wizard robes and a scythe, ranger leathers and a spear.
+
+Everyone is **turned to face the player**, and mirrored on the fire's right so
+both halves face out. Shadows are thrown **by the fire**, solved on the ground
+plane with the vertical un-squashed by the same 0.34 the party ellipse uses —
+done in screen space the two at the sides point visibly wrong.
+
+### Traps this cost, in the order they were paid for
+
+1. Forward along a pitched view axis is **downward**. A backdrop 40m in front of
+   the aim point is 16m below ground, not above it — and a sky out of frame is
+   indistinguishable from a sky that failed to render.
+2. Generated coordinates run **0 at the bottom**, so the sky ramp was upside
+   down: the same black sky, for a second reason.
+3. Ending the ground by **deleting faces** past a line gives a staircase at grid
+   resolution. Bend it down instead and the silhouette is the curve.
+4. The frame is 12.55m wide, so hand-placed props past **x = ±6.27** are
+   off-camera. A first attempt at filling the right-hand slope put a stand of
+   trees at x = 8 to 12 and rendered a picture identical to the one it was
+   fixing. `HALF_W` is printed by the bake for exactly this.
+5. `CompositorNodeMixRGB` resolves to the multi-type Mix node in 4.x and its
+   numbered inputs are no longer `(Fac, Image, Image)`. The vignette is
+   arithmetic on the rendered pixels instead.
+6. A warm band at the horizon is a **sunrise**, wherever it appears and whatever
+   the rest of the frame is doing.
+
+### Known-open, in the order I would take them
+
+1. `camp_kit()` is primitives — tent, crates, firewood, spears — because the
+   nature pack has no camp furniture. One CC0 props pack replaces that one
+   function and nothing else in the file.
+2. Nine more camps. Each is a prop list and a seed; the machinery is done.
+3. The three placeholder dolls want their own models and their own idles — they
+   are all playing the warrior's greatsword idle, which is why the warlock holds
+   a scythe like a claymore.
+4. The pack ships no textures, so every prop is a flat colour keyed off its
+   material name. A `Textures` folder beside the meshes replaces `PALETTE`.
+
+---
+
+## The founding is spoken now
+
+Nine recorded lines under `audio/intro-<n>.mp3`, one per panel of
+`js/intro.js`, played by `Audio.narrate`.
+
+**The line drives the panel and the panel stops the line.** A reader faster than
+the narrator clicks on and the line fades out over 80ms; a reader who is slower
+keeps the picture until the sentence finishes. A panel with no file waits for a
+click exactly as the whole intro did before there was any audio.
+
+Three things in the mix are deliberate:
+
+- **Voice is a third bus**, beside the effects and above the music. Not on the
+  music bus: a player who turned the score down would have silenced the story.
+- **The score ducks to 35%** underneath, ramped rather than stepped — an instant
+  drop on a sustained pad is audible as a click in the pad, which is the
+  artefact ducking exists to hide. `setMusicVolume` respects the duck.
+- **Either extension.** `VOICES` takes an array and the first that decodes wins,
+  because the boss lines arrived as mp3 and a session may deliver m4a. Renaming
+  a performance to satisfy a loader is the wrong way round.
+
+**The bug to keep out of the next thing that uses `narrate`:** it originally
+reported "nothing to play" by calling `onEnd`. That looks helpful and is not —
+the intro advances a panel when a line *ends*, so a missing file read as "this
+panel is over" and the whole founding played itself out in three frames. Nothing
+to play is `null`, and only null.
+
+Measured, panel hold against line length: 8260/8176, 6600/6713, 6599/6766,
+4601/4545 ms. The sequence is about 75 seconds end to end, where it used to be
+click-paced.
+
+**Recording notes for the remaining voice work**, since they are not obvious:
+`audio.js` peak-normalises off the decoded buffer and finds the onset itself, so
+files should arrive *raw* — no normalising, no compression, no topping and
+tailing. Mono is fine and preferable.
+
+---
+
+## Where the ninth session left it — the characters
+
+The camp screen above is done and in the game. This is everything found *under*
+it, which turned out to be the larger half.
+
+### Every doll in this game was baked at 64% of its own height
+
+A doll is scaled so the union of its meshes is exactly one unit, and `--fh` is
+defined against that unit. Two things were in the union that are not the doll:
+
+- **The pack's helper sphere.** Every Quaternius part ships a 42-vertex
+  `Icosphere` spanning −1..1. `import_parts` has always refused to *wear* them
+  and says why in a comment, and one reaches the GLB anyway — so a 1.808-unit
+  figure measured 2.808.
+- **Whatever the doll is carrying.** Which is why it presented as a
+  *difference*: a hood or a raised weapon moves the top of the union, so the
+  shrink varied per character. The Druid's spear made him 2.46 against the
+  Paladin's 1.81, and he stood a head shorter at the same fire.
+
+Filtered in `doll.html` rather than only in the exporter — that is the line that
+cares, and it repairs every GLB already on disk. It walks the parent chain,
+because GLTFLoader hangs the mesh under the node that carries the name and
+testing the mesh alone lets the spear back in.
+
+**Everything was re-baked**: both camp sheets for all four characters, and the
+road's `knight-walk` and `knight-combat`.
+
+### Four things the bake was giving away, all now on
+
+`tone=none` reproduces anything baked before this.
+
+- **ACES tone mapping.** There was none, so with a key at 2.6 every specular
+  highlight hard-clipped to a flat white patch with no rolloff — precisely the
+  shape that reads as curved metal. Exposure 1.35 buys back what a shoulder
+  costs, rather than retuning three lights that were chosen against each other.
+- **An environment worth reflecting.** The old one varied only with height, so
+  after PMREM every direction on the horizon reflected the same grey — and a
+  mirror reflecting one flat colour is a painted mirror. That is why armour read
+  as grey paint however metalness was set.
+- **Shadows that can be seen.** The key sat nearly behind the camera, so the
+  terminator fell where nothing could see it; and the frustum was four world
+  units across a one-unit figure, spending three quarters of a 2048 map on empty
+  ground. Plus `normalBias`, without which a self-shadowing curve stipples.
+- **2× supersampling** (`--ss`), there being no anti-aliasing beyond driver MSAA.
+
+**The trap it set:** a supersampled strip renders into one buffer, so at `ss 2`
+a 24-frame strip of 350px cells is 16,800px wide — past the 16,384 a browser
+holds. It does not fail loudly. The buffer is clamped, the *last* cell comes back
+a sliver, and the hero visibly stands beside his own selection ring one frame in
+twenty-four. Strips are chunked now and carry `at`/`of` so they sample the
+phases the whole strip would have. The downscale also leaves 1–2/255 of alpha in
+empty pixels, which `sliceGrid` reads as content — cleared before measuring.
+
+### `tools/outfit.py` grew a lot, and dropped three defects
+
+New: `--parts` (one named outfit instead of the five-rung ladder), `--weapon`
+(`Name@length`, or `none`), `--shield`, `--grip pole`, `--hand Left|Right`,
+`--hair Name[@tier]`, `--extra file[@fraction]`.
+
+Three defects were shipping in every character ever baked:
+
+- **An untextured mesh rode along in every GLB** — X Bot's `Beta_Joints` pads,
+  flat dark red, subdivided and rendered at every elbow and knee.
+- **Every face baked with no eyes and no eyebrows.** The base pack splits the
+  head into three skinned meshes and `base_head` kept the one with the most
+  vertices, which is the body.
+- **The weapons were paint.** Their FBXs carry no maps at all; steel and gold
+  are metal now and wood is not.
+
+Also: the pack's glTF asks for `T_Eye_Normal_png.png`, which does not exist
+(`T_Eye_Normal.png` does) — repaired on load; and subdivision no longer rounds
+the open seams at cuff, collar and boot top (`boundary_smooth`).
+
+**`--extra` wears a garment from outside the kit entirely** — any file Blender
+imports. A robe is just a mesh over a body, which is what Data Transfer already
+handles; it needs only units (`@0.86` = "this garment is 86% of a person") and a
+floor. COLLADA arrives with *no* textures, so `wire_pbr` finds maps named after
+the material (`lambert3_albedo`, `_normal`, `_roughness`, `_metallic`) — the
+convention every Sketchfab export uses. Albedo is sRGB, everything else raw.
+
+### The four at the fire
+
+Every class has a `camp` doll now, whether or not the road can be walked as
+them — the old "draw the place, not the person" rule was written when the only
+stand-in was the vector kit. All are three-quarters on (`--yaw -45`) and
+mirrored on the fire's right, so both halves face the player.
+
+**The standing idle has to be a standing idle**, and this is what three wasted
+passes taught: `Staff-Idle-02`, all three `Shield-Idle`s and `Spell Casting` are
+*braced* — feet wide, weight low, weapon across the body — and no amount of
+reseating a prop fixes a man stood like that at a campfire. `paladin-Idle` is
+the one calm stand in the library and is 1.97s, so 24 cells hold it whole. The
+braced clips are the variation, where being on guard for two seconds in ten is
+right. **Render one frame of every clip onto a contact sheet before choosing;**
+`tools/gauntlet/` exists for this and one render made the answer obvious.
+
+Warlock and Druid carry the same spear, because every idle in the library grips
+something and there is no staff model. The scythe was abandoned: its snath
+curves, so every seating that clears the hip puts the curve through the thigh.
+
+Hair comes from the base pack's own `Hairstyles/Rigged to Head Bone` folder,
+which nothing had ever imported — hence four bald men. `Name@tier` puts a style
+on one rung only, since the ladder wears a helm on three of its five.
+**Everyone is silver** and I could not fix it: the map is a greyscale meant to
+be tinted, and a MixRGB is not a pattern Blender's glTF writer recognises while
+a pixel edit does not survive a copied image's filepath. A pre-tinted texture on
+disk is the reliable route.
+
+### The camp screen's own runtime
+
+- **The set was running at half resolution on every retina display.** The plates
+  were cached at CSS pixels and drawn through a `dpr` transform. Cached at
+  device size now, and `imageSmoothingQuality` asks for `'high'` — the camp
+  upscales a 300px sheet to ~600 device pixels and the default filter is `low`.
+- **Shadows are the figure's own silhouette**, thrown across the ground away
+  from the fire, tapered along its length. Two passes of ellipses read as
+  nothing. It stands up off the ground at 0.55 rather than the true 0.34,
+  deliberately: a shadow foreshortened correctly is a sliver, and what makes one
+  read is recognising a body in it.
+- **Selection is a thick black ring.** It was a pool of gold light — a second
+  light source in a scene whose whole argument is that there is one.
+- **Nobody is transparent.** The unselected were at 0.62 alpha and read as
+  ghosts at the fire.
+
+### Known-open, in the order I would take them
+
+1. A **staff model**, so the Warlock stops carrying the Druid's spear.
+2. **Camp props** — the tent, crates, firewood and spears in `camp_kit()` are
+   cylinders and boxes.
+3. **Nine more camps.** Each is a prop list and a seed; the machinery is done.
+4. **Pre-tinted hair textures**, per above.
+5. The three placeholder characters want **their own outfits and their own
+   idles** rather than pieces borrowed across two sets each.
+
+`ASSET-WANTS.md` is the shopping list, and its constraints matter more than its
+list — see the traps in ontology.html.
+
+---
+
+## The road fights with the baked clips now
+
+**The split is decided and wired: the road gets the battle animations, the
+camp keeps the idles.** `DOLL_ART.clips` in js/render.js is the contract — a
+clip per state, driven by clocks the game already keeps, so nothing about
+timing or balance moved:
+
+- `draw` runs on the act channel: `beginEncounter` sets
+  `act = { pose: 'draw', t: 0.9, hold: 0.9 }`, pure theatre, and a skill
+  pressed in the first second simply wins the slot.
+- `battlecry` and `cast` run on the same channel via `CLIP_FOR_ACT`
+  (cry → battlecry; fire/volley/ward → cast). Heal and stomp have no clip and
+  fall through to what they did before — nothing — rather than borrow a wrong
+  one.
+- The two `slash` clips run on `o.swing`, alternated by `o.swings` exactly as
+  the static cells were. The static cells are now the fallback for classes
+  without a bake.
+
+**`window` is which frames of a clip fit the hold.** The clips run seconds at
+12fps and the holds run ~0.5s; squeezing 34 frames into 0.68s is the sped-up
+bug again. A hold plays a window at the clip's own speed and the rest of the
+bake waits for longer holds.
+
+**Scale comes off the pose sheet's standing cell, never the frame drawn** —
+cells are trimmed to content, so fitting a crouched windup to the idle's
+height pulses the hero's size in step with his own swing.
+
+The bakes, all profile (no --yaw), fh 230 like every road sheet, cell widths
+measured per stance (a swing reaches further than a stand — in profile the
+blade sweeps in the screen plane, so the swings need *more* room here):
+
+```bash
+node tools/bake-doll.mjs --out art/knight-road-battlecry-1.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Standing Taunt Battlecry" --frames 17 --fh 230 --cellw 560 --cellh 380 \
+  --from 0 --to 0.5151515151515151          # part 2: --from that --to 1
+node tools/bake-doll.mjs --out art/knight-road-slash-out.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Stable Sword Outward Slash" --frames 24 --fh 230 --cellw 640 --cellh 460
+node tools/bake-doll.mjs --out art/knight-road-slash-in.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Stable Sword Inward Slash" --frames 26 --fh 230 --cellw 600 --cellh 380
+node tools/bake-doll.mjs --out art/knight-road-draw.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Withdrawing Sword" --frames 18 --fh 230 --cellw 520 --cellh 380
+node tools/bake-doll.mjs --out art/knight-road-cast-1.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Great Sword Casting" --frames 29 --fh 230 --cellw 560 --cellh 480 \
+  --from 0 --to 0.49122807017543857         # part 2: --from 0.508... --to 1
+node tools/bake-doll.mjs --out art/knight-road-run.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Run With Sword" --frames 10 --loop --fh 230 --cellw 480 --cellh 380
+```
+
+Split-part phase arithmetic: a one-shot of N frames samples `i/(N-1)`, so a
+part covering frames a..b runs `--from a/(N-1) --to b/(N-1)` — anything looser
+repeats a frame at the seam. `knight-road-run.png` is baked and unwired: the
+march is a walk and nothing in the game sprints yet.
+
+**`art/knight-walk.png` is a name to leave alone** — it is the road walk/death
+sheet, a different clip at different geometry, and baking a greatsword walk
+over it swapped the hero's stride out from under the game for a minute. The
+greatsword walk is `knight-gs-walk.png`, also currently unwired.

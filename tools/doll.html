@@ -35,6 +35,7 @@
 // unchanged.
 import * as THREE from 'three';
 import { FBXLoader } from './vendor/three/jsm/loaders/FBXLoader.js';
+import { GLTFLoader } from './vendor/three/jsm/loaders/GLTFLoader.js';
 
 const Q = new URLSearchParams(location.search);
 const qNum = (k, d) => (Q.has(k) ? +Q.get(k) : d);
@@ -64,6 +65,16 @@ const MOTION = Q.get('motion') || CHAR;
 // page cannot list a directory to go looking. `tools/bake-doll.mjs` can, so it
 // resolves the name and passes it in.
 const SKIN = Q.get('skin');
+// **A GLB wearing armour, instead of the bare Mixamo FBX.** `tools/armour.py`
+// bakes one per class: the same character, the same `mixamorig` skeleton, plus
+// every tier's plates skinned to it and named `T1_…` … `T5_…`. The path is
+// relative to the repo root — `glb=art/armour/warrior.glb` — because these are
+// built files rather than downloads and do not live in art/mixamo/.
+const GLB = Q.get('glb');
+// Which tier to show. The GLB carries all five at once and one prefix survives;
+// `tier=0` shows every piece stacked, which is only ever a diagnostic. The
+// numbering is the runtime's: `row = wornTier - 1`, so tier 1 is row 0.
+const TIER = qNum('tier', 0);
 // The exact basename of the clip file. `tools/bake-doll.mjs` resolves it — it
 // can list the directory and a page cannot, and the names in there follow no
 // single rule: `X Bot@Idle`, `Mutant Punch`, `paladin-Reaction` are all clips.
@@ -90,6 +101,17 @@ const SWORD = Q.has('sword') && Q.get('sword') !== '0';
 // cannot be recovered later, because the game tints and fades it but never
 // brightens it.
 const LIGHT = qNum('light', 1);
+// **The key's colour, warmed to the biome the sheet will be seen in.** Phase 4
+// of the plan is a direction refresh and its first rule is that every look
+// change happens in the bake, where it costs nothing at runtime: a figure lit
+// by the same daylight in the town and the inferno belongs to neither.
+const KEY = Q.get('key');
+// **A head that never turns reads as a mannequin.** Mixamo's idles lock the
+// neck to the chest — the body breathes and shifts weight and the head does
+// not move at all — which is invisible on a 56-pixel sprite and obvious on a
+// portrait. `headturn` is the peak yaw in degrees; the turn is a sine over the
+// clip's phase, so it passes through zero at both ends and the loop closes.
+const HEAD_TURN = qNum('headturn', 0);
 // **A cycle is sampled `i / STRIP`; a one-shot is sampled `i / (STRIP - 1)`.**
 // The difference is one frame and it is the difference between a walk and a
 // limp: a loop's last sample is its first one again, so including the endpoint
@@ -99,6 +121,15 @@ const LIGHT = qNum('light', 1);
 const LOOP = Q.has('loop') && Q.get('loop') !== '0';
 // A single named phase, for sheets whose cells come from different clips.
 const AT = Q.has('p') ? +Q.get('p') : null;
+// Where this strip sits inside the clip, when the baker has had to cut one
+// strip into several shots to stay inside the canvas limit. Without these a
+// chunk would re-sample the clip from the beginning and the second half of
+// every long animation would replay the first.
+const AT_OFF = +(Q.get('at') || 0);
+const AT_OF = +(Q.get('of') || 0);
+// The slice of the clip to walk, as phase. See `--from`/`--to` in bake-doll.
+const P0 = +(Q.get('p0') || 0);
+const P1 = Q.has('p1') ? +Q.get('p1') : 1;
 
 // `preserveDrawingBuffer` is not optional here. The shot is taken with
 // `canvas.toDataURL` — for the reason given in `tools/gauntlet/shot.mjs`, that
@@ -106,6 +137,24 @@ const AT = Q.has('p') ? +Q.get('p') : null;
 // throws its drawing buffer away after compositing unless told otherwise. The
 // first strip came back a blank canvas, not an empty scene.
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+// **Tone mapping, and it was missing entirely.** With `NoToneMapping` — the
+// default, and what every sheet before this was baked with — anything the
+// lights push over 1.0 hard-clips to 255. The key is 2.6 and the rim 1.4, so
+// every specular highlight on plate and steel came back as a flat white patch
+// with no rolloff at all, which is precisely the shape that tells an eye
+// "curved metal". ACES gives the shoulder back.
+//
+// `tone=none` reproduces any sheet baked before this existed; the intensities
+// below are unchanged, so a re-bake at `tone=none` is byte-identical.
+const TONE = Q.get('tone') || 'aces';
+renderer.toneMapping = TONE === 'none' ? THREE.NoToneMapping
+  : TONE === 'agx' ? THREE.AgXToneMapping
+  : THREE.ACESFilmicToneMapping;
+// A shoulder costs brightness: ACES maps 1.0 to about 0.8, so the whole figure
+// arrives darker than the same lights did without it. The exposure buys that
+// back rather than the three light intensities being retuned one at a time —
+// they were chosen against each other and should stay in proportion.
+renderer.toneMappingExposure = TONE === 'none' ? 1 : Number(Q.get('exposure') || 1.35);
 renderer.setPixelRatio(1);
 renderer.setSize(W, H, false);
 renderer.shadowMap.enabled = true;
@@ -124,8 +173,13 @@ const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera();
 camera.up.set(0, 1, 0);
 
-const key = new THREE.DirectionalLight(0xfff0dc, 2.6);
-key.position.set(-3, 5, 3);
+const key = new THREE.DirectionalLight(KEY ? new THREE.Color(KEY) : 0xfff0dc, 2.6);
+// **Off the camera's axis.** The camera sits at (-8, 0, 0) and the key sat at
+// (-3, 5, 3) — nearly behind it — so the terminator and most of what the figure
+// self-shadowed fell on the far side, where nothing could see it. Swung round
+// and forward, the shadow of an arm lands on the chest and the shadow of the
+// pauldron on the shoulder, which is where a viewer reads depth from.
+key.position.set(-1.6, 5, 4.6);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 scene.add(key);
@@ -138,7 +192,103 @@ scene.add(rim);
 scene.add(new THREE.AmbientLight(0x30281e, 1.2));
 for (const l of [key, fill, rim]) l.intensity *= LIGHT;
 
+/**
+ * A sky for the armour to reflect.
+ *
+ * **A metal with nothing around it renders black.** That is not a bug to work
+ * around, it is what metal *is* under a physical material: it has no diffuse
+ * colour of its own and shows only what it reflects, so three lights and a void
+ * give three highlights on a black plate. The first tiered bake came out with
+ * rungs four and five darker than rung one, which is the opposite of the thing
+ * the tiers exist to say.
+ *
+ * A gradient — a cold sky over a dark floor — is enough, and is cheaper than
+ * vendoring RoomEnvironment for a picture that is 56 pixels tall on the road.
+ * Only built when there is a GLB, so every existing FBX bake comes out byte for
+ * byte as it did before.
+ *
+ * **It has to be a real equirectangular map, 2:1 and no smaller than this.**
+ * The first attempt was one pixel wide — the gradient only varies vertically,
+ * so a column looked like the whole of the information. PMREM convolves it
+ * through a cube render and a chain of blurred mips, and a 1-wide source makes
+ * that pipeline invalid: every draw call after it returned GL_INVALID_OPERATION
+ * and the canvas came out empty. `renderer.info` still reported 23 calls and
+ * 99,922 triangles, which is how an *erroring* render is told apart from a
+ * culled or off-screen one — check `gl.getError()` before suspecting the
+ * camera.
+ */
+if (GLB) {
+  // **A vertical ramp is not an environment.** The first version varied only
+  // with height, so after PMREM every direction on the horizon reflected the
+  // same grey — and a mirror that reflects one flat colour is a *painted*
+  // mirror. It is why armour read as grey paint rather than as steel however
+  // the metalness was set.
+  //
+  // This is still procedural and still costs nothing, but it has *things* in
+  // it: a bright soft key disc where the key light is, a dimmer cool one
+  // opposite it, a horizon band, and a dark floor. Those are what appear in a
+  // curved plate as moving bands of light and shade, which is the entire
+  // difference between metal and paint at this size.
+  const W_SKY = 256, H_SKY = 128;
+  const px = new Uint8Array(W_SKY * H_SKY * 4);
+  // Equirectangular: u wraps the horizon, v runs top to bottom.
+  const blobs = [
+    // [u centre, v centre, radius, r, g, b] — the key, warm and high, then a
+    // cool bounce opposite, then a faint rim behind.
+    [0.62, 0.22, 0.20, 0xff, 0xf1, 0xd6],
+    [0.12, 0.40, 0.26, 0x6d, 0x80, 0xa8],
+    [0.86, 0.52, 0.16, 0xff, 0xd2, 0x9c],
+  ];
+  for (let i = 0; i < H_SKY; i++) {
+    const t = i / (H_SKY - 1);                 // 0 at the top of the sphere
+    const sky = [0x8e, 0x93, 0xa6], floor = [0x1a, 0x15, 0x10];
+    // A horizon band, brightest just above the line and falling away both ways.
+    const horizon = Math.exp(-((t - 0.52) ** 2) / 0.0035) * 0.55;
+    for (let j = 0; j < W_SKY; j++) {
+      const at = (i * W_SKY + j) * 4;
+      const u = j / (W_SKY - 1);
+      for (let c = 0; c < 3; c++) {
+        let v = sky[c] * (1 - t) + floor[c] * t;
+        v += 90 * horizon;
+        for (const [bu, bv, br, ...col] of blobs) {
+          // Shortest distance around the wrap, or the blob at u=0.86 tears.
+          const du = Math.min(Math.abs(u - bu), 1 - Math.abs(u - bu));
+          const d = Math.hypot(du * 1.6, t - bv) / br;
+          if (d < 1) v += (col[c] - v) * (1 - d) ** 2;
+        }
+        px[at + c] = Math.max(0, Math.min(255, v));
+      }
+      px[at + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(px, W_SKY, H_SKY);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromEquirectangular(tex).texture;
+  // The environment lights the plates; it must not also wash out the character,
+  // whose look was settled against the three lights above and nothing else.
+  scene.environmentIntensity = Number(Q.get('env') || 0.75);
+  pmrem.dispose();
+  tex.dispose();
+}
+
 const load = (url) => new Promise((res, rej) => new FBXLoader().load(url, res, undefined, rej));
+const loadGLB = (url) => new Promise((res, rej) =>
+  new GLTFLoader().load(url, (g) => res(g.scene), undefined, rej));
+
+/**
+ * Which tier a piece belongs to, or 0 for anything that is not armour.
+ *
+ * `tools/armour.py` writes the tier into the object name and nothing else
+ * carries it — no collections survive the GLB, and a name is the one handle
+ * three keeps. GLTFLoader sanitises node names on the way in (Mixamo's
+ * `mixamorig:Hips` arrives as `mixamorigHips`, which is exactly why the FBX
+ * clips bind to a GLB skeleton at all), and the `T<n>_` prefix passes through
+ * that untouched.
+ */
+const tierOf = (name) => (/^T(\d)_/.exec(name || '')?.[1] | 0);
 
 /**
  * The doll, its clip, and the scale that makes it `FH` pixels tall.
@@ -180,9 +330,21 @@ const carriesSkin = hasMesh(clipScene);
 // An explicit `skin` wins over the clip's own mesh — it is the handle for
 // asking "is it this file's mesh or this file's animation that is wrong", and
 // there is no other way to take those two apart.
-const doll = SKIN ? await load(`../art/mixamo/${SKIN}.fbx`)
-  : carriesSkin ? clipScene
-    : await load(`../art/mixamo/${CHAR}.fbx`);
+// A GLB skin wins over everything: it *is* the character, with his armoury on
+// him, and the clip file is then only ever a source of motion.
+const doll = GLB ? await loadGLB(`../${GLB}`)
+  : SKIN ? await load(`../art/mixamo/${SKIN}.fbx`)
+    : carriesSkin ? clipScene
+      : await load(`../art/mixamo/${CHAR}.fbx`);
+
+// Four tiers out of five are hidden, not deleted: they still cost their share
+// of one GLB parse, and deleting them would mean re-loading the file per row.
+if (GLB && TIER) {
+  doll.traverse((o) => {
+    const t = tierOf(o.name);
+    if (t) o.visible = t === TIER;
+  });
+}
 const motion = clipScene;
 
 /**
@@ -215,6 +377,14 @@ doll.traverse((o) => {
   // show, so flattening him to neutral was the honest way to ask whether
   // *assembly* reads. A real character's textures are the entire question, and
   // replacing them would answer a different one — so `clay=1` is opt-in.
+  // **Armour keeps its own material, always.** It was authored in
+  // `tools/armour.py` as a Principled BSDF with a deliberate metalness per
+  // tier, and that metalness is most of what separates rung four from rung
+  // five at road size. Both branches below exist to repair *Mixamo's* Phong
+  // materials, and applying either to a plate would throw the tier away —
+  // clay would flatten it to the body's colour, and the rebuild would pin it
+  // to roughness 0.68 / metalness 0.05, which is what plastic looks like.
+  if (tierOf(o.name) || tierOf(o.parent?.name)) return;
   if (CLAY) {
     o.material = new THREE.MeshStandardMaterial({ color: 0xb9b2a6, roughness: 0.72, metalness: 0.04 });
   } else if (o.material) {
@@ -322,13 +492,61 @@ function attachSword(doll) {
 // Height from the bind pose, before anything is animated: a clip that raises
 // an arm over the crown would otherwise decide the scale, and the figure would
 // shrink for exactly the frames where it reaches.
-const bounds = new THREE.Box3().setFromObject(doll);
+// **And measured on the body alone, never on the armour.** A helm stands proud
+// of the crown, so a bound taken over everything makes tier four a taller doll
+// — which the scale then shrinks back, and the hero loses half a head the
+// moment he puts a helmet on. It is the same failure `fh` exists to prevent
+// across sheets, arriving from inside one sheet instead. The plates are
+// excluded and the *character* fixes the scale, at every tier and at none.
+// **Every mesh counts, including the four tiers that are hidden.** The rule
+// has to be independent of which tier is showing, or the hero loses half a
+// head the moment he puts a helmet on — the same failure `fh` exists to
+// prevent across sheets, arriving from inside one sheet instead. Measuring
+// only the *untiered* meshes was the first attempt and it stopped working the
+// moment the outfits arrived: with the body replaced tier by tier, the one
+// untiered mesh left is a bare head, and a figure scaled to make a head 230
+// pixels tall is a giant. The union of all five is constant, which is the only
+// property that actually matters.
+// **The figure sets the scale, not what it carries.** A weapon is in the union
+// of meshes too, so a doll holding a spear measured taller than the same doll
+// holding a sword and was shrunk to compensate — the Druid stood a head shorter
+// than the Paladin for no reason but the length of his stick. Props are named
+// `T<n>_weapon` and `T<n>_shield` by tools/outfit.py; everything else is him.
+// **And the pack's helper sphere is not part of him either.** Every Quaternius
+// part file ships a 42-vertex `Icosphere` spanning -1..1 in the model's own
+// units. `tools/outfit.py` refuses to *wear* them and still one reaches the
+// GLB, so the union of meshes measures 2.81 units against a figure of 1.81 —
+// and every doll this project has baked came out at 64% of the height its
+// `--fh` asked for. Worse, by different amounts: a hood or a raised weapon
+// moves the top of the union, which is what made the Warlock a head shorter
+// than the Paladin beside him.
+//
+// Filtered here rather than only at build time because it fixes every GLB
+// already on disk, and because this is the line that actually cares — a doll's
+// height is the thing `fh` is defined against.
+const bounds = new THREE.Box3();
+// **Checked up the whole chain, not on the mesh alone.** GLTFLoader hangs the
+// mesh under a node that carries the name, so a spear arrives as a `T1_weapon`
+// group wrapping a mesh called something else entirely — and testing the mesh
+// let the Druid's spear back into the measurement, which is the same bug over
+// again with a different cause.
+const marked = (o) => /_weapon|_shield/i.test(o.name || '') || /^icosphere/i.test(o.name || '');
+const notHim = (o) => {
+  if (/^icosphere/i.test(o.geometry?.name || '')) return true;
+  if ((o.geometry?.attributes?.position?.count ?? 0) < 100) return true;
+  for (let n = o; n && n !== doll.parent; n = n.parent) if (marked(n)) return true;
+  return false;
+};
+doll.traverse((o) => { if (o.isMesh && !notHim(o)) bounds.expandByObject(o); });
+if (bounds.isEmpty()) doll.traverse((o) => { if (o.isMesh) bounds.expandByObject(o); });
+if (bounds.isEmpty()) bounds.setFromObject(doll);
 const height = bounds.max.y - bounds.min.y;
 const scale = 1 / height;                    // the doll is now exactly 1 unit tall
 doll.scale.setScalar(scale);
 doll.position.y = -bounds.min.y * scale;     // and standing on y = 0
 doll.rotation.y = YAW;
-window.__doll = doll; window.__scene = scene;
+window.__doll = doll; window.__scene = scene; window.__THREE_NS = THREE;
+window.__renderer = renderer; window.__camera = camera;
 if (SWORD) window.__sword = attachSword(doll);
 
 const mixer = motion ? new THREE.AnimationMixer(doll) : null;
@@ -342,7 +560,14 @@ if (mixer) {
   // A clip borrowed from another character is the opposite case: its positions
   // are in that character's proportions and would drag every joint somewhere
   // it does not belong, while its rotations carry over untouched.
-  const whole = FOREIGN != null ? !FOREIGN : carriesSkin;
+  // **A GLB skin never plays a clip whole, whoever authored it.** The two
+  // formats do not agree about units: FBXLoader keeps Mixamo's centimetres, so
+  // a hip track reads y = 100, while the GLB comes out of Blender in metres and
+  // stands 1.8 units tall. Played whole, the character's *own* idle throws him
+  // a hundred units into the air and the cell bakes empty — which is what it
+  // did, and which looks exactly like a load failure until the numbers are
+  // read. Rotations are unitless and carry over untouched.
+  const whole = GLB ? false : FOREIGN != null ? !FOREIGN : carriesSkin;
   window.__clip = whole ? motion.animations[0] : retarget(motion.animations[0]);
   const action = mixer.clipAction(window.__clip);
   // A one-shot sampled at its very end must hold there. The mixer's default is
@@ -364,8 +589,43 @@ ground.receiveShadow = true;
 scene.add(ground);
 scene.add(doll);
 
-Object.assign(key.shadow.camera, { left: -2, right: 2, top: 2, bottom: -2, near: 0.1, far: 20 });
+// **The frustum was four world units across a figure one unit tall**, so three
+// quarters of a 2048 map was spent on empty ground either side of him. Tightened
+// to the doll's own box, the same map lands about four times the texels on the
+// only thing that casts.
+Object.assign(key.shadow.camera, { left: -0.9, right: 0.9, top: 1.25, bottom: -0.35, near: 0.1, far: 20 });
+// Without a bias, a self-shadowing curved surface stipples: shoulders, thighs
+// and the crown of the helm came back speckled rather than shaded. `normalBias`
+// is the one that matters on curves; the depth bias only cleans up the rest.
+key.shadow.normalBias = 0.02;
+key.shadow.bias = -0.0004;
 key.shadow.camera.updateProjectionMatrix();
+
+/** A bone by either spelling — FBXLoader strips Mixamo's colon, glTF keeps it. */
+const boneOf = (n) => doll.getObjectByName(n) || doll.getObjectByName(n.replace(':', ''));
+
+/**
+ * Turn the head, after the clip has posed it and before the camera sees it.
+ *
+ * Split between neck and head so it reads as a look rather than a swivel, and
+ * applied on the *world* up axis: a bone's local axes are whatever Mixamo
+ * happened to export, and rotating on `y` in bone space tips the head sideways
+ * as often as it turns it. `rotateOnWorldAxis` does the parent maths.
+ *
+ * The mixer rewrites every bone each frame, so this has to be re-applied after
+ * `mixer.update` rather than set once.
+ */
+function turnHead(phase) {
+  if (!HEAD_TURN) return;
+  const yaw = (HEAD_TURN * Math.PI / 180) * Math.sin(phase * Math.PI * 2);
+  const up = new THREE.Vector3(0, 1, 0);
+  doll.updateMatrixWorld(true);
+  boneOf('mixamorig:Neck')?.rotateOnWorldAxis(up, yaw * 0.4);
+  boneOf('mixamorig:Head')?.rotateOnWorldAxis(up, yaw * 0.6);
+  // A shade of tilt with it. A head that turns on a perfectly level axis is
+  // the other kind of robot.
+  boneOf('mixamorig:Head')?.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), yaw * 0.12);
+}
 
 /**
  * Frame one cell of the strip.
@@ -392,11 +652,13 @@ function frame(i) {
   // A one-shot is sampled across its whole length, endpoints included, so the
   // strip shows the pose it settles into rather than stopping a frame short.
   if (mixer) {
-    const phase = AT != null ? AT
-      : LOOP ? i / STRIP
-        : i / Math.max(1, STRIP - 1);
+    const n = AT_OF || STRIP;
+    const at = AT_OFF + i;
+    const walk = LOOP ? at / n : at / Math.max(1, n - 1);
+    const phase = AT != null ? AT : P0 + (P1 - P0) * walk;
     mixer.setTime(0);
     mixer.update(phase * duration);
+    turnHead(phase);
   }
 
   renderer.setViewport((W / STRIP) * i, 0, W / STRIP, H);

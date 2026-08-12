@@ -44,11 +44,59 @@ export const CLASSES = [
       cleave: { sheet: 'art/warrior-cleave.png', cols: 2, rows: 5, frames: [0, 1] },
     },
     blurb: 'Walks in front and stays there.' },
+  // **`camp` is who stands at the fire**, and every class has one whether or not
+  // the road can be walked as them. The camp used to draw a body for the run's
+  // own hero and a patch of worn ground for everybody else, on the reasoning
+  // that a dim figure reads as somebody lurking rather than as an empty seat —
+  // which was right while the alternative was a *vector* stand-in. These are
+  // baked dolls from the same pipeline and the same lights as the hero, so the
+  // fire has four people at it and the plate below is what says which of them
+  // this run can be.
+  //
+  // One outfit each, so `rows: 1` — the five-row ladder is the warrior's
+  // armoury and nobody else has one. Two idle sheets each on the hero's
+  // three-loops-then-one cadence (`breakAt: 4`): standing is what they are
+  // doing, and the variation is the occasional thing that is not standing.
+  //
+  // **The standing idle has to be a standing idle.** Every clip in the library
+  // was tried against a contact sheet, one frame each, and it is not close:
+  // `Staff-Idle-02`, `Shield-Idle-01/02/03` and `Spell Casting` are all *braced*
+  // — feet wide, weight low, weapon across the body. They read as a fight about
+  // to start, which is why three passes of tuning the props kept making the
+  // camp worse. `paladin-Idle` is the one calm stand in the set and it is 1.97s,
+  // so 24 cells hold it whole. The braced clips become the variation, where
+  // being on guard for two seconds in ten is exactly right.
+  //
+  // **And `cols` is the clip's own length, not a round number.** A cell count
+  // is `seconds * 12`, so it differs per clip: `Staff-Idle-02` is 1.83s and
+  // takes 22, `Shield-Idle-01` is 2.53s and takes 30. Baking a fixed 24 of
+  // everything does not shorten a long clip, it speeds it up — 24 cells of a
+  // 9.3s idle is that idle at 4.7x, which is why these two were dancing. Built by:
+  //
+  //   blender --background --python tools/outfit.py -- --out art/armour/<k>.glb \
+  //     --parts <the kit's part names> --weapon <Model@length>
+  //   node tools/bake-doll.mjs --out art/<k>-camp.png --glb art/armour/<k>.glb \
+  //     --tiers 1 --clip "Great Sword Idle" --frames 24 --loop \
+  //     --fh 320 --cellw 640 --cellh 580 --alias Paladin
+  //
+  // `fh 320` rather than the knight's 210 because the camp draws a figure near
+  // 300 pixels tall and a sheet baked smaller than it is drawn is soft — and
+  // 320 is as far as it goes while 24 cells still fit inside the 16k texture
+  // width a browser will hold.
   { key: 'paladin', name: 'Paladin', sheet: 'art/Pixel-Paladin.png', ready: true,
+    camp: { a: { src: 'art/paladin-camp.png', cols: 24 },
+           b: { src: 'art/paladin-camp2.png', cols: 30 },
+           rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Holds the line and mends it.' },
   { key: 'warlock', name: 'Warlock', sheet: 'art/Pixel-Warlock.png',
+    camp: { a: { src: 'art/warlock-camp.png', cols: 24 },
+           b: { src: 'art/warlock-camp2.png', cols: 30 },
+           rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Spends life to spend the dead.' },
   { key: 'druid',   name: 'Druid',   sheet: 'art/Pixel-Druid.png',
+    camp: { a: { src: 'art/druid-camp.png', cols: 24 },
+           b: { src: 'art/druid-camp2.png', cols: 30 },
+           rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Brings the wood in with them.' },
 ];
 
@@ -131,7 +179,14 @@ export const ARMOR_PER_LEVEL =
  * reaches only that one. The first attempt sat in game.js and produced a hero
  * with two thousand points of health and a globe that read `1822/111`.
  */
-const DEV_HP = Number(new URLSearchParams(location.search).get('hp')) || 0;
+// Guarded because this runs headless too. `tools/sim.mjs` and
+// `tools/proc-math.mjs` import this module under node, where there is no
+// `location` at all — and a module-scope read of it does not fail politely, it
+// throws before a single line of the harness runs. The balance sim had been
+// dead on launch since this hook was added, which is a long time for the one
+// tool that says whether the numbers work.
+const DEV_HP = typeof location === 'undefined' ? 0
+  : Number(new URLSearchParams(location.search).get('hp')) || 0;
 
 export function heroStats(h, gear, perks, equipped) {
   const p = perks || {};

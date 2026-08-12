@@ -659,14 +659,14 @@
       <div class="row">
         <i class="mark" style="background: var(--rough)"></i>
         <div class="part">Camps<small>art/camp-*.png</small></div>
-        <div class="what">The scene between the title and the first step. Two of six exist; the other four show the boneyard, and only after the image decodes — set early it blanks the panel.</div>
-        <div class="ev">camp-town · camp-boneyard</div>
+        <div class="what">The scene between the title and the first step. <b>Rendered now, not painted</b> — <code>tools/bake-camp.py</code> builds the set at the game's own metres-per-pixel, so the figure multiplier is an input to the camera rather than something a painting has to be magnified to match. Four plates: the set with the fire out, and three with the fire alone, added at runtime so the light moves. camp-wood is the fallback for every area without one.</div>
+        <div class="ev">camp-wood (rendered, 4 plates) · camp-town (painted) · camp-boneyard (painted, unused)</div>
       </div>
       <div class="row">
         <i class="mark" style="background: var(--forged)"></i>
         <div class="part">Doll baker<small>tools/bake-doll.mjs · doll.html</small></div>
-        <div class="what">A Mixamo character rendered offline from the same side-on camera the game draws in, out as an ordinary sprite sheet with real alpha. Resolves clip files off disk under four naming conventions.</div>
-        <div class="ev">--clip · --pose · --light<br>--sword · --clay · --alias</div>
+        <div class="what">A Mixamo character rendered offline from the same side-on camera the game draws in, out as an ordinary sprite sheet with real alpha. Resolves clip files off disk under five naming conventions, case-insensitively. <b>ACES tone mapping, a painted environment map, 2x supersampling and a shadow frustum sized to the doll</b> — all four were missing and all four are bake-side. A strip is chunked to fit the 16,384px canvas limit, and the chunks carry their own phase window.</div>
+        <div class="ev">--clip · --pose · --seg · --light · --yaw<br>--ss · --from/--to · --tone · --sword · --clay · --alias</div>
       </div>
       <div class="row">
         <i class="mark" style="background: var(--forged)"></i>
@@ -1008,7 +1008,95 @@
         tiles, up from 0.011 — measure this way, not by headless rAF, which
         reported 93ms of pure throttling.
       </p>
-      <h3>Phase 3 — Blender joins the toolchain, and the armoury comes back</h3>
+      <h3>Phase 3 — Blender joins the toolchain, and the armoury comes back
+        — done and in the game, 11 Aug</h3>
+      <p><b>The three commands that make the hero, recorded because the
+        Paladin's were not.</b> Re-running these reproduces exactly what ships;
+        the last session's sheets could not be reproduced at all, which is what
+        made changing them a risk rather than a chore.</p>
+      <pre><code>blender --background --python tools/outfit.py -- --out art/armour/knight.glb
+
+node tools/bake-doll.mjs --out art/knight-walk.png --glb art/armour/knight.glb \
+  --tiers 5 --sword --light 1.35 --seg "Run With Sword:10:loop" --seg "Dying:6"
+
+node tools/bake-doll.mjs --out art/knight-combat.png --glb art/armour/knight.glb \
+  --tiers 5 --sword --light 1.35 --pose "Idle@0" \
+  --pose "Stable Sword Outward Slash@0.45" --pose "Stable Sword Inward Slash@0.45" \
+  --pose "Getting-Hit@0.3"</code></pre>
+      <p><b>Where it stands.</b> Blender 4.5 is installed and headless,
+        <code>tools/armour.py</code> builds five outfits and skins them by Data
+        Transfer, <code>tools/doll.html</code> takes <code>?glb=</code> and
+        <code>?tier=</code>, and <code>tools/bake-doll.mjs --glb … --tiers 5</code>
+        bakes a five-row sheet. Proven on both X Bot and the Paladin — the
+        Paladin keeps his own sword and shield — and the five rungs are
+        distinguishable at <code>h=56</code> on the road.
+        <b>It is wired: the hero is the knight, and his armour changes with
+        what he wears.</b> Verified in the running game — both sheets load,
+        <code>wornTier</code> reads 5 on gold gear, and the figure on the road
+        changes between rungs.
+        The plan said this phase needed no runtime change because
+        <code>tiered: true</code> and <code>row = wornTier − 1</code> already
+        ship. That is true of the <em>painted</em> warrior and false of the
+        route the game actually draws: <code>DOLL_ART</code> in js/render.js
+        carries <code>rows: 1, row: 0</code> and merges that <code>row: 0</code>
+        over the <code>row: wornTier(S.equipped) − 1</code> that js/game.js:778
+        already computes. So the wiring is three fields, not none — and it
+        means re-baking the Paladin's shipped sheets with five rows, whose
+        original bake commands are recorded nowhere. Record them this time.</p>
+      <p><b>The plates were abandoned for a kit, and that is the bigger
+        decision here.</b> Generated cylinders read at road size and read as
+        grey boxes anywhere larger, so phase 3 now runs on Quaternius' Modular
+        Character Outfits — Fantasy (CC0, bought, in the repo root) through
+        <code>tools/outfit.py</code>. Five outfits <em>replace</em> the body
+        rather than dressing it, which is the tier ladder, and the kit's own
+        readme says to keep only the head. Its rig is Unreal-named and T-posed
+        and maps 1:1 onto <code>mixamorig</code> — but <b>renaming the bones is
+        not enough: the names match and the rolls do not</b>, so the first
+        clip's hip rotation lays every tier flat while the bind pose stands
+        perfectly upright. That is the tell. The fix is to throw the kit's rig
+        away and bind the outfit meshes to the real Mixamo skeleton with the
+        same Data Transfer weights, after which every existing clip drives them
+        untouched. Two measurements were load-bearing: each part file ships a
+        42-vertex <code>Icosphere</code> helper spanning z −1…1 that inflates
+        the kit's measured height to 2.84 and shrinks every outfit by a third
+        (the symptom is boots weighted to <code>UpLeg</code>), and the body
+        must be chosen by how many bones it reaches, never by vertex count.
+        The head comes from the free Universal Base Characters pack (also in
+        the repo root, also CC0): everything below the neck is deleted and the
+        head goes through the <em>same</em> fit as the outfits, which is the
+        only way it lands on the right shoulders. The hands never needed
+        anything — they are the kit's own, painted by the kit's own material.
+        With the body replaced tier by tier, the doll's ruler had to change
+        too: <code>tools/doll.html</code> now measures the figure from the
+        union of <em>all</em> meshes, hidden tiers included, because that is
+        the only measurement that does not move when a helmet appears.</p>
+
+      <p><b>What phase 3 does not know yet, and it is the lore's doing.</b>
+        <code>LORE.md</code> arrived after this was built and contradicts two
+        choices in it. The tier-5 horns read demonic on a light-ordained guard
+        — they belong to the Nephilim. And the ladder (peasant → ranger →
+        noble → mail → plate) is merchant progression, not an order of light;
+        tier 1 should be an initiate. Bigger: every class has a skill tree with
+        <b>Light, Hybrid and Evil</b> branches, so a hero is a branch
+        <em>and</em> a tier — fifteen outfits per class, not five. The sheets
+        already carry the cheap axis, so <b>a branch is a sheet and a row is
+        still a tier</b>: <code>DOLL_ART</code> becomes three entries,
+        <code>row = wornTier − 1</code> never changes, and the cost is three
+        bakes per class. Do not bake them yet: nothing in <code>js/</code>
+        records which branch a hero took, so there is no state to choose a
+        sheet with. Order of work — move the horns off Light tier 5, add the
+        branch to state behind a <code>?branch=</code> flag, then bake the
+        three branches alongside phase 4 so the palettes are chosen once,
+        against the road.</p>
+      <p><b>Two traps the first bakes walked into, both silent.</b> An FBX clip's
+        position tracks are in Mixamo's centimetres and a Blender GLB is in
+        metres, so a character playing his <em>own</em> idle whole is thrown a
+        hundred units into the air and the cell bakes empty — a GLB skin plays
+        rotations-only whoever authored the clip. And a PMREM environment built
+        from a 1-pixel-wide equirect makes every later draw call return
+        <code>GL_INVALID_OPERATION</code>: the canvas is blank while
+        <code>renderer.info</code> still reports 23 calls and 99,922 triangles.
+        Check <code>gl.getError()</code> before suspecting the camera.</p>
       <p>
         Blender runs headless — <code>blender --background --python</code>, the
         same shape as every baker here — and does the three jobs Mixamo cannot.
@@ -1040,7 +1128,19 @@
       some characters have broken bind poses — check <code>clip=none</code>
       first. One-shots already clamp; keep <code>fh</code> constant per class
       across every sheet or the hero changes height when he changes state.</p>
-      <h3>Phase 4 — one light, one palette: the direction refresh</h3>
+      <h3>Phase 4 — one light, one palette: the direction refresh
+        — the bake half done, 11 Aug</h3>
+      <p><b>Done:</b> the ground lies on the tile grid (<code>fillIso</code>),
+        the verge has height and pools, <code>?grid</code> and
+        <code>?grid=over</code> exist to judge against, the hero carries real
+        weapons per tier, and the bake now takes <code>--key</code> and
+        <code>--posterize</code> — a warmed key and a canvas quantise, exactly
+        where the direction below says they belong. Settings recorded in
+        ART-BRIEF.md §1c, including that posterize 6 is too coarse and 10 is
+        the number. <b>Not done, and it needs new painted art rather than
+        code:</b> the grove, gate and crypt sets to match the town's seven, the
+        four missing camps, and non-directional ground textures to replace the
+        ploughed-looking grain the iso fill exposed.</p>
       <p>
         The dolls read as figures but not yet as <em>this world's</em> figures.
         The fix is in the bake, where it costs nothing at runtime: key light
@@ -1060,7 +1160,18 @@
       never approve art from a 320px cell. Record the chosen
       <code>--light</code> and posterize per character in ART-BRIEF.md, or the
       look stops being reproducible.</p>
-      <h3>Phase 5 — deferred: the live hero</h3>
+      <h3>Phase 5 — deferred: the live hero — recommend closing it unbuilt</h3>
+      <p><b>The condition for deciding has been met: phase 3 has been seen on
+        the road, and it answers the question phase 5 was asked to answer.</b>
+        Five tiers of armour and five weapons read at 56 pixels, driven by
+        <code>row = wornTier − 1</code> with no runtime 3D at all. What phase 5
+        would add over that is *per-slot* truth — a gold gauntlet on a leather
+        chest — and the kit that arrived makes even that reachable in the bake,
+        since its parts are modular per slot: a handful of mixed sets is a
+        `TIERS` edit, not a renderer. Against which phase 5 costs the project
+        its first runtime 3D dependency and has to thread a WebGL canvas
+        through <code>drawDepthPass</code> as a sprite. <b>Recommend it stays
+        unbuilt until something is actually blocked by sheets.</b></p>
       <p>
         True per-slot mix-and-match — a gold gauntlet on a leather chest,
         visible — means rendering the hero from meshes at runtime instead of
@@ -1109,6 +1220,32 @@
         <li>The animation mixer's default loop <b>wraps at exactly
         t = duration</b> — doll.html clamps one-shots for this; keep it, or
         every death bakes a corpse that stands back up in its last cell.</li>
+        <li><b>A doll is sized by the union of its meshes, so anything in that
+        union that is not the doll shrinks him.</b> Two things were: the
+        Quaternius packs' 42-vertex <code>Icosphere</code> helper, which spans
+        z&nbsp;-1..1 and reached the GLB even though <code>import_parts</code>
+        refuses to wear it; and whatever the character is <em>carrying</em>. So
+        every doll this project ever baked came out at 64% of the height its
+        <code>--fh</code> asked for, and by different amounts — a hood or a long
+        spear moves the top of the union, which is why the Druid stood a head
+        shorter than the Paladin beside him. Filtered in doll.html, at the line
+        that actually cares.</li>
+        <li><b>A cell count is a duration.</b> A sheet is
+        <code>seconds x fps</code> cells wide, so <code>--frames 24</code> does
+        not shorten a long clip, it speeds it up: 24 cells of a 9.3-second idle
+        is that idle at 4.7x, which reads as dancing. Anything over ~3.5s cannot
+        fit at all at 350px a cell — use <code>--from/--to</code> to take a
+        window at the honest rate.</li>
+        <li><b>Data Transfer gives a vertex the weights of the nearest
+        surface</b>, so a sleeve that falls over the hand inherits the
+        <em>fingers</em> and is torn into claws the moment the hand closes.
+        There is no fix short of a different mesh. It is specifically cuffs over
+        hands; long robes are fine, because a leg is one bone.</li>
+        <li><b>Texture resolution is not the bottleneck and 4K is invisible
+        here.</b> Measured: the same character baked at 512 and at 2048 is
+        indistinguishable at the size the game draws him. Polycount is free —
+        the renderer is offline — so buy dense meshes and small maps, which is
+        the opposite of the usual advice.</li>
       </ol>
 
     </div>

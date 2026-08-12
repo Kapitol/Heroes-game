@@ -3,6 +3,8 @@
 //   node tools/bake-doll.mjs --out art/xbot-walk.png --clip "Run With Sword" --frames 10 --loop
 //   node tools/bake-doll.mjs --out art/xbot-combat.png \
 //     --pose "Idle@0" --pose "Stable Sword Outward Slash@0.45"
+//   node tools/bake-doll.mjs --out art/warrior-doll-walk.png --glb art/armour/warrior.glb \
+//     --tiers 5 --clip "Walking-02" --frames 4 --loop
 //
 // This is the other half of the question `tools/doll.html` was built to ask.
 // That page proved a 3D figure reads better than the paperdoll assembles; this
@@ -34,11 +36,30 @@ const all = (k) => argv.reduce((a, v, i) => (v === `--${k}` ? [...a, argv[i + 1]
 const has = (k) => argv.includes(`--${k}`);
 
 const char = String(opt('char', 'X Bot'));
+// **The armoured character, and how many rungs of him to bake.** `--glb` is a
+// file from `tools/armour.py` — the same skeleton with five outfits skinned to
+// it — and `--tiers 5` bakes the strip once per outfit, stacked into five rows.
+// That shape is not a new idea: `tiered: true` and `row = wornTier - 1` already
+// ship in js/entities.js and js/render.js for the painted warrior, so five rows
+// out of here are five rows the game plays today with no runtime change at all.
+const glb = opt('glb', null);
+const tiers = Number(opt('tiers', 0));
 const out = String(opt('out', ''));
 const clip = opt('clip', null);
 const poses = all('pose');
 const frames = Number(opt('frames', 8));
 const loop = has('loop');
+// **A window of a clip, in phase.** Mixamo's idles are not all two seconds:
+// `staff-Idle-01` is 9.33s and `Shield-Idle-02` is 8.67s, and a sheet holding
+// one whole at 12fps would be 112 cells — 39,000 pixels wide, twice what a
+// browser will hold as a texture. Baking 24 cells of it instead does not make
+// it shorter, it makes it *faster*: the same nine seconds of movement played in
+// two, which is why the Warlock and the Druid came out dancing rather than
+// waiting. So a long clip is cut down to the part worth showing, at the right
+// speed, and the arithmetic stays honest — `frames` is still `seconds * fps` of
+// whatever window is asked for.
+const from = Number(opt('from', 0));
+const to = Number(opt('to', 1));
 // X Bot's texture map is not embedded in the copy we have, so his own material
 // bakes out a flat red. `--clay` is the neutral maquette the comparison sheet
 // used, and for this character it is the honest look rather than a stylisation.
@@ -50,11 +71,47 @@ const sword = has('sword');
 // See LIGHT in tools/doll.html: characters do not arrive at a common
 // brightness and a sheet baked dark cannot be brightened later.
 const light = Number(opt('light', 1));
+// Phase 4: the key light's colour, and how hard the shading is stepped.
+// `--key '#ffe0b0'` warms the figure to a biome; `--posterize 6` quantises each
+// channel to six levels so the shading steps like paint instead of ramping like
+// plastic. Both are bake-side by design — nothing at runtime learns about them.
+const keyColour = opt('key', null);
+const posterize = Number(opt('posterize', 0));
+// Peak degrees of head turn baked into the loop — see HEAD_TURN in doll.html.
+const headTurn = Number(opt('headturn', 0));
+// Degrees to turn the doll away from the strict side view. The road needs a
+// profile it can mirror for facing; a portrait does not, and three-quarters is
+// how a character is shown when he is being *looked at* rather than followed.
+const yaw = Number(opt('yaw', 0));
 // The cell is generous on purpose. A slash reaches well past the silhouette of
 // a standing figure, and a cell that fits the idle clips the swing — which is
 // invisible in the sheet and obvious in the game. `sliceGrid` trims the slack
 // back off, so the only cost of headroom is file size.
-const CELL_W = Number(opt('cellw', 320));
+//
+// **320 was sized for a hero holding a sword built out of primitives.** Since
+// `tools/outfit.py` started hanging real weapons off the hand, a two-handed
+// blade at full extension runs off the right-hand edge and the bake quietly
+// ships a cropped sword. 420 clears the longest weapon in the pack with room
+// to spare, and costs nothing but bytes.
+// **Supersampling, because there is no other anti-aliasing in this pipeline.**
+// The page renders at `setPixelRatio(1)` with driver MSAA and the composite
+// copies pixel for pixel, so a cell is exactly as many samples as it is pixels
+// — and the camp then draws that sheet at about twice its baked size on a
+// retina display. Rendering each cell `ss` times larger and averaging it down
+// on the way into the sheet is true SSAA: it costs bake time and nothing else,
+// it cleans the silhouette and the specular sparkle on plate together, and it
+// leaves the sheet exactly the size it was.
+const SS = Math.max(1, Number(opt('ss', 2)));
+// **A supersampled strip has to fit in a canvas.** The page renders a whole
+// strip into one drawing buffer, so its width is `cellw * ss * frames` — and at
+// `ss 2` a 24-frame strip of 350px cells is 16,800 wide, past the 16,384 a
+// browser will hold. It does not fail loudly: the buffer is clamped and the
+// *last* cell comes back a sliver, which slices into a sheet whose final frame
+// has a content box a sixth of the width of the others, whose footprint anchor
+// is therefore somewhere else entirely, and whose hero visibly stands beside
+// his own selection ring one frame in twenty-four. Chunk the strip instead.
+const MAX_BUF = 16384;
+const CELL_W = Number(opt('cellw', 420));
 const CELL_H = Number(opt('cellh', 380));
 const FH = Number(opt('fh', 230));       // bind-pose height in pixels
 const BY = Number(opt('by', 0.88));      // ground line within the cell
@@ -81,7 +138,9 @@ function findSkin() {
   if (!paired) throw new Error(`no mesh file for "${char}" in art/mixamo/`);
   return paired.replace(/\.fbx$/, '');
 }
-const skin = findSkin();
+// A GLB carries its own mesh, so there is no FBX skin to go looking for — and
+// asking for one would fail for a character who only ever existed as a build.
+const skin = glb ? null : findSkin();
 // An alias for downloads named by hand rather than by Mixamo — `paladin-Idle`
 // alongside `Paladin WProp J Nordstrom@Great Sword Casting`.
 const alias = String(opt('alias', char));
@@ -106,72 +165,172 @@ function findClip(name) {
   // dresses anyone. This is how the Paladin dies with Warrok's Dying.
   const any = [...files].find((f) => f.endsWith(`@${name}.fbx`) || f.endsWith(`-${name}.fbx`));
   if (any) return any.replace(/\.fbx$/, '');
+  // **And once more without caring about case.** Mixamo names a download after
+  // the animation, but a file renamed by hand is named by a person — and one of
+  // three otherwise identical clips arrived as `staff-Idle-01.fbx` against its
+  // siblings' `Staff-`. A missing clip stops the bake with a list of five names
+  // it tried, all of which look right, which is a bad ten minutes.
+  const lower = name.toLowerCase();
+  const loose = [...files].find((f) => {
+    const stem = f.replace(/\.fbx$/, '').toLowerCase();
+    return stem === lower || stem.endsWith(`@${lower}`) || stem.endsWith(`-${lower}`);
+  });
+  if (loose) return loose.replace(/\.fbx$/, '');
   throw new Error(`no file for clip "${name}" (tried ${tries.filter(Boolean).join(', ')}, and no other character has it)`);
 }
 
-if (!out || (!clip && !poses.length)) {
-  console.error('usage: node tools/bake-doll.mjs --out sheet.png (--clip NAME --frames N [--loop] | --pose "NAME@phase" ...)');
+if (!out || (!clip && !poses.length && !argv.includes('--seg'))) {
+  console.error('usage: node tools/bake-doll.mjs --out sheet.png (--clip NAME --frames N [--loop] | --seg "NAME:N[:loop]" ... | --pose "NAME@phase" ...)');
   process.exit(1);
+}
+
+/**
+ * Split one strip into as many shots as the buffer limit needs.
+ *
+ * The cells are identical either way — a strip is only a way of taking several
+ * frames in one page load — so this changes nothing but how many shots are
+ * taken. `at`/`of` carry the frame's place in the whole clip, so a chunked
+ * strip samples the same phases the unchunked one would.
+ */
+function chunked(shot) {
+  const per = Math.max(1, Math.floor(MAX_BUF / (CELL_W * SS)));
+  if (shot.strip <= per) return [shot];
+  const out = [];
+  for (let i = 0; i < shot.strip; i += per)
+    out.push({ ...shot, strip: Math.min(per, shot.strip - i), at: i, of: shot.strip });
+  return out;
 }
 
 /** One cell's URL. `p` pins a phase; without it the strip walks the clip. */
 const url = (o) => {
   const q = new URLSearchParams({
-    shot: '1', char, w: String(CELL_W * (o.strip || 1)), h: String(CELL_H),
-    fh: String(FH), by: String(BY), bg: 'none', strip: String(o.strip || 1),
-    clip: o.clip, clipfile: findClip(o.clip), skin, motion: motionChar,
+    shot: '1', char, w: String(CELL_W * SS * (o.strip || 1)), h: String(CELL_H * SS),
+    fh: String(FH * SS), by: String(BY), bg: 'none', strip: String(o.strip || 1),
+    clip: o.clip, clipfile: findClip(o.clip), skin: skin || '', motion: motionChar,
     // Authored for this character, or borrowed? Borrowed plays rotations-only.
     foreign: (() => {
       const f = findClip(o.clip);
       return f === `${char}@${o.clip}` || f === `${alias}-${o.clip}` ? '0' : '1';
     })(),
   });
+  // A chunked strip has to sample the phases it would have sampled whole.
+  if (o.of) { q.set('at', String(o.at)); q.set('of', String(o.of)); }
+  if (from !== 0 || to !== 1) { q.set('p0', String(from)); q.set('p1', String(to)); }
   if (o.p != null) q.set('p', String(o.p));
+  if (glb) q.set('glb', String(glb));
+  if (o.tier) q.set('tier', String(o.tier));
   if (clay) q.set('clay', '1');
   if (sword) q.set('sword', '1');
   if (light !== 1) q.set('light', String(light));
+  if (keyColour) q.set('key', String(keyColour));
+  if (headTurn) q.set('headturn', String(headTurn));
+  if (yaw) q.set('yaw', String(yaw));
   if (o.loop) q.set('loop', '1');
   return `${BASE}/tools/doll.html?${q}`;
 };
 
-const shots = clip
-  ? [{ clip: String(clip), strip: frames, loop }]
+// **A row made of several clips, laid end to end.** `art/paladin-walk.png` is
+// ten strides followed by six frames of a collapse, in one row, because
+// `js/render.js` indexes `walk` and `death` as columns of a single sheet. One
+// `--clip` cannot say that and sixteen `--pose` flags say it at sixteen page
+// loads instead of two, so a segment is a clip plus how many frames of it:
+//
+//   --seg "Run With Sword:10:loop" --seg "Dying:6"
+const segs = all('seg').map((s) => {
+  const [name, n, mode] = String(s).split(':');
+  return { clip: name, strip: Number(n), loop: mode === 'loop' };
+});
+
+const shots = segs.length ? segs : clip
+  ? chunked({ clip: String(clip), strip: frames, loop })
   : poses.map((spec) => {
     const at = spec.lastIndexOf('@');
     return { clip: spec.slice(0, at), p: Number(spec.slice(at + 1)), strip: 1 };
   });
 
+// One row per armour tier, in the order the runtime indexes them: tier 1 is
+// row 0. Without `--tiers` there is a single row and nothing about the sheet
+// changes, which is what keeps every existing bake command working untouched.
+const rowTiers = tiers ? Array.from({ length: tiers }, (_, i) => i + 1) : [0];
+
 const png = await withPage(async (page) => {
-  const parts = [];
-  for (const s of shots) {
-    const errs = [];
-    page.on('pageerror', (e) => errs.push(String(e)));
-    await page.goto(url(s), { waitUntil: 'networkidle0' });
-    try {
-      await page.waitForSelector('body[data-ready]', { timeout: 60000 });
-    } catch {
-      throw new Error(`${s.clip} never became ready\n${errs.join('\n')}`);
+  const rows = [];
+  for (const tier of rowTiers) {
+    const parts = [];
+    for (const s of shots) {
+      const errs = [];
+      page.on('pageerror', (e) => errs.push(String(e)));
+      await page.goto(url({ ...s, tier }), { waitUntil: 'networkidle0' });
+      try {
+        await page.waitForSelector('body[data-ready]', { timeout: 60000 });
+      } catch {
+        throw new Error(`${s.clip}${tier ? ` (tier ${tier})` : ''} never became ready\n${errs.join('\n')}`);
+      }
+      parts.push(await page.evaluate(() => document.querySelector('canvas').toDataURL('image/png')));
     }
-    parts.push(await page.evaluate(() => document.querySelector('canvas').toDataURL('image/png')));
+    rows.push(parts);
   }
 
   // Composed in the page because node has no image decoder and the browser is
   // already open. A strip shot arrives as one image of many cells and drops in
   // whole; separate poses arrive one cell each and are laid side by side.
-  return page.evaluate(async (parts, cellW, cellH) => {
-    const imgs = await Promise.all(parts.map((src) => new Promise((res) => {
+  //
+  // Rows are stacked in the same grid `Atlas.sheet` slices, so a tiered sheet
+  // is a plain sheet with more rows — `sliceGrid` needs telling nothing new.
+  return page.evaluate(async (rows, cellW, cellH, levels, ss) => {
+    const load = (src) => new Promise((res) => {
       const im = new Image(); im.onload = () => res(im); im.src = src;
-    })));
-    const width = imgs.reduce((a, i) => a + i.width, 0);
+    });
+    const grid = await Promise.all(rows.map((r) => Promise.all(r.map(load))));
+    // Every shot came back `ss` times oversized; the sheet is the intended size
+    // and the averaging happens here, once, on the way in.
+    const width = Math.max(...grid.map((r) => r.reduce((a, i) => a + i.width / ss, 0)));
     const c = document.createElement('canvas');
-    c.width = width; c.height = cellH;
+    c.width = Math.round(width); c.height = cellH * grid.length;
     const x = c.getContext('2d');
-    let at = 0;
-    for (const im of imgs) { x.drawImage(im, at, 0); at += im.width; }
+    x.imageSmoothingEnabled = true;
+    x.imageSmoothingQuality = 'high';
+    grid.forEach((row, r) => {
+      let at = 0;
+      for (const im of row) {
+        const w = im.width / ss;
+        x.drawImage(im, at, r * cellH, w, cellH);
+        at += w;
+      }
+    });
+
+    // **Clean the resample halo before anything measures this sheet.**
+    // Averaging `ss x ss` samples spreads a trace of alpha into pixels that
+    // were empty — a value of 1 or 2 out of 255, invisible to the eye and
+    // entirely visible to `sliceGrid`, which trims each cell to whatever is
+    // not transparent. The first supersampled bake moved the hero's footprint
+    // anchor sideways and he stood beside his own selection ring. Anything this
+    // faint is resampler noise, not silhouette.
+    if (ss > 1) {
+      const img = x.getImageData(0, 0, c.width, c.height);
+      const d = img.data;
+      for (let i = 3; i < d.length; i += 4) if (d[i] < 8) d[i] = 0;
+      x.putImageData(img, 0, 0);
+    }
+
+    // **Posterize is a canvas pass over the finished sheet, not a shader.**
+    // Quantising in the material would fight the lighting per-fragment and
+    // change with every light added later; doing it here means the step count
+    // is a property of the *sheet*, which is the thing being art-directed.
+    // Alpha is left alone — stepping it would tear the silhouette's edge.
+    if (levels > 1) {
+      const img = x.getImageData(0, 0, c.width, c.height);
+      const d = img.data, q = levels - 1;
+      for (let i = 0; i < d.length; i += 4) {
+        if (!d[i + 3]) continue;
+        for (let k = 0; k < 3; k++) d[i + k] = Math.round(Math.round(d[i + k] / 255 * q) / q * 255);
+      }
+      x.putImageData(img, 0, 0);
+    }
     return c.toDataURL('image/png').split(',')[1];
-  }, parts, CELL_W, CELL_H);
+  }, rows, CELL_W, CELL_H, posterize, SS);
 });
 
 writeFileSync(out, Buffer.from(png, 'base64'));
-const cols = clip ? frames : poses.length;
-console.log(`${out}  ${cols} cells, ${CELL_W}x${CELL_H} each`);
+const cols = shots.reduce((a, s) => a + (s.strip || 1), 0);
+console.log(`${out}  ${cols} cells x ${rowTiers.length} row${rowTiers.length > 1 ? 's' : ''}, ${CELL_W}x${CELL_H} each`);

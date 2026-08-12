@@ -102,9 +102,135 @@ No objects, no plants, no rocks large enough to notice, no focal point of
 any kind — anything an eye can land on becomes a visible grid when this
 repeats. No text. No vignette, no corner darkening, no lighting gradient,
 no shadows. Uniform brightness across the whole image.
+
+NO DIRECTIONAL GRAIN. No furrows, ploughlines, brush strokes, plank
+seams, wood grain, combed sand, tyre tracks or any other detail that
+runs one way rather than another. The texture must look the same when
+turned ninety degrees.
 ```
 
 Verge and path need different flavour lines — see the table below.
+
+**Why the grain rule is not a preference.** The ground is laid through the
+isometric basis (`fillIso` in js/render.js), so the texture's own axes lie
+along the tile grid instead of along the screen. That is correct — a floor
+material should sit on the floor — but it means any directional detail inside
+the picture now runs diagonally down the screen along the lattice. The current
+`grass-town.png` has a faint plough grain that was invisible while the fill was
+screen-aligned, and the moment the ground was put on the grid the whole verge
+read as a ploughed field. Anything with a direction in it will do the same.
+Test before accepting: turn the image ninety degrees and look again. If you can
+tell, it will show.
+
+### 1b. Hollow fill — water and lava
+
+The verge has height now (`heightAt` in js/world.js), and the hollows it makes
+are filled by `featureAt` with a biome's `water` key — still water on the
+outdoor stretches, lava in the inferno. **Today these are drawn procedurally**:
+a vertical gradient per tile and a bright rim where the surface meets its bank.
+That is a placeholder good enough to judge placement and bad enough to replace.
+
+When it is replaced, they are ground textures under all the rules above, plus:
+
+```
+A seamless repeating top-down texture of FLAVOUR. Photographic detail,
+evenly lit from directly above, completely flat with no depth.
+
+No reflections of anything — no sky, no trees, no shoreline. A reflection
+is a direction, and this tiles in every direction. No shoreline, no bank,
+no edge of any kind: the engine cuts the shape and draws its own rim.
+```
+
+- **water** — dark still water, faint silt suspended in it, no ripples large
+  enough to read as a single wave
+- **lava** — cracked black basalt crust with molten orange in the fissures, the
+  crust dominant and the glow only in the cracks
+
+### 1c. Doll bake settings — the look, recorded
+
+**The hero is not requested, he is built**, so his "brief" is a command line.
+Recorded here because the last set was not, and re-baking the Paladin's sheets
+became a risk rather than a chore.
+
+```bash
+blender --background --python tools/outfit.py -- --out art/armour/knight.glb
+
+node tools/bake-doll.mjs --out art/knight-combat.png --glb art/armour/knight.glb \
+  --tiers 5 --key '#ffe6bd' --posterize 10 --light 1.35 \
+  --pose "Idle@0" --pose "Stable Sword Outward Slash@0.45" \
+  --pose "Stable Sword Inward Slash@0.45" --pose "Getting-Hit@0.3"
+
+node tools/bake-doll.mjs --out art/knight-walk.png --glb art/armour/knight.glb \
+  --tiers 5 --key '#ffe6bd' --posterize 10 --light 1.35 \
+  --seg "Run With Sword:10:loop" --seg "Dying:6"
+```
+
+| setting | value | why |
+|---|---|---|
+| `--key` | `#ffe6bd` | the key warmed towards the town's daylight; a figure lit by neutral white belongs to no biome |
+| `--posterize` | `10` | shading steps like paint rather than ramping like plastic. **6 was tried and is too coarse** — it mottles the armour and muddies the colour |
+| `--light` | `1.35` | these outfits are darker than X Bot's clay; a sheet baked dark cannot be brightened later |
+| `--cellw` | `420` (default) | 320 was sized for a primitive sword and crops a real greatsword |
+| `fh` | `230` (default) | crown-to-sole in pixels — **must not change between a class's sheets** or the hero changes height when he changes state |
+
+Judge at `h=56` over a road screenshot, never from a 320px cell.
+
+### 1d. Rendered scenery — `props-trees.png`
+
+Not generated: **rendered**, by `tools/bake-trees.py`, from the dead trees in
+Quaternius' stylized tree pack. Twenty of them — `DeadTree_1–10` and
+`DeadBirch_1–10` — in one 5×4 sheet, shot at the road's own projection so a
+tree stands at the same angle as the ground under it. Nothing with leaves on
+it: the road starts outside a town and works its way underground.
+
+```bash
+blender --background --python tools/bake-trees.py -- --out art/props-trees.png
+```
+
+**Outstanding: the pack's `Textures` folder is not on disk.** Only `FBX` was
+downloaded, so every model arrives on a default grey material and the first
+sheet came back looking bleached — bright branches against a tan verge, more
+skeleton than wood. There is a dark bark colour standing in for it, applied in
+the bake to any model that brought no maps, and it is a stopgap.
+
+- **First choice: download the pack's own `Textures` folder** beside the FBX.
+  The bake already skips its stand-in for any model that carries maps, so the
+  textures take effect with no code change.
+- **If they are ever generated instead**, bark is a ground texture under all
+  the §1 rules — seamless, flat, evenly lit, and with **no directional grain**,
+  which for bark means no single run of vertical striation strong enough to
+  read as a direction when it tiles.
+
+### 1e. Camp backdrop, re-framed — `camp-<area>.png`
+
+**The current one is painted too wide for the figures standing in it.**
+Measured off `camp-boneyard.png` at 1536×1024: a cart wheel is ~95px for a
+~1.2m wheel and a headstone ~80px for ~0.95m, so the set runs about **85px to
+the metre** and a 1.8m man should stand ~155px tall in it. The camp draws the
+hero at 575px on a 1316px viewport. Filling the screen with the painting and
+zooming it to 175% closes most of that, but matching exactly would need 330% —
+a 1536px image magnified nearly four times, which crops the tent and the cart
+out of frame and turns the brushwork to porridge.
+
+So the next one is painted for the shot the game actually takes:
+
+```
+A dark fantasy graveyard clearing at night, painted in oils. A ring of bare
+firelit ground in the centre, wide enough for four figures to stand around
+it. Headstones, a ruined stone arch and a collapsed cart at the edges of the
+light. Deep night sky above with a suggestion of cloud.
+
+Framed as a stage: the clearing fills the lower two thirds, the horizon sits
+high, and there is nothing important in the outer eighth of the frame — it
+will be cropped. No people, no animals, no fire itself: the fire and the
+figures are drawn by the engine on top.
+```
+
+- **2560×1440 or larger.** It is displayed full-bleed on a desktop viewport;
+  the current 1536px is already being magnified before anything is cropped.
+- **Scale it for a two-metre figure standing at the fire**, which means
+  headstones about a third of a man's height and the arch about twice it.
+  Everything else follows from that one relationship.
 
 ### 2. Prop sheet — `props-<area>.png` — **4 columns × 3 rows**
 

@@ -4,7 +4,7 @@ import { heroStats } from './entities.js';
 import { levelFor, levelAt, LEVELS } from './world.js';
 import { SKILLS, skillById, PERKS, MAX_SKILLS, iconOpts, TIER_BANDS } from './perks.js';
 import * as Atlas from './atlas.js';
-import { heroKit, drawActor, drawShadow, drawCampfire,
+import { heroKit, drawActor, drawCampfire,
          drawCookpot, kitFor } from './sprites.js';
 import { SLOTS, slotByKey, attrText, bandName, itemScore, itemArt } from './items.js';
 import * as Audio from './audio.js';
@@ -33,6 +33,8 @@ export function init(state, handlers) {
                     'hpGlobe', 'hpText', 'xpGlobe', 'xpStrip', 'xpText', 'skills',
                     'statList', 'gearPanel', 'menuPanel', 'runStats', 'deathOverlay', 'reviveNum',
                     'overlay', 'ovBtn', 'btnGear', 'btnMenu', 'btnReset', 'deathText',
+                    'bossWrap', 'bossName', 'bossRank', 'bossBar', 'bossHp', 'castWrap', 'castName', 'castBar',
+                    'killText',
                     'draftPanel', 'draftCards', 'perkList',
                     'draftPurse', 'btnPause', 'pausedTag', 'volSlider', 'volValue', 'btnMute',
                     'slotsLeft', 'slotsRight', 'dollCanvas', 'dollLevel', 'bagList', 'bagCount',
@@ -138,7 +140,9 @@ export function rebuildRunes() {
   S.loadout.forEach((id, i) => {
     const s = skillById(id);
     const b = document.createElement('button');
-    b.className = 'rune ready';
+    // The id rides on the class so the stylesheet can colour attack and
+    // healing differently — see `.rune.k-*` in css/style.css.
+    b.className = `rune ready k-${s.id}`;
     b.title = `${s.name} — ${s.desc}`;
     b.innerHTML = `<span class="key">${i + 1}</span>${s.glyph}<span class="cd"></span>`;
     b.addEventListener('click', (e) => { e.stopPropagation(); H.skill(i); });
@@ -201,6 +205,44 @@ export function togglePanel(id) {
  * arbitrary point of the image in the centre of a circle.
  */
 const MINIMAP_ZOOM = 5.2;
+
+/**
+ * The boss's health, and the move he is winding up.
+ *
+ * **Both are read straight off the monster, not mirrored into UI state.** The
+ * fight already knows everything this shows — `m.hp`, `m.enraged`, `m.casting`
+ * and `m.castT` — and a second copy would be a second thing to keep in step
+ * with a creature that can die between frames.
+ *
+ * The cast bar is the reason a telegraph is fair. The ring on the ground says
+ * *where*, and until now nothing said *how long*: `mv.tell` is the wind-up in
+ * seconds and this is that number made visible, in the move's own colour so
+ * the bar and the ring on the floor are obviously the same event.
+ */
+function drawBoss(S) {
+  const boss = S.monsters && S.monsters.find((m) => m.boss && !m.dead);
+  el.bossWrap.classList.toggle('hidden', !boss);
+  if (!boss) return;
+
+  el.bossName.firstChild.textContent = `${boss.name} `;
+  el.bossRank.textContent = boss.enraged ? 'ENRAGED' : 'ELITE';
+  el.bossRank.classList.toggle('enraged', !!boss.enraged);
+  el.bossBar.querySelector('i').style.width =
+    `${Math.max(0, Math.min(1, boss.hp / boss.maxHp)) * 100}%`;
+  // **The number as well as the bar.** A bar answers "how much is left" and a
+  // number answers "how much longer" — with a boss whose health runs into the
+  // thousands, a sliver of red is the difference between one more swing and
+  // twenty, and the bar alone cannot say which.
+  el.bossHp.textContent = `${Math.max(0, Math.round(boss.hp))} / ${Math.round(boss.maxHp)}`;
+
+  const mv = boss.casting;
+  el.castWrap.classList.toggle('hidden', !mv);
+  if (!mv) return;
+  el.castName.textContent = mv.text;
+  const fill = el.castBar.querySelector('i');
+  fill.style.width = `${Math.min(1, (boss.castT || 0) / Math.max(0.05, mv.tell)) * 100}%`;
+  fill.style.background = mv.colour || '#ff7a3a';
+}
 
 export function updateMinimap() {
   const box = el.minimap.clientWidth || 62;
@@ -354,6 +396,8 @@ export function frame(S, dt) {
   el.xpStrip.querySelector('i').style.width = `${Math.min(100, (S.hero.xp / S.hero.xpNext) * 100)}%`;
   el.xpText.textContent = `Level ${S.hero.level} · ${Math.floor(S.hero.xp)} / ${S.hero.xpNext}`;
   el.skullText.textContent = S.skulls.toLocaleString();
+  el.killText.textContent = (S.kills | 0).toLocaleString();
+  drawBoss(S);
 
   // The globe fills towards the cheapest thing skulls can still buy — which is
   // now only ever a card, since armour is taken off bosses and never bought.
@@ -584,32 +628,322 @@ export function showMap(choices, section) {
  * straight onto the element, a missing file blanks the panel, and the first
  * thing the player sees on opening the screen is nothing at all.
  */
-const CAMP_FALLBACK = 'art/camp-boneyard.png';
+/**
+ * **The camp set, and which areas have one of their own.**
+ *
+ * This was a probe: ask for `art/camp-<area>.png`, and fall back when the
+ * request 404s. That was right while camps were paintings arriving one at a
+ * time, and it is wrong now — a set is *rendered* by `tools/bake-camp.py`, and a
+ * rendered set is a prop list and a seed rather than a file somebody may or may
+ * not have drawn yet. An explicit list says what exists; a 404 says what
+ * happens to be missing, which is not the same thing and is a slower way to
+ * find out.
+ *
+ * `art/camp-town.png` and `art/camp-boneyard.png` are still on disk and no
+ * longer used. They are paintings, and the whole reason for the render is that
+ * a painting has to be *matched* to the figures by eye — which is the 1.35 ->
+ * 2.6 and `cover` -> 215% argument, one decision made twice in two files. The
+ * rendered set is built at the game's own metres-per-pixel instead, so there is
+ * nothing to match.
+ */
+const CAMP_SETS = new Set(['wood']);
+const CAMP_FALLBACK = 'art/camp-wood.png';
 let campArt = null;
 
-function dressCamp(section) {
-  const area = (levelAt(section) || {}).area;
-  const src = area ? `art/camp-${area}.png` : CAMP_FALLBACK;
+/**
+ * The firelight, as light rather than as a glow.
+ *
+ * `tools/bake-camp.py` renders a rendered camp four times: once with the fire
+ * out, and three more with the fire *alone* and its flame moved a hand's width
+ * between each. Those three are `-fire1..3.png`, black everywhere the fire does
+ * not reach, and light is additive — so drawing them over the set with
+ * `lighter`, at weights that wander, relights the scene from the middle every
+ * frame. Stones' shadows swing, the near faces of the rocks take the light and
+ * give it up, the bushes at the clearing's edge come forward and go back.
+ *
+ * The alternative is what this replaces: one radial gradient. A gradient
+ * brightens the picture; it cannot light anything *in* the picture, because it
+ * does not know where anything is. Three plates do, because Blender did.
+ */
+const FIRE_PLATES = 3;
+let firelight = null;
+
+function loadFirelight(src) {
+  firelight = { stem: src.slice(0, -4), base: null, imgs: [], scaled: null, key: '' };
+  const mine = firelight;
+  // **The base plate is loaded here too, and drawn on the canvas rather than
+  // left to CSS.** It has to be: the plates are opaque PNGs and `lighter` adds
+  // *alpha* as well as colour, so drawing them over a transparent canvas makes
+  // the canvas opaque — black wherever the fire does not reach — and the
+  // background-image underneath is hidden completely. That bug shipped a camp
+  // lit by nothing but firelight, with the moon, the sky and the whole treeline
+  // sitting behind an opaque black sheet, and it looked exactly like a scene
+  // that was simply too dark. The CSS background stays as the first thing on
+  // screen while these decode; from then on the canvas is the picture.
+  const base = new Image();
+  base.onload = () => { if (firelight === mine) mine.base = base; };
+  base.src = src;
+  for (let i = 0; i < FIRE_PLATES; i++) {
+    const img = new Image();
+    // A missing plate is not an error. A camp set may be a single image — every
+    // painted one is — and the gradient is still there to fall back on.
+    img.onload = () => { if (firelight === mine) mine.imgs[i] = img; };
+    img.src = `${mine.stem}-fire${i + 1}.png`;
+  }
+}
+
+/**
+ * Scale the plates to the element once, not every frame.
+ *
+ * Each is 3200x1440 and the viewport is a third of that, so blitting them at
+ * source size means three full downscales a frame for a screen that never
+ * moves. They are redrawn only when the canvas changes size — which is a resize
+ * and nothing else.
+ */
+function scaleFirelight(W, H, dpr) {
+  const key = `${Math.round(W * dpr)}x${Math.round(H * dpr)}`;
+  if (firelight.key === key && firelight.scaled) return true;
+  if (!firelight.base) return false;
+  if (firelight.imgs.length < FIRE_PLATES || firelight.imgs.some((i) => !i)) return false;
+  // **Cached at device pixels, not CSS pixels.** The canvas is sized
+  // `W * dpr` and drawn through a `setTransform(dpr, …)`, so a cache built at
+  // CSS size is upscaled by the device ratio on the way to the screen — the
+  // 3200-wide set was being squeezed to 1015 and blown back up to 2030, which
+  // is the whole backdrop running at half resolution on any retina display.
+  // Building the cache at device size makes the final blit 1:1.
+  const fit = (img) => {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(W * dpr));
+    c.height = Math.max(1, Math.round(H * dpr));
+    const g = c.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.scale(dpr, dpr);
+    // Laid out exactly as `background-size: auto 100%; background-position:
+    // 50% 50%` lays the set out, or the light lands a few pixels off the thing
+    // it is supposed to be coming off.
+    const dw = H * (img.naturalWidth / img.naturalHeight);
+    g.drawImage(img, (W - dw) / 2, 0, dw, H);
+    return c;
+  };
+  firelight.scaled = firelight.imgs.map(fit);
+  firelight.scaledBase = fit(firelight.base);
+  firelight.key = key;
+  return true;
+}
+
+function paintFirelight(ctx, W, H, dpr) {
+  if (!firelight || !scaleFirelight(W, H, dpr)) return false;
+  // Three slow waves that never line up, normalised so the total light stays
+  // put while its *direction* wanders — then one fast flicker over all of it.
+  // Normalising matters: without it the three sum to a brightness that pumps,
+  // and a fire that pumps in step with its own movement reads as a lamp on a
+  // dimmer rather than as a flame.
+  const F = [1.9, 2.7, 1.45], O = [0, 2.1, 4.0];
+  let sum = 0;
+  const raw = F.map((f, i) => {
+    const v = 0.15 + 0.85 * (0.5 + 0.5 * Math.sin(campT * f + O[i]));
+    sum += v;
+    return v;
+  });
+  // **Over one plate's worth, not under.** The plates were rendered as light and
+  // are being added as *pixels*: Blender tone-maps each pass on its own, so the
+  // sum of two tone-mapped plates is dimmer than one tone-mapped sum. 1.28 is
+  // where the composite matches the single render this replaced, measured by
+  // eye against it at the fire's edge.
+  const amp = 1.28 + 0.15 * Math.sin(campT * 7.3) + 0.07 * Math.sin(campT * 11.9);
+  ctx.save();
+  // The set with the fire out, and then the fire added to it.
+  ctx.drawImage(firelight.scaledBase, 0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+  firelight.scaled.forEach((c, i) => {
+    ctx.globalAlpha = Math.max(0, (raw[i] / sum) * amp);
+    ctx.drawImage(c, 0, 0, W, H);
+  });
+  ctx.restore();
+  return true;
+}
+
+/**
+ * The figure's own silhouette, thrown across the ground by the fire.
+ *
+ * `drawShadow` puts a soft round blot under a figure, which is right on the
+ * road — the light there is ambient and comes from nowhere in particular. At
+ * the camp there is one light and everybody can see where it is, so a disc is
+ * the one thing in the frame openly disagreeing with the set: the rendered
+ * stones throw real shadows outward from the pit and the heroes standing
+ * between them had a puck.
+ *
+ * **It is the sprite, not a shape that stands in for it.** Two passes were
+ * spent on ellipses — one plain, one with a contact patch — and neither reads,
+ * because the thing that says *shadow* is recognising the shoulders and the
+ * sword in it. So the cell being drawn is rendered into a buffer, filled solid
+ * through `source-in` to make a silhouette, and laid on the ground.
+ *
+ * Three things make it lie down properly:
+ *
+ * - **The ground, not the screen.** The ground is seen at 24°, so the frame is
+ *   squashed by `GROUND` and *then* rotated by the away-angle measured in
+ *   un-squashed space. Rotating first — or measuring the angle on screen —
+ *   points the two figures at the sides visibly wrong.
+ * - **Up becomes away.** Inside that frame the sprite is sheared by
+ *   `transform(0, w, -L, 0, 0, 0)`, which sends the sprite's vertical axis
+ *   along the ground away from the fire and its horizontal axis across. Feet
+ *   stay at the feet; the crown lands `L` figure-heights out.
+ * - **It fades along its length**, erased by a gradient in the buffer before it
+ *   is ever transformed — so the falloff follows the body from sole to crown
+ *   rather than following the screen. A shadow that is as dark at the far end
+ *   as at the feet reads as a cut-out lying on the floor.
+ *
+ * It lengthens and weakens with distance from the fire, and both breathe on
+ * `campT` — the clock the firelight plates are cross-faded on, so the shadow
+ * moves with the light that casts it rather than on a rhythm of its own.
+ */
+const GROUND = 0.34;
+const SQUASH = 0.55;
+let shadowBuf = null;
+
+/**
+ * The cell being drawn, as one flat colour, in a shared buffer.
+ *
+ * Two things on this screen need the figure's *outline* rather than the figure:
+ * the shadow it throws, and the mark that says which hero is selected. Both are
+ * the same operation — draw the sprite, then `source-in` a colour through the
+ * alpha that is already there — so it lives once. Returns the padding, which is
+ * where the feet ended up.
+ *
+ * Grown, never shrunk: one allocation covers every frame after the first, the
+ * same reasoning as `litBuf`, and the padding is generous because a raised
+ * sword reaches well above the head.
+ */
+function silhouette(sheet, idx, k, flip, h, colour, taper) {
+  const pad = Math.ceil(h * 1.8);
+  const size = pad * 2;
+  if (!shadowBuf) shadowBuf = document.createElement('canvas');
+  if (shadowBuf.width < size) { shadowBuf.width = size; shadowBuf.height = size; }
+  const b = shadowBuf.getContext('2d');
+  b.setTransform(1, 0, 0, 1, 0, 0);
+  b.clearRect(0, 0, shadowBuf.width, shadowBuf.height);
+  Atlas.drawSprite(b, sheet, idx, pad, pad, k, flip);
+  b.globalCompositeOperation = 'source-in';
+  b.fillStyle = colour;
+  b.fillRect(0, 0, shadowBuf.width, shadowBuf.height);
+  if (taper) {
+    // Erased towards the crown, which is the far end once it is thrown.
+    b.globalCompositeOperation = 'destination-out';
+    const g = b.createLinearGradient(0, pad, 0, pad - h * 1.25);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(0.55, 'rgba(0,0,0,.22)');
+    g.addColorStop(1, 'rgba(0,0,0,.92)');
+    b.fillStyle = g;
+    b.fillRect(0, 0, shadowBuf.width, shadowBuf.height);
+  }
+  b.globalCompositeOperation = 'source-over';
+  return pad;
+}
+
+/**
+ * Which hero is selected: a thick black ring on the ground he stands in.
+ *
+ * This started as a pool of gold light and then as a warm halo on the figure.
+ * The pool was wrong because it is a second light source in a scene whose whole
+ * argument is that there is one; the halo was wrong for the opposite reason —
+ * it competed with the fire for the same job, warm light on the same body.
+ *
+ * A ring is neither. It is not light at all, it is a *mark* — the one thing on
+ * this screen that is allowed to be a piece of interface rather than a piece of
+ * the world, and drawn dark it takes light away rather than adding any. Thick,
+ * because at 300 pixels a hairline reads as a scratch on the lens, and squashed
+ * onto the same 0.34 the party ellipse uses so it lies on the ground the feet
+ * are on.
+ */
+function campRing(ctx, x, y, scale) {
+  const r = 15 * scale;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1, GROUND);
+  ctx.lineWidth = Math.max(3, 2.6 * scale);
+  ctx.strokeStyle = 'rgba(0,0,0,.86)';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.stroke();
+  // A hair of warm inside the black, on the fire's clock, so the ring is lit by
+  // the same fire as everything else rather than sitting on top of the picture.
+  ctx.lineWidth = Math.max(1, 0.7 * scale);
+  ctx.strokeStyle = `rgba(224,196,99,${(0.30 + 0.12 * Math.sin(campT * 2.2)).toFixed(3)})`;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.93, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function campShadow(ctx, sheet, idx, k, flip, x, y, scale, fireX, fireY, W) {
+  const gx = x - fireX, gy = (y - fireY) / GROUND;
+  const dist = Math.hypot(gx, gy) || 1;
+  const h = 44 * 0.92 * scale;              // the body, feet to crown
+
+  // Grown, never shrunk: one allocation covers every frame after the first.
+  // Same reasoning as `litBuf`, and the same generous padding — a raised sword
+  // reaches well above the head.
+  const pad = silhouette(sheet, idx, k, flip, h, '#000000', true);
+
+  const L = (0.95 + Math.min(0.95, dist / (W * 0.30)))
+    * (1 + 0.045 * Math.sin(campT * 7.3));
+  // Near-solid at the feet. The fire is the only light on this ground, so what
+  // it cannot reach is *black*, not a suggestion — earlier passes at 0.62 and
+  // 0.85 both read as no shadow at all on a screen that is already dark.
+  const fade = (1.0 / (1 + dist / (W * 0.55)))
+    * (0.92 + 0.1 * Math.sin(campT * 2.4));
+  ctx.save();
+  // Multiplied into whatever alpha the caller is drawing at, so an unselected
+  // hero's shadow dims with him instead of staying at full strength.
+  ctx.globalAlpha *= fade;
+  ctx.translate(x, y);
+  // **`SQUASH`, not `GROUND`, and that is a deliberate lie.** A shadow lying
+  // flat and seen at 24° is foreshortened to a third of its width — which is
+  // exactly what the first version did, and it came out as a laser beam leaving
+  // the boots. Correct, and useless: at this size the only thing that makes a
+  // shadow read is recognising a body in it, and a body a third of its width is
+  // not recognisable. So the shadow stands up off the ground, at 0.55 rather
+  // than 0.34, and is thrown shorter to match. The party ellipse and the
+  // contact of the feet stay on the true 0.34; only the silhouette cheats.
+  ctx.scale(1, SQUASH);
+  ctx.rotate(Math.atan2(gy, gx));
+  ctx.transform(0, 1.12, -L, 0, 0, 0);
+  ctx.filter = `blur(${Math.max(1, h * 0.045).toFixed(1)}px)`;
+  ctx.drawImage(shadowBuf, -pad, -pad);
+  ctx.filter = 'none';
+  ctx.restore();
+}
+
+function dressCamp(area) {
+  const src = CAMP_SETS.has(area) ? `art/camp-${area}.png` : CAMP_FALLBACK;
   if (src === campArt) return;
+  // Still waits for the decode before swapping. Set straight onto the element,
+  // an image that has not arrived blanks the panel, and the first thing on
+  // screen is nothing at all.
   const img = new Image();
   img.onload = () => {
     campArt = src;
     el.campScene.style.backgroundImage = `url("../${src}")`;
-  };
-  img.onerror = () => {
-    campArt = CAMP_FALLBACK;
-    el.campScene.style.backgroundImage = `url("../${CAMP_FALLBACK}")`;
+    firelight = null;
+    loadFirelight(src);
   };
   img.src = src;
 }
 
-export function showCamp(roster, section) {
+export function showCamp(roster, area) {
   el.campPanel.classList.toggle('hidden', !roster);
-  if (roster) dressCamp(section);
+  if (roster) dressCamp(area);
   // The road's HUD has nothing to say here — no life to watch, no cooldowns to
   // spend — and left up it competes with the one thing this screen is for.
   document.body.classList.toggle('camp', !!roster);
   if (!roster) { camp = null; return; }
+  // Every visit starts dark and fades up, so the scene never opens on a
+  // half-decoded roster. Touching each sheet here also *starts* the decode a
+  // frame before the first paint asks for it.
+  campFade = 0;
+  el.campScene.style.opacity = '0';
+  for (const s of roster) if (s.sheet) heroSheet(s.sheet, s.cols || 2, s.rows || 5);
   // Open on somebody the road can actually be taken as — on a run already
   // under way that is the class walking it, and anything else opens the screen
   // on a disabled button with no clue that the fix is to click your own hero.
@@ -645,7 +979,17 @@ function campGeom(i, n, W, H) {
   const x = cx + Math.cos(th) * rx;
   const y = cy + Math.sin(th) * ry;
   const depth = (-Math.sin(th) + 1) / 2;      // 1 behind the fire, 0 in front of it
-  const scale = (H / 300) * 3.8 * (1 - depth * 0.34);
+  // **2.6, from the reference shot.** Measured off WoW's character select: a
+  // character stands about 31% of the viewport's height there, and ours stood
+  // at 15%. `44 * 0.92 * (H/300) * m * (1 - depth*0.34)` reaches 31% at m=2.6.
+  //
+  // This is *not* the earlier 1.35, which was the figure's true scale against
+  // the painting. The reference solves that differently: it moves the camera
+  // in, so the set is magnified by the same amount as the characters and the
+  // relationship between them survives. The backdrop's `background-size` in
+  // css/style.css carries the other half of this number — change one and the
+  // hero is either a giant in a wide field or a doll in a close-up.
+  const scale = (H / 300) * 2.6 * (1 - depth * 0.34);
   return { f: x / W, depth, x, y, scale, headY: y - 44 * 0.92 * scale };
 }
 
@@ -730,9 +1074,17 @@ const GHOST = { ...kitFor('hero'), skin: '#100d0a', cloth: '#100d0a', mail: '#15
  * Sliced by content, not by lattice: generated sheets never land on an even
  * grid, and the attack pose is twice the width of the idle one.
  */
-export const heroSheet = (src = 'art/Pixel-Warrior.png') => Atlas.sheet(src, 2, 5, { auto: true });
-// Column 0 is idle, column 1 is the swing.
-const heroCell = (tier, attacking) => (Math.max(1, Math.min(5, tier)) - 1) * 2 + (attacking ? 1 : 0);
+// **Rows are not always five.** The warrior's sheets are five armour tiers deep
+// and every painted class sheet is too, but the three at the fire who are not
+// the run's hero have one outfit and one row — asking `sliceGrid` for five out
+// of a one-row sheet cuts the figure into head, chest, knees and two empties.
+export const heroSheet = (src = 'art/Pixel-Warrior.png', cols = 2, rows = 5) =>
+  Atlas.sheet(src, cols, rows, cols === 2 ? { auto: true } : undefined);
+// Column 0 is idle whatever the sheet; the painted classes carry two columns
+// and the baked doll four, so the stride between rows is the column count.
+const heroCell = (tier, attacking, cols = 2, frame = 0) =>
+  (Math.max(1, Math.min(5, tier)) - 1) * cols
+  + (attacking ? 1 : Math.min(cols - 1, Math.max(0, frame)));
 
 /**
  * A figure with the fire on them.
@@ -777,12 +1129,77 @@ function litActor(ctx, a, x, y, t, fireX) {
 }
 
 /**
+ * Stars, over the painted sky and under everything else.
+ *
+ * **Deterministic positions, drifting brightness.** The field is generated
+ * from a fixed seed each frame rather than stored, so it survives a resize
+ * without a rebuild and costs no state; the twinkle is two sine waves of
+ * different periods per star, which never quite line up and so never look
+ * like a pulse. Amplitudes are small on purpose — a star that goes out
+ * entirely reads as a dead pixel, and one that flashes reads as an effect.
+ *
+ * They stop a third of the way down, where the backdrop's treeline begins.
+ * Below that the sky is not sky, and a star behind a tent is a bug nobody has
+ * to see twice.
+ */
+const STARS = 90;
+function drawStars(ctx, W, H) {
+  const band = H * 0.34;
+  ctx.save();
+  for (let i = 0; i < STARS; i++) {
+    // A cheap hash, so the sky is the same sky every frame and every session.
+    const a = Math.sin(i * 12.9898) * 43758.5453;
+    const b = Math.sin(i * 78.233) * 12345.6789;
+    const x = (a - Math.floor(a)) * W;
+    const y = (b - Math.floor(b)) * band;
+    const twinkle = 0.55
+      + 0.28 * Math.sin(campT * 1.1 + i * 2.3)
+      + 0.17 * Math.sin(campT * 0.43 + i * 5.1);
+    // Fading out towards the treeline keeps the field from ending on a line.
+    const fade = 1 - (y / band) ** 1.5;
+    const r = 0.6 + ((a * 7) - Math.floor(a * 7)) * 0.8;
+    ctx.globalAlpha = Math.max(0, twinkle * fade * 0.5);
+    ctx.fillStyle = i % 9 === 0 ? '#cfe0ff' : '#f3ecd8';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
  * One frame of the camp. Driven from `frame()` rather than its own loop: the
  * render loop runs whether or not the run does, so the fire is already being
  * given frames and a second rAF would only fight it for them.
  */
+// **The figure keeps its own clock.** `campT` drives the fire's flicker and
+// the selection ring's pulse, and a hero stepping his frames off the same
+// accumulator ends up beating with them — not in step exactly, but close
+// enough and often enough that the eye reads it as mechanical. One extra
+// number buys a body that is plainly not on the fire's rhythm.
+let idleT = 0;
+// 0 while sheets are still decoding, then eases to 1. The camp is a still
+// scene a player looks at rather than acts in, so it can afford to arrive.
+let campFade = 0;
+
 function paintCamp(dt) {
   campT += dt;
+  idleT += dt;
+
+  // **Everybody, or nobody.** A per-figure fade would stagger them in as each
+  // sheet finished, which is the same pop spread over more frames. `Atlas.sheet`
+  // returns null until an image has decoded, so this asks the same question the
+  // draw does. The `0.6` floor means a camp whose art never loads at all still
+  // becomes visible rather than staying black for ever.
+  // **Only the slots that will actually draw a body.** A locked class has a
+  // sheet name in its slot and no art on disk, so waiting on it meant `ready`
+  // was never true and the camp crept in over the fallback's full three
+  // seconds — which looks less like a fade and more like a fault.
+  const wanted = camp.slots.filter((s) => s.sheet && s.anim);
+  const ready = wanted.every((s) => heroSheet(s.sheet, s.cols || 2, s.rows || 5)
+    && (!s.anim || !s.anim.b || heroSheet(s.anim.b.src, s.anim.b.cols, s.rows || 5)));
+  campFade = Math.min(1, campFade + dt / (ready ? 0.35 : 0.9));
+  el.campScene.style.opacity = campFade.toFixed(3);
   const cv = el.campCanvas, ctx = cv.getContext('2d');
   const box = cv.getBoundingClientRect();
   if (!box.width) return;
@@ -795,20 +1212,35 @@ function paintCamp(dt) {
   if (key !== camp.geom) { camp.geom = key; placeCampSlots(W, H); }
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // **Every figure on this screen is upscaled**, so the filter used to do it is
+  // not a detail. The camp draws a hero ~300 CSS pixels tall, which is 600
+  // device pixels on a retina display against a sheet baked at 300, and the
+  // default `imageSmoothingQuality` is `'low'` — a cheap bilinear that leaves
+  // the doubled pixels visibly mushy. It costs nothing to ask for the good one.
+  ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, W, H);
   const n = camp.slots.length;
   const fireX = W / 2, fireY = H * 0.72;
 
-  // No ground and no scenery are painted here any more: art/camp-boneyard.png is
-  // the set, and a drawn clearing on top of a painted one is two grounds. All
-  // that is left is the fire's own light, which has to be live because it moves.
-  const flick = 0.88 + Math.sin(campT * 2.4) * 0.08 + Math.sin(campT * 7.3) * 0.04;
-  const glow = ctx.createRadialGradient(fireX, fireY - 26, 10, fireX, fireY - 26, W * 0.30 * flick);
-  glow.addColorStop(0, 'rgba(255,172,74,.20)');
-  glow.addColorStop(0.42, 'rgba(206,116,42,.08)');
-  glow.addColorStop(1, 'rgba(255,140,50,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, W, H);
+  // No ground and no scenery are painted here any more: the camp set is the
+  // set, and a drawn clearing on top of a rendered one is two grounds. All that
+  // is left is the fire's own light, which has to be live because it moves.
+  if (!paintFirelight(ctx, W, H, dpr)) {
+    // The painted camps have no plates, so they keep the gradient. It is a
+    // glow rather than light: it brightens the picture without anything in the
+    // picture being lit, which is exactly the difference the plates buy.
+    const flick = 0.88 + Math.sin(campT * 2.4) * 0.08 + Math.sin(campT * 7.3) * 0.04;
+    const glow = ctx.createRadialGradient(fireX, fireY - 26, 10, fireX, fireY - 26, W * 0.30 * flick);
+    glow.addColorStop(0, 'rgba(255,172,74,.20)');
+    glow.addColorStop(0.42, 'rgba(206,116,42,.08)');
+    glow.addColorStop(1, 'rgba(255,140,50,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+  }
+  // **After the set, not before it.** A rendered camp draws its base plate onto
+  // this canvas, and the base is opaque — stars laid down first are painted over
+  // by the sky they are supposed to be in.
+  drawStars(ctx, W, H);
 
   // Everyone standing, back row first so the near ones overlap them.
   const order = camp.slots.map((s, i) => i)
@@ -817,9 +1249,18 @@ function paintCamp(dt) {
   // sort reaches the near half, so the two who wrapped forward stand in front of
   // the flame and the two behind it are lit through it.
   let fireDown = false;
+  // **A rendered camp brings its own fire.** `bake-camp.py` puts a flame in
+  // every firelight plate and a different one in each, so the cross-fade that
+  // swings the light also plays the fire, and the iron tripod over it is
+  // modelled and lit from underneath. Drawing the canvas fire on top of that is
+  // two fires in one grate — flat quadratic tongues and a black outline sitting
+  // over a lit set, which is exactly the mismatch this whole pass removed
+  // everywhere else. The painted camps have neither and keep both.
   const dropFire = () => {
-    drawCampfire(ctx, fireX, fireY, campT, H / 190);
-    drawCookpot(ctx, fireX, fireY, Math.max(0.8, H / 560));
+    if (!firelight) {
+      drawCampfire(ctx, fireX, fireY, campT, H / 190);
+      drawCookpot(ctx, fireX, fireY, Math.max(0.8, H / 560));
+    }
     fireDown = true;
   };
   for (const i of order) {
@@ -832,29 +1273,16 @@ function paintCamp(dt) {
     // everywhere else. Drawn before the locked branch so an empty place that
     // has been selected is lit too: the plate below names it, and this is what
     // says which of the four it is.
-    if (i === camp.sel) {
-      ctx.save();
-      ctx.translate(x, y); ctx.scale(1, 0.34);
-      const r = 22 * scale * 0.5;
-      const ring = ctx.createRadialGradient(0, 0, 4, 0, 0, r);
-      ring.addColorStop(0, 'rgba(200,162,74,.40)');
-      ring.addColorStop(0.7, 'rgba(200,162,74,.13)');
-      ring.addColorStop(1, 'rgba(200,162,74,0)');
-      ctx.fillStyle = ring;
-      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-      // The rim breathes on the fire's clock, so it reads as lit rather than
-      // as a decal stuck to the floor.
-      ctx.strokeStyle = `rgba(224,196,99,${0.5 + Math.sin(campT * 2.2) * 0.14})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(0, 0, r * 0.86, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
-    }
 
-    if (s.locked) {
+    // **A locked class with a doll still stands there.** The rule below — draw
+    // the place, not the person — was written when the only stand-in available
+    // was the vector kit, and a dim vector figure at a fire does read as
+    // somebody lurking. A baked doll does not; it reads as a person who cannot
+    // be chosen, which is exactly what they are, and the plate says so. The
+    // worn ground is kept for a class with no art at all.
+    if (s.locked && !s.sheet) {
       // An empty place is drawn as the place: ground worn bare where somebody
-      // will stand, and nothing standing on it. A dim body reads as a figure
-      // lurking in the dark, which is a different and worse promise than an
-      // empty seat at the fire.
+      // will stand, and nothing standing on it.
       const r = 16 * scale * 0.42;
       ctx.save();
       ctx.translate(x, y); ctx.scale(1, 0.36);
@@ -870,25 +1298,66 @@ function paintCamp(dt) {
       continue;
     }
 
-    drawShadow(ctx, x, y, 6 * scale * 0.5, 0.5);
-    // Everyone else stands back into the dark. Dimming the unselected is what
-    // makes the selected one obvious at a glance — a highlight on its own has
-    // to be found, a contrast does not.
-    if (i !== camp.sel) ctx.globalAlpha = 0.62;
-    const sheet = heroSheet(s.sheet);
-    if (sheet) {
-      // Matched to the vector figure it replaces, so the camp's composition —
-      // which was tuned against that — still holds: same crown height, same
-      // feet on the same ground.
-      const cell = sheet.cells[heroCell(s.tier || 1, false)];
-      const k = cell ? (44 * 0.92 * scale) / cell.h : 1;
-      Atlas.drawSprite(ctx, sheet, heroCell(s.tier || 1, false), x, y, k, false);
-    } else {
-      // Only the class carrying this run's gear has a kit of its own; the rest
-      // fall back to the base look for the moment before their sheet decodes.
-      litActor(ctx, { kit: s.kit || kitFor('hero'), scale, walk: 0, swing: 0, hurt: 0, fx: 0.2 },
-               x, y, campT + i * 1.7, fireX);
+    // **Everybody is drawn solid.** The unselected used to be dimmed to 0.62 on
+    // the reasoning that a contrast is found faster than a highlight — which is
+    // true of a list and false of a camp. At 0.62 the ground shows through the
+    // three who are not chosen and they read as ghosts standing at the fire,
+    // which is a worse thing to say about a class than "not this run". The halo
+    // marks the chosen one; the plate names him.
+
+    // **Two loops of the plain idle, then one of the variation**, walked from
+    // the clock rather than from a counter: a counter needs state that has to
+    // survive a resize and a change of class, and the clock already knows.
+    // Each figure is offset by its slot so four heroes round a fire do not
+    // breathe in unison.
+    const an = s.anim;
+    let src = s.sheet, cols = s.cols || 2, frame = 0;
+    if (an) {
+      // **The variation sheet is optional.** The run's own hero has two idles
+      // and walks `breakAt - 1` loops of the first before one of the second;
+      // the three sitting with him have one apiece, and with no `b` the cycle is
+      // simply that one loop. Same code, one fewer sheet.
+      const plain = an.a.cols * (an.breakAt - 1);
+      const cycle = plain + (an.b ? an.b.cols : 0);
+      const at = Math.floor(idleT * an.fps + i * 1.7) % cycle;
+      if (at < plain) { src = an.a.src; cols = an.a.cols; frame = at % an.a.cols; }
+      else { src = an.b.src; cols = an.b.cols; frame = at - plain; }
     }
+
+    const sheet = heroSheet(src, cols, s.rows || 5);
+    if (sheet) {
+      const idx = heroCell(s.tier || 1, false, cols, frame);
+      // **Sized from one reference cell, never from the frame being drawn.**
+      // `sliceGrid` trims every cell to its own content, so a frame where the
+      // sword rides higher is a taller cell — and dividing by *that* made the
+      // hero shrink whenever his weapon went up. The row's first cell is the
+      // ruler, so his height is a property of the character rather than of the
+      // pose. It has to be the *same* reference across both sheets, which is
+      // why the two idles are baked at one `fh`.
+      // Baked figure height when we have one — see `fh` in DOLL_CAMP — and the
+      // cell's own height only for the painted classes, which have no bake to
+      // ask. Frame 0 is not good enough: the two idle sheets start from
+      // different poses, so the hero changed size as the cycle crossed over.
+      const ref = an ? an.fh : (sheet.cells[heroCell(s.tier || 1, false, cols, 0)] || {}).h;
+      const k = ref ? (44 * 0.92 * scale) / ref : 1;
+      // **Turned to face the fire.** The doll bakes facing screen-right —
+      // doll.html puts the camera on -X so the character's +Z is to the right —
+      // and every sheet in the game inherits that, so a figure standing on the
+      // fire's right has to be mirrored or he is looking out of the picture.
+      // A ring of people all facing the same way is a queue, not a camp.
+      const flip = x > fireX;
+      // The shadow is this same cell, laid down on the ground first, and the
+      // selection halo sits between the two.
+      campShadow(ctx, sheet, idx, k, flip, x, y, scale, fireX, fireY, W);
+      if (i === camp.sel) campRing(ctx, x, y, scale);
+      Atlas.drawSprite(ctx, sheet, idx, x, y, k, flip);
+    }
+    // **No stand-in.** This used to fall back to the vector kit while a sheet
+    // decoded, which meant every visit to the camp opened on four simple
+    // shapes that were then replaced by the real figures a beat later. A pop
+    // like that reads as a bug even when it is only a loader; better to draw
+    // nothing for the few frames it takes and fade the whole scene in once
+    // everybody has arrived — see `campReady` below.
     ctx.globalAlpha = 1;
   }
 
