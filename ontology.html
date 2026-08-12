@@ -665,8 +665,8 @@
       <div class="row">
         <i class="mark" style="background: var(--forged)"></i>
         <div class="part">Doll baker<small>tools/bake-doll.mjs · doll.html</small></div>
-        <div class="what">A Mixamo character rendered offline from the same side-on camera the game draws in, out as an ordinary sprite sheet with real alpha. Resolves clip files off disk under four naming conventions.</div>
-        <div class="ev">--clip · --pose · --light<br>--sword · --clay · --alias</div>
+        <div class="what">A Mixamo character rendered offline from the same side-on camera the game draws in, out as an ordinary sprite sheet with real alpha. Resolves clip files off disk under five naming conventions, case-insensitively. <b>ACES tone mapping, a painted environment map, 2x supersampling and a shadow frustum sized to the doll</b> — all four were missing and all four are bake-side. A strip is chunked to fit the 16,384px canvas limit, and the chunks carry their own phase window.</div>
+        <div class="ev">--clip · --pose · --seg · --light · --yaw<br>--ss · --from/--to · --tone · --sword · --clay · --alias</div>
       </div>
       <div class="row">
         <i class="mark" style="background: var(--forged)"></i>
@@ -1220,6 +1220,32 @@ node tools/bake-doll.mjs --out art/knight-combat.png --glb art/armour/knight.glb
         <li>The animation mixer's default loop <b>wraps at exactly
         t = duration</b> — doll.html clamps one-shots for this; keep it, or
         every death bakes a corpse that stands back up in its last cell.</li>
+        <li><b>A doll is sized by the union of its meshes, so anything in that
+        union that is not the doll shrinks him.</b> Two things were: the
+        Quaternius packs' 42-vertex <code>Icosphere</code> helper, which spans
+        z&nbsp;-1..1 and reached the GLB even though <code>import_parts</code>
+        refuses to wear it; and whatever the character is <em>carrying</em>. So
+        every doll this project ever baked came out at 64% of the height its
+        <code>--fh</code> asked for, and by different amounts — a hood or a long
+        spear moves the top of the union, which is why the Druid stood a head
+        shorter than the Paladin beside him. Filtered in doll.html, at the line
+        that actually cares.</li>
+        <li><b>A cell count is a duration.</b> A sheet is
+        <code>seconds x fps</code> cells wide, so <code>--frames 24</code> does
+        not shorten a long clip, it speeds it up: 24 cells of a 9.3-second idle
+        is that idle at 4.7x, which reads as dancing. Anything over ~3.5s cannot
+        fit at all at 350px a cell — use <code>--from/--to</code> to take a
+        window at the honest rate.</li>
+        <li><b>Data Transfer gives a vertex the weights of the nearest
+        surface</b>, so a sleeve that falls over the hand inherits the
+        <em>fingers</em> and is torn into claws the moment the hand closes.
+        There is no fix short of a different mesh. It is specifically cuffs over
+        hands; long robes are fine, because a leg is one bone.</li>
+        <li><b>Texture resolution is not the bottleneck and 4K is invisible
+        here.</b> Measured: the same character baked at 512 and at 2048 is
+        indistinguishable at the size the game draws him. Polycount is free —
+        the renderer is offline — so buy dense meshes and small maps, which is
+        the opposite of the usual advice.</li>
       </ol>
 
     </div>

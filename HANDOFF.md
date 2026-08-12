@@ -883,3 +883,142 @@ click-paced.
 `audio.js` peak-normalises off the decoded buffer and finds the onset itself, so
 files should arrive *raw* — no normalising, no compression, no topping and
 tailing. Mono is fine and preferable.
+
+---
+
+## Where the ninth session left it — the characters
+
+The camp screen above is done and in the game. This is everything found *under*
+it, which turned out to be the larger half.
+
+### Every doll in this game was baked at 64% of its own height
+
+A doll is scaled so the union of its meshes is exactly one unit, and `--fh` is
+defined against that unit. Two things were in the union that are not the doll:
+
+- **The pack's helper sphere.** Every Quaternius part ships a 42-vertex
+  `Icosphere` spanning −1..1. `import_parts` has always refused to *wear* them
+  and says why in a comment, and one reaches the GLB anyway — so a 1.808-unit
+  figure measured 2.808.
+- **Whatever the doll is carrying.** Which is why it presented as a
+  *difference*: a hood or a raised weapon moves the top of the union, so the
+  shrink varied per character. The Druid's spear made him 2.46 against the
+  Paladin's 1.81, and he stood a head shorter at the same fire.
+
+Filtered in `doll.html` rather than only in the exporter — that is the line that
+cares, and it repairs every GLB already on disk. It walks the parent chain,
+because GLTFLoader hangs the mesh under the node that carries the name and
+testing the mesh alone lets the spear back in.
+
+**Everything was re-baked**: both camp sheets for all four characters, and the
+road's `knight-walk` and `knight-combat`.
+
+### Four things the bake was giving away, all now on
+
+`tone=none` reproduces anything baked before this.
+
+- **ACES tone mapping.** There was none, so with a key at 2.6 every specular
+  highlight hard-clipped to a flat white patch with no rolloff — precisely the
+  shape that reads as curved metal. Exposure 1.35 buys back what a shoulder
+  costs, rather than retuning three lights that were chosen against each other.
+- **An environment worth reflecting.** The old one varied only with height, so
+  after PMREM every direction on the horizon reflected the same grey — and a
+  mirror reflecting one flat colour is a painted mirror. That is why armour read
+  as grey paint however metalness was set.
+- **Shadows that can be seen.** The key sat nearly behind the camera, so the
+  terminator fell where nothing could see it; and the frustum was four world
+  units across a one-unit figure, spending three quarters of a 2048 map on empty
+  ground. Plus `normalBias`, without which a self-shadowing curve stipples.
+- **2× supersampling** (`--ss`), there being no anti-aliasing beyond driver MSAA.
+
+**The trap it set:** a supersampled strip renders into one buffer, so at `ss 2`
+a 24-frame strip of 350px cells is 16,800px wide — past the 16,384 a browser
+holds. It does not fail loudly. The buffer is clamped, the *last* cell comes back
+a sliver, and the hero visibly stands beside his own selection ring one frame in
+twenty-four. Strips are chunked now and carry `at`/`of` so they sample the
+phases the whole strip would have. The downscale also leaves 1–2/255 of alpha in
+empty pixels, which `sliceGrid` reads as content — cleared before measuring.
+
+### `tools/outfit.py` grew a lot, and dropped three defects
+
+New: `--parts` (one named outfit instead of the five-rung ladder), `--weapon`
+(`Name@length`, or `none`), `--shield`, `--grip pole`, `--hand Left|Right`,
+`--hair Name[@tier]`, `--extra file[@fraction]`.
+
+Three defects were shipping in every character ever baked:
+
+- **An untextured mesh rode along in every GLB** — X Bot's `Beta_Joints` pads,
+  flat dark red, subdivided and rendered at every elbow and knee.
+- **Every face baked with no eyes and no eyebrows.** The base pack splits the
+  head into three skinned meshes and `base_head` kept the one with the most
+  vertices, which is the body.
+- **The weapons were paint.** Their FBXs carry no maps at all; steel and gold
+  are metal now and wood is not.
+
+Also: the pack's glTF asks for `T_Eye_Normal_png.png`, which does not exist
+(`T_Eye_Normal.png` does) — repaired on load; and subdivision no longer rounds
+the open seams at cuff, collar and boot top (`boundary_smooth`).
+
+**`--extra` wears a garment from outside the kit entirely** — any file Blender
+imports. A robe is just a mesh over a body, which is what Data Transfer already
+handles; it needs only units (`@0.86` = "this garment is 86% of a person") and a
+floor. COLLADA arrives with *no* textures, so `wire_pbr` finds maps named after
+the material (`lambert3_albedo`, `_normal`, `_roughness`, `_metallic`) — the
+convention every Sketchfab export uses. Albedo is sRGB, everything else raw.
+
+### The four at the fire
+
+Every class has a `camp` doll now, whether or not the road can be walked as
+them — the old "draw the place, not the person" rule was written when the only
+stand-in was the vector kit. All are three-quarters on (`--yaw -45`) and
+mirrored on the fire's right, so both halves face the player.
+
+**The standing idle has to be a standing idle**, and this is what three wasted
+passes taught: `Staff-Idle-02`, all three `Shield-Idle`s and `Spell Casting` are
+*braced* — feet wide, weight low, weapon across the body — and no amount of
+reseating a prop fixes a man stood like that at a campfire. `paladin-Idle` is
+the one calm stand in the library and is 1.97s, so 24 cells hold it whole. The
+braced clips are the variation, where being on guard for two seconds in ten is
+right. **Render one frame of every clip onto a contact sheet before choosing;**
+`tools/gauntlet/` exists for this and one render made the answer obvious.
+
+Warlock and Druid carry the same spear, because every idle in the library grips
+something and there is no staff model. The scythe was abandoned: its snath
+curves, so every seating that clears the hip puts the curve through the thigh.
+
+Hair comes from the base pack's own `Hairstyles/Rigged to Head Bone` folder,
+which nothing had ever imported — hence four bald men. `Name@tier` puts a style
+on one rung only, since the ladder wears a helm on three of its five.
+**Everyone is silver** and I could not fix it: the map is a greyscale meant to
+be tinted, and a MixRGB is not a pattern Blender's glTF writer recognises while
+a pixel edit does not survive a copied image's filepath. A pre-tinted texture on
+disk is the reliable route.
+
+### The camp screen's own runtime
+
+- **The set was running at half resolution on every retina display.** The plates
+  were cached at CSS pixels and drawn through a `dpr` transform. Cached at
+  device size now, and `imageSmoothingQuality` asks for `'high'` — the camp
+  upscales a 300px sheet to ~600 device pixels and the default filter is `low`.
+- **Shadows are the figure's own silhouette**, thrown across the ground away
+  from the fire, tapered along its length. Two passes of ellipses read as
+  nothing. It stands up off the ground at 0.55 rather than the true 0.34,
+  deliberately: a shadow foreshortened correctly is a sliver, and what makes one
+  read is recognising a body in it.
+- **Selection is a thick black ring.** It was a pool of gold light — a second
+  light source in a scene whose whole argument is that there is one.
+- **Nobody is transparent.** The unselected were at 0.62 alpha and read as
+  ghosts at the fire.
+
+### Known-open, in the order I would take them
+
+1. A **staff model**, so the Warlock stops carrying the Druid's spear.
+2. **Camp props** — the tent, crates, firewood and spears in `camp_kit()` are
+   cylinders and boxes.
+3. **Nine more camps.** Each is a prop list and a seed; the machinery is done.
+4. **Pre-tinted hair textures**, per above.
+5. The three placeholder characters want **their own outfits and their own
+   idles** rather than pieces borrowed across two sets each.
+
+`ASSET-WANTS.md` is the shopping list, and its constraints matter more than its
+list — see the traps in ontology.html.
