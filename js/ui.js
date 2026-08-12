@@ -846,7 +846,7 @@ export function showCamp(roster, area) {
   // frame before the first paint asks for it.
   campFade = 0;
   el.campScene.style.opacity = '0';
-  for (const s of roster) if (s.sheet) heroSheet(s.sheet, s.cols || 2);
+  for (const s of roster) if (s.sheet) heroSheet(s.sheet, s.cols || 2, s.rows || 5);
   // Open on somebody the road can actually be taken as — on a run already
   // under way that is the class walking it, and anything else opens the screen
   // on a disabled button with no clue that the fix is to click your own hero.
@@ -977,8 +977,12 @@ const GHOST = { ...kitFor('hero'), skin: '#100d0a', cloth: '#100d0a', mail: '#15
  * Sliced by content, not by lattice: generated sheets never land on an even
  * grid, and the attack pose is twice the width of the idle one.
  */
-export const heroSheet = (src = 'art/Pixel-Warrior.png', cols = 2) =>
-  Atlas.sheet(src, cols, 5, cols === 2 ? { auto: true } : undefined);
+// **Rows are not always five.** The warrior's sheets are five armour tiers deep
+// and every painted class sheet is too, but the three at the fire who are not
+// the run's hero have one outfit and one row — asking `sliceGrid` for five out
+// of a one-row sheet cuts the figure into head, chest, knees and two empties.
+export const heroSheet = (src = 'art/Pixel-Warrior.png', cols = 2, rows = 5) =>
+  Atlas.sheet(src, cols, rows, cols === 2 ? { auto: true } : undefined);
 // Column 0 is idle whatever the sheet; the painted classes carry two columns
 // and the baked doll four, so the stride between rows is the column count.
 const heroCell = (tier, attacking, cols = 2, frame = 0) =>
@@ -1094,9 +1098,9 @@ function paintCamp(dt) {
   // sheet name in its slot and no art on disk, so waiting on it meant `ready`
   // was never true and the camp crept in over the fallback's full three
   // seconds — which looks less like a fade and more like a fault.
-  const wanted = camp.slots.filter((s) => s.sheet && !s.locked);
-  const ready = wanted.every((s) => heroSheet(s.sheet, s.cols || 2)
-    && (!s.anim || heroSheet(s.anim.b.src, s.anim.b.cols)));
+  const wanted = camp.slots.filter((s) => s.sheet && s.anim);
+  const ready = wanted.every((s) => heroSheet(s.sheet, s.cols || 2, s.rows || 5)
+    && (!s.anim || !s.anim.b || heroSheet(s.anim.b.src, s.anim.b.cols, s.rows || 5)));
   campFade = Math.min(1, campFade + dt / (ready ? 0.35 : 0.9));
   el.campScene.style.opacity = campFade.toFixed(3);
   const cv = el.campCanvas, ctx = cv.getContext('2d');
@@ -1184,11 +1188,15 @@ function paintCamp(dt) {
       ctx.restore();
     }
 
-    if (s.locked) {
+    // **A locked class with a doll still stands there.** The rule below — draw
+    // the place, not the person — was written when the only stand-in available
+    // was the vector kit, and a dim vector figure at a fire does read as
+    // somebody lurking. A baked doll does not; it reads as a person who cannot
+    // be chosen, which is exactly what they are, and the plate says so. The
+    // worn ground is kept for a class with no art at all.
+    if (s.locked && !s.sheet) {
       // An empty place is drawn as the place: ground worn bare where somebody
-      // will stand, and nothing standing on it. A dim body reads as a figure
-      // lurking in the dark, which is a different and worse promise than an
-      // empty seat at the fire.
+      // will stand, and nothing standing on it.
       const r = 16 * scale * 0.42;
       ctx.save();
       ctx.translate(x, y); ctx.scale(1, 0.36);
@@ -1218,14 +1226,18 @@ function paintCamp(dt) {
     const an = s.anim;
     let src = s.sheet, cols = s.cols || 2, frame = 0;
     if (an) {
+      // **The variation sheet is optional.** The run's own hero has two idles
+      // and walks `breakAt - 1` loops of the first before one of the second;
+      // the three sitting with him have one apiece, and with no `b` the cycle is
+      // simply that one loop. Same code, one fewer sheet.
       const plain = an.a.cols * (an.breakAt - 1);
-      const cycle = plain + an.b.cols;
+      const cycle = plain + (an.b ? an.b.cols : 0);
       const at = Math.floor(idleT * an.fps + i * 1.7) % cycle;
       if (at < plain) { src = an.a.src; cols = an.a.cols; frame = at % an.a.cols; }
       else { src = an.b.src; cols = an.b.cols; frame = at - plain; }
     }
 
-    const sheet = heroSheet(src, cols);
+    const sheet = heroSheet(src, cols, s.rows || 5);
     if (sheet) {
       const idx = heroCell(s.tier || 1, false, cols, frame);
       // **Sized from one reference cell, never from the frame being drawn.**

@@ -101,7 +101,7 @@ def parse_args():
     argv = sys.argv
     argv = argv[argv.index('--') + 1:] if '--' in argv else []
     out = {'out': None, 'kit': KIT, 'fbx': 'art/mixamo/X Bot.fbx', 'tex': '512', 'head': HEAD,
-           'subdiv': '1'}
+           'subdiv': '1', 'parts': None, 'weapon': None}
     i = 0
     while i < len(argv):
         k = argv[i].lstrip('-')
@@ -116,6 +116,30 @@ def parse_args():
 
 
 ARGS = parse_args()
+
+# **One named outfit instead of the five-rung ladder.** `--parts` takes a comma
+# separated list of the kit's own part names and bakes exactly that, as a single
+# tier. The ladder above is the *warrior's* progression and belongs to him; the
+# other three at the fire are not tiers of anything — they are one character
+# each, and asking for five rows of a druid would bake four rows nobody reads.
+#
+#   --parts Male_Wizard_Body,Male_Wizard_Arms,Male_Wizard_Legs,Male_Wizard_Feet
+#
+# The pack's parts are listed in `Exports/glTF (Godot-Unreal)/Modular Parts`.
+if ARGS['parts']:
+    TIERS = [[p.strip() for p in ARGS['parts'].split(',') if p.strip()]]
+
+# **What the single-tier character holds**, since the ladder's five blades are
+# the warrior's. `--weapon none` gives empty hands; `--weapon Spear@0.95` hangs
+# one model at one length. The models are in `WEAPON_DIR`: Claymore, Scythe,
+# Spear, Hammer_Double, the bows and shields, and the four swords the ladder
+# already uses.
+if ARGS['weapon']:
+    if ARGS['weapon'].lower() == 'none':
+        WEAPONS = []
+    else:
+        _name, _, _len = ARGS['weapon'].partition('@')
+        WEAPONS = [(_name, float(_len or 0.8))]
 TEX = int(ARGS['tex'])          # the size every texture is taken down to
 SUBDIV = int(ARGS['subdiv'])    # smoothing passes before export; see `smooth`
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

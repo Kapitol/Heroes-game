@@ -892,6 +892,7 @@ function showCamp() {
 
   UI.showCamp(CLASSES.map((c) => {
     const mine = c.key === S.hero.class;
+    const doll = mine ? DOLL_CAMP : c.camp;
     return {
       key: c.key,
       name: c.name,
@@ -903,9 +904,13 @@ function showCamp() {
       // armour for free.
       // Two idle sheets for the run's own class; everyone else keeps their
       // painted portrait. `anim` is passed whole so ui.js can walk the cycle.
-      sheet: mine ? DOLL_CAMP.a.src : c.sheet,
-      cols: mine ? DOLL_CAMP.a.cols : 2,
-      anim: mine ? DOLL_CAMP : null,
+      // The run's own hero gets the tiered two-idle bake; everybody else gets
+      // the one-outfit doll on their class. `c.sheet` — the painted portrait —
+      // is only reached by a class that has neither.
+      sheet: doll ? doll.a.src : c.sheet,
+      cols: doll ? doll.a.cols : 2,
+      rows: doll ? doll.rows : 5,
+      anim: doll || null,
       // Not ready yet: no body is drawn, only the worn ground of a place.
       locked: !c.ready,
       // Takeable is what the button reads: this run can only be walked by the

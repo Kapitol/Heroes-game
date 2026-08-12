@@ -44,11 +44,37 @@ export const CLASSES = [
       cleave: { sheet: 'art/warrior-cleave.png', cols: 2, rows: 5, frames: [0, 1] },
     },
     blurb: 'Walks in front and stays there.' },
+  // **`camp` is who stands at the fire**, and every class has one whether or not
+  // the road can be walked as them. The camp used to draw a body for the run's
+  // own hero and a patch of worn ground for everybody else, on the reasoning
+  // that a dim figure reads as somebody lurking rather than as an empty seat —
+  // which was right while the alternative was a *vector* stand-in. These are
+  // baked dolls from the same pipeline and the same lights as the hero, so the
+  // fire has four people at it and the plate below is what says which of them
+  // this run can be.
+  //
+  // One outfit each, so `rows: 1` — the five-row ladder is the warrior's
+  // armoury and nobody else has one. One idle sheet each, so no `b`: the cycle
+  // in ui.js treats the variation as optional. Built by:
+  //
+  //   blender --background --python tools/outfit.py -- --out art/armour/<k>.glb \
+  //     --parts <the kit's part names> --weapon <Model@length>
+  //   node tools/bake-doll.mjs --out art/<k>-camp.png --glb art/armour/<k>.glb \
+  //     --tiers 1 --clip "Great Sword Idle" --frames 24 --loop \
+  //     --fh 320 --cellw 640 --cellh 580 --alias Paladin
+  //
+  // `fh 320` rather than the knight's 210 because the camp draws a figure near
+  // 300 pixels tall and a sheet baked smaller than it is drawn is soft — and
+  // 320 is as far as it goes while 24 cells still fit inside the 16k texture
+  // width a browser will hold.
   { key: 'paladin', name: 'Paladin', sheet: 'art/Pixel-Paladin.png', ready: true,
+    camp: { a: { src: 'art/paladin-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 320 },
     blurb: 'Holds the line and mends it.' },
   { key: 'warlock', name: 'Warlock', sheet: 'art/Pixel-Warlock.png',
+    camp: { a: { src: 'art/warlock-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 320 },
     blurb: 'Spends life to spend the dead.' },
   { key: 'druid',   name: 'Druid',   sheet: 'art/Pixel-Druid.png',
+    camp: { a: { src: 'art/druid-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 320 },
     blurb: 'Brings the wood in with them.' },
 ];
 
