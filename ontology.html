@@ -659,8 +659,8 @@
       <div class="row">
         <i class="mark" style="background: var(--rough)"></i>
         <div class="part">Camps<small>art/camp-*.png</small></div>
-        <div class="what">The scene between the title and the first step. Two of six exist; the other four show the boneyard, and only after the image decodes — set early it blanks the panel.</div>
-        <div class="ev">camp-town · camp-boneyard</div>
+        <div class="what">The scene between the title and the first step. <b>Rendered now, not painted</b> — <code>tools/bake-camp.py</code> builds the set at the game's own metres-per-pixel, so the figure multiplier is an input to the camera rather than something a painting has to be magnified to match. Four plates: the set with the fire out, and three with the fire alone, added at runtime so the light moves. camp-wood is the fallback for every area without one.</div>
+        <div class="ev">camp-wood (rendered, 4 plates) · camp-town (painted) · camp-boneyard (painted, unused)</div>
       </div>
       <div class="row">
         <i class="mark" style="background: var(--forged)"></i>

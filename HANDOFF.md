@@ -710,3 +710,138 @@ new ones are competent headgear, the painted ones are a threat. Whatever is
 generated next for the head slot should be pushed considerably further in that
 direction: horns, crests, and a silhouette that is doing something above the
 crown. Judge a helm on its outline at thumbnail size, not on its detail.
+
+---
+
+## Where the eighth session left it — the camp is rendered
+
+**The camp set is built in Blender now, not painted.** `tools/bake-camp.py`, on
+the pattern of `tools/bake-trees.py`, and `art/camp-wood.png` is the first one —
+The Elder Wood. It is the **fallback for every area without a set of its own**,
+replacing the painted boneyard: nine of the ten levels used to be shown a
+graveyard whatever they were called.
+
+### Why a render, and what stops being negotiated
+
+A painting has to be *matched* to the figures by eye, and that match is the
+1.35 → 2.6 figure multiplier and the `cover` → 215% backdrop change — one
+decision made twice, badly, in two files. A render is built at the game's own
+metres-per-pixel instead:
+
+- `campGeom` draws a body `44 * 0.92 * (H/300) * 2.6 * (1 - depth*0.34)` tall,
+  so the figure at the middle of the ring is **0.291 of the viewport's height**
+  and a metre is 0.162 of it. The camera therefore sees **5.65m top to bottom**,
+  and the set is shown at `auto 100%` with no percentage anywhere. The 215%
+  stays with the painted sets, in `#campScene.painted`; `PAINTED` in ui.js is
+  the list, and it currently holds only `town`.
+- Pitch is **24°**, out of the party ellipse: a ground circle projects to
+  `rx 0.30W by ry 0.15H` when `sin(pitch) = 0.5 * H/W`, which is 16° on 16:9 and
+  29° on a square window — so it has no single answer and 24° is the middle of
+  the range actually played.
+- Lights are doll.html's own three, converted axis for axis. It looks along +X
+  with +Y up; this looks along +Y with +Z up; so `blender = (three.z, three.x,
+  three.y)`. Same directions on the figure and on the ground they stand on.
+
+### The firelight is a separate render, and it moves
+
+The set is baked **four times**: once with the fire out, and three more with the
+fire *alone*, its flame moved a hand's width between each. Light is additive, so
+`paintFirelight` in ui.js draws the base and adds the three plates with
+`lighter` at weights that wander. The scene is relit from the middle every
+frame — stones' shadows swing, rocks take the light and give it up. Measured
+over 1.7s: the ground beside the fire swings 63 of 255, the treeline 31.
+
+Three things there are load-bearing:
+
+- **The base plate is drawn on the canvas, not left to CSS.** `lighter` adds
+  *alpha* as well as colour, so opaque plates over a transparent canvas make the
+  canvas opaque and hide the background-image completely. That shipped a camp
+  lit by nothing but firelight for three commits and looked exactly like a scene
+  that was too dark.
+- **Weights are normalised**, or three waves sum to a brightness that pumps in
+  step with its own movement — a lamp on a dimmer, not a flame.
+- **Amplitude is 1.28, not 1.0.** Blender tone-maps each pass separately, so the
+  sum of two tone-mapped plates is dimmer than one tone-mapped sum.
+
+There is a flame in each plate and no two are the same shape, so the cross-fade
+plays the fire as well as the light — they cannot fall out of step, being one
+render. `drawCampfire` and `drawCookpot` are therefore **skipped for any camp
+that has plates**; the painted camps keep both.
+
+### The bake commands — run these, do not improvise
+
+```bash
+blender --background --python tools/bake-camp.py -- --out art/camp-wood.png
+```
+
+Characters, all at `fh 300` and `--yaw -45`. **Both numbers are shared by every
+camp doll**, or the hero changes height or angle by being the one you picked:
+
+```bash
+blender --background --python tools/outfit.py -- --out art/armour/paladin.glb \
+  --parts Male_Knight_Body_Armor,Male_Knight_Arms,Male_Knight_Legs_Armor,\
+Male_Knight_Feet_Armor,Male_Noble_Acc_Pauldron_Lion,Male_Noble_Acc_Gorget,\
+Male_Knight_Head_Armet --weapon Hammer_Double@0.92
+blender --background --python tools/outfit.py -- --out art/armour/warlock.glb \
+  --parts Male_Wizard_Body,Male_Wizard_Arms,Male_Wizard_Legs,Male_Wizard_Feet \
+  --weapon Scythe@1.05
+blender --background --python tools/outfit.py -- --out art/armour/druid.glb \
+  --parts Male_Ranger_Body,Male_Ranger_Arms,Male_Ranger_Legs,\
+Male_Ranger_Feet_Boots,Male_Ranger_Head_Hood --weapon Spear@1.02
+
+node tools/bake-doll.mjs --out art/knight-camp.png  --glb art/armour/knight.glb \
+  --tiers 5 --clip "Great Sword Idle"   --frames 24 --loop \
+  --fh 300 --cellw 350 --cellh 540 --alias Paladin --yaw -45
+node tools/bake-doll.mjs --out art/knight-camp2.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Great-Sword-Idle-02" --frames 45 --loop \
+  --fh 300 --cellw 350 --cellh 540 --alias Paladin --yaw -45
+# …and paladin / warlock / druid, --tiers 1, "Great Sword Idle", 24 frames.
+```
+
+`--parts` and `--weapon` are new on `outfit.py`. The five-rung ladder in that
+file is the *warrior's* progression; the other three are one character each.
+
+### Four at the fire
+
+Every class has a `camp` doll now, whether or not the road can be walked as
+them. The old rule — draw the place, not the person — was written when the only
+stand-in was the vector kit, and a dim vector figure at a fire does read as
+somebody lurking. A baked doll reads as a person who cannot be chosen, and the
+plate underneath says so. **They are placeholders**: knight plate with a noble's
+gorget, wizard robes and a scythe, ranger leathers and a spear.
+
+Everyone is **turned to face the player**, and mirrored on the fire's right so
+both halves face out. Shadows are thrown **by the fire**, solved on the ground
+plane with the vertical un-squashed by the same 0.34 the party ellipse uses —
+done in screen space the two at the sides point visibly wrong.
+
+### Traps this cost, in the order they were paid for
+
+1. Forward along a pitched view axis is **downward**. A backdrop 40m in front of
+   the aim point is 16m below ground, not above it — and a sky out of frame is
+   indistinguishable from a sky that failed to render.
+2. Generated coordinates run **0 at the bottom**, so the sky ramp was upside
+   down: the same black sky, for a second reason.
+3. Ending the ground by **deleting faces** past a line gives a staircase at grid
+   resolution. Bend it down instead and the silhouette is the curve.
+4. The frame is 12.55m wide, so hand-placed props past **x = ±6.27** are
+   off-camera. A first attempt at filling the right-hand slope put a stand of
+   trees at x = 8 to 12 and rendered a picture identical to the one it was
+   fixing. `HALF_W` is printed by the bake for exactly this.
+5. `CompositorNodeMixRGB` resolves to the multi-type Mix node in 4.x and its
+   numbered inputs are no longer `(Fac, Image, Image)`. The vignette is
+   arithmetic on the rendered pixels instead.
+6. A warm band at the horizon is a **sunrise**, wherever it appears and whatever
+   the rest of the frame is doing.
+
+### Known-open, in the order I would take them
+
+1. `camp_kit()` is primitives — tent, crates, firewood, spears — because the
+   nature pack has no camp furniture. One CC0 props pack replaces that one
+   function and nothing else in the file.
+2. Nine more camps. Each is a prop list and a seed; the machinery is done.
+3. The three placeholder dolls want their own models and their own idles — they
+   are all playing the warrior's greatsword idle, which is why the warlock holds
+   a scythe like a claymore.
+4. The pack ships no textures, so every prop is a flat colour keyed off its
+   material name. A `Textures` folder beside the meshes replaces `PALETTE`.
