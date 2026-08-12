@@ -5,7 +5,7 @@
 // three cards decide what the hero becomes. The player's hands are on the
 // skills, the drop and the cards — never on the walking.
 
-import { BIOMES, biomeFor, levelFor, ROAD, onRoad, HALF, MARCH } from './world.js';
+import { BIOMES, biomeFor, levelFor, levelAt, ROAD, onRoad, HALF, MARCH } from './world.js';
 import { toWorld, toScreen, clamp, lerp, TILE_W } from './iso.js';
 import { makeHero, heroStats, moveToward, faceTo, separate, nearestFoe, CLASSES, classByKey } from './entities.js';
 import {
@@ -81,6 +81,10 @@ const DEV_DROP = new URLSearchParams(location.search).has('drop')
 // is otherwise one click deep and gone for the rest of the session, which makes
 // tuning its layout a reload-and-click each time; this is a reload and nothing
 // else. `?overview` is the same door under its old name.
+// `?camp=wood` also *dresses* it as that area. A camp set belongs to a level
+// five sections down the road, so judging one used to mean surviving to it —
+// the same reason `?biome=` exists.
+const DEV_CAMP_AREA = new URLSearchParams(location.search).get('camp') || null
 const DEV_CAMP = new URLSearchParams(location.search).has('camp')
   || new URLSearchParams(location.search).has('overview');
 
@@ -918,7 +922,7 @@ function showCamp() {
         ? `${levelFor(S.section)} \u00b7 Stage ${S.stage} \u00b7 ${st.maxHp} life \u00b7 \u2620 ${S.skulls.toLocaleString()}`
         : c.blurb,
     };
-  }), S.section);
+  }), DEV_CAMP_AREA || (levelAt(S.section) || {}).area);
 }
 
 function start() {

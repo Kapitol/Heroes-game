@@ -740,24 +740,35 @@ body.camp #belt { opacity:0; pointer-events:none; }
 #campScene {
   position:fixed; inset:0; width:100vw; height:100vh; max-height:none;
   aspect-ratio:auto;
-  /* **`cover`, and the figures come down to meet it.**
-     Measured off the backdrop: a cart wheel is ~95px for ~1.2m and a headstone
-     ~80px for ~0.95m, so the set runs about 85px to the metre — 109 once
-     `cover` has magnified it on a 1316px viewport — and a 1.8m man stands
-     ~197px tall in it. The other direction was tried: zooming the painting to
-     match a 575px hero meant `background-size: 330%`, which cropped the tent
-     and the cart out of frame and magnified a 1536px painting past the point
-     where it holds together. Scaling the hero is the cheaper half of the same
-     equation, and it *improves* him — the camp sheet is baked at 420px, so a
-     200px figure is downscaled, and downscaling hides polygon edges that
-     magnification puts under a microscope. */
-  /* 215%: `cover` is ~1.285x on a tall viewport and the figures were scaled
-     up by 1.93x to match the reference, so the set is magnified by the same
-     1.93x — 1.285 * 1.93 = 2.48 of the painting's own pixels, which is 215% of
-     the element's width. Paired with the 2.6 in `campGeom`; the two numbers
-     are one decision and must move together. */
-  background:url("../art/camp-boneyard.png") 50% 60% / 215% no-repeat;
+  /* **A rendered set is shown at its own size, and that is the default now.**
+     `tools/bake-camp.py` builds the scene at the game's own metres-per-pixel:
+     the 2.6 in `campGeom` is an *input* to the camera rather than something the
+     backdrop has to be magnified to match, so this fills the viewport's height
+     and needs no percentage at all. `#campScene` also carries a black backing
+     colour, because at `auto 100%` a viewport wider than 2.22:1 would otherwise
+     show the page through the ends of the image — and the set's own edges are
+     already vignetted to near-black, so the seam does not read. */
+  background:#000 url("../art/camp-wood.png") 50% 50% / auto 100% no-repeat;
 }
+
+/* **The painted camps keep their magic number.** A painting is drawn at
+   whatever scale the generator felt like, so it is magnified until the figures
+   look right on it, and this is that magnification.
+
+   Measured off the backdrop: a cart wheel is ~95px for ~1.2m and a headstone
+   ~80px for ~0.95m, so the set runs about 85px to the metre — 109 once `cover`
+   has magnified it on a 1316px viewport — and a 1.8m man stands ~197px tall in
+   it. The other direction was tried: zooming the painting to match a 575px hero
+   meant `background-size: 330%`, which cropped the tent and the cart out of
+   frame and magnified a 1536px painting past the point where it holds together.
+
+   215%: `cover` is ~1.285x on a tall viewport and the figures were scaled up by
+   1.93x to match the reference, so the set is magnified by the same 1.93x —
+   1.285 * 1.93 = 2.48 of the painting's own pixels, which is 215% of the
+   element's width. Paired with the 2.6 in `campGeom`; the two numbers are one
+   decision and must move together. `ui.js` decides which sets are painted; see
+   `PAINTED` there. */
+#campScene.painted { background-size:215%; background-position:50% 60% }
 #campCanvas { position:absolute; inset:0; width:100%; height:100%; }
 
 /* The hit areas over the figures. Each is a column the width of one place at
@@ -1167,3 +1178,4 @@ body.camp #belt { opacity:0; pointer-events:none; }
 /* With the set full-bleed, the scene has to sit above the panel's own colour
    and below the plate. */
 #campScene { z-index:1 }
+

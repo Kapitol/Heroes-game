@@ -628,28 +628,54 @@ export function showMap(choices, section) {
  * straight onto the element, a missing file blanks the panel, and the first
  * thing the player sees on opening the screen is nothing at all.
  */
-const CAMP_FALLBACK = 'art/camp-boneyard.png';
+/**
+ * **The rendered wood camp is the default set now**, not the painted boneyard.
+ *
+ * Nine of the ten areas have no camp of their own and every one of them used to
+ * fall back to `camp-boneyard.png`, which meant nine levels were shown a
+ * graveyard whatever they were called. The fallback is the *rendered* set
+ * because a render is the thing this project can now make more of — a new area
+ * is a prop list and a seed in `tools/bake-camp.py`, not a generation and a
+ * keying pass — so the default should be the kind of set the next one will be.
+ */
+const CAMP_FALLBACK = 'art/camp-wood.png';
 let campArt = null;
 
-function dressCamp(section) {
-  const area = (levelAt(section) || {}).area;
+/**
+ * The areas whose camp is *painted* rather than rendered.
+ *
+ * The two kinds are sized differently and have to be, because they are made
+ * against different rulers. A painting is drawn at whatever scale the generator
+ * felt like and is then magnified until the figures look right on it, which is
+ * what `background-size: 215%` is. A rendered set is built at the game's own
+ * metres-per-pixel — a man is `44 * 0.92 * scale` tall in it by construction —
+ * so it is shown at its own size, `auto 100%`, which is the CSS default now.
+ * Getting this list wrong is visible immediately: a painting at 100% is a
+ * postage stamp in a black field, and a render at 215% is a close-up of a
+ * campfire.
+ */
+const PAINTED = new Set(['town']);
+
+function dressCamp(area) {
   const src = area ? `art/camp-${area}.png` : CAMP_FALLBACK;
   if (src === campArt) return;
   const img = new Image();
   img.onload = () => {
     campArt = src;
+    el.campScene.classList.toggle('painted', PAINTED.has(area));
     el.campScene.style.backgroundImage = `url("../${src}")`;
   };
   img.onerror = () => {
     campArt = CAMP_FALLBACK;
+    el.campScene.classList.remove('painted');
     el.campScene.style.backgroundImage = `url("../${CAMP_FALLBACK}")`;
   };
   img.src = src;
 }
 
-export function showCamp(roster, section) {
+export function showCamp(roster, area) {
   el.campPanel.classList.toggle('hidden', !roster);
-  if (roster) dressCamp(section);
+  if (roster) dressCamp(area);
   // The road's HUD has nothing to say here — no life to watch, no cooldowns to
   // spend — and left up it competes with the one thing this screen is for.
   document.body.classList.toggle('camp', !!roster);
