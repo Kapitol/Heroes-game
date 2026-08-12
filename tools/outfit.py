@@ -108,7 +108,7 @@ def parse_args():
     argv = sys.argv
     argv = argv[argv.index('--') + 1:] if '--' in argv else []
     out = {'out': None, 'kit': KIT, 'fbx': 'art/mixamo/X Bot.fbx', 'tex': '512', 'head': HEAD,
-           'subdiv': '1', 'parts': None, 'weapon': None, 'shield': None, 'grip': 'fist', 'stiff': None, 'hand': 'Right', 'hair': None}
+           'subdiv': '1', 'parts': None, 'weapon': None, 'shield': None, 'grip': 'fist', 'stiff': None, 'hand': 'Right', 'hair': None, 'extra': None}
     i = 0
     while i < len(argv):
         k = argv[i].lstrip('-')
@@ -311,6 +311,133 @@ def head_only(body, arm):
     bm.to_mesh(head.data)
     bm.free()
     return head
+
+
+def wire_pbr(meshes, path):
+    """Hook a download's PBR maps up to its materials.
+
+    **COLLADA arrives with no textures at all** — six materials at a flat 0.5
+    grey, which is why the robe baked as a white sheet. The maps are on disk
+    beside the model and named after the material that wants them
+    (`lambert3_albedo.jpg`, `lambert3_normal.png`, `_roughness`, `_metallic`),
+    which is the convention every Sketchfab export uses, so they can be found
+    rather than configured.
+
+    Colour space matters and is the one thing easy to get silently wrong: albedo
+    is sRGB and everything else is raw data. A normal map read as sRGB is not
+    obviously broken, it just lights slightly wrong everywhere.
+    """
+    root = os.path.dirname(path)
+    dirs = [os.path.join(root, 'textures'),
+            os.path.join(os.path.dirname(os.path.dirname(root)), 'textures'),
+            root]
+    def find(mat, kind):
+        for d in dirs:
+            if not os.path.isdir(d):
+                continue
+            for f in sorted(os.listdir(d)):
+                stem, ext = os.path.splitext(f)
+                if ext.lower() not in ('.png', '.jpg', '.jpeg'):
+                    continue
+                if stem.lower() == f'{mat.lower()}_{kind}':
+                    return os.path.join(d, f)
+        return None
+
+    done = set()
+    for o in meshes:
+        for m in o.data.materials:
+            if not m or m.name in done:
+                continue
+            done.add(m.name)
+            m.use_nodes = True
+            nt = m.node_tree
+            b = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+            if not b:
+                continue
+            fam = m.name.split('.')[0]
+            for kind, socket, srgb in (('albedo', 'Base Color', True),
+                                       ('roughness', 'Roughness', False),
+                                       ('metallic', 'Metallic', False),
+                                       ('normal', None, False)):
+                f = find(fam, kind)
+                if not f:
+                    continue
+                tex = nt.nodes.new('ShaderNodeTexImage')
+                tex.image = bpy.data.images.load(f, check_existing=True)
+                tex.image.colorspace_settings.name = 'sRGB' if srgb else 'Non-Color'
+                if socket:
+                    nt.links.new(tex.outputs['Color'], b.inputs[socket])
+                else:
+                    nm = nt.nodes.new('ShaderNodeNormalMap')
+                    nt.links.new(tex.outputs['Color'], nm.inputs['Color'])
+                    nt.links.new(nm.outputs['Normal'], b.inputs['Normal'])
+
+
+def import_extra(spec, body):
+    """Garment meshes from a model file that is not part of the kit.
+
+    **A robe from outside the pack is still just a mesh over a body**, which is
+    exactly what `skin`'s Data Transfer already handles — it asks *which bone is
+    nearest*, not what the garment came from. So an outside download needs no
+    new machinery, only two things the kit gives for free and it does not:
+
+    - **Units.** The kit is modelled at the character's own scale; a download is
+      whatever the author worked in. This robe is 155 units tall against a
+      1.81-unit man, so it is normalised by height rather than by a guessed unit
+      factor — `path@0.86` says "this garment is 86% of a person", which is what
+      a robe from shoulder to floor is.
+    - **Where the floor is.** Its origin is wherever the author left it, so it is
+      dropped onto the body's own feet and centred across them.
+
+    Anything Blender can import: `.dae`, `.glb`/`.gltf`, `.fbx`, `.obj`.
+    """
+    path, _, frac = spec.partition('@')
+    frac = float(frac or 0.86)
+    path = resolve(path)
+    if not os.path.exists(path):
+        return []
+    ext = os.path.splitext(path)[1].lower()
+    before = set(bpy.context.scene.objects)
+    if ext == '.dae':
+        bpy.ops.wm.collada_import(filepath=path)
+    elif ext in ('.glb', '.gltf'):
+        bpy.ops.import_scene.gltf(filepath=path)
+    elif ext == '.fbx':
+        bpy.ops.import_scene.fbx(filepath=path)
+    elif ext == '.obj':
+        bpy.ops.wm.obj_import(filepath=path)
+    else:
+        raise SystemExit(f'extra: cannot import {ext}')
+    fresh = [o for o in bpy.context.scene.objects if o not in before]
+    meshes = [o for o in fresh if o.type == 'MESH']
+    for o in fresh:
+        if o.type != 'MESH' and o.name in bpy.data.objects:
+            bpy.data.objects.remove(o, do_unlink=True)
+    if not meshes:
+        return []
+
+    # Bake whatever transform the file arrived with, then measure it as one
+    # garment rather than piece by piece — a belt and a cape are one costume and
+    # scaling them apart would take it to bits.
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in meshes:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+    wire_pbr(meshes, path)
+
+    lo, hi = bounds(meshes)
+    blo, bhi = bounds([body])
+    sc = ((bhi.z - blo.z) * frac) / max(1e-6, hi.z - lo.z)
+    centre = Vector(((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, lo.z))
+    to = Vector(((blo.x + bhi.x) / 2, (blo.y + bhi.y) / 2, blo.z))
+    for o in meshes:
+        mw = o.matrix_world.copy()
+        inv = mw.inverted()
+        for v in o.data.vertices:
+            v.co = inv @ (((mw @ v.co) - centre) * sc + to)
+    return meshes
 
 
 # ------------------------------------------------------------- the outfits
@@ -874,6 +1001,17 @@ def main():
     worn, missing = import_parts()
     if not worn:
         raise SystemExit('no parts imported — check --kit')
+
+    # **Outside garments join the kit before the fit, not after.** `fit` measures
+    # everything worn against the body and scales it as one; a robe added later
+    # would be the only piece not put through that, and would sit at whatever
+    # size it happened to arrive at.
+    for spec in [e.strip() for e in (ARGS['extra'] or '').split(',') if e.strip()]:
+        got = import_extra(spec, body)
+        for o in got:
+            o.name = f'T1_{o.name}'
+        worn += got
+        print(f'outfit extra: {spec} — {len(got)} meshes')
 
     xf = fit(worn, body)
     for m in worn:
