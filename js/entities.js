@@ -131,7 +131,14 @@ export const ARMOR_PER_LEVEL =
  * reaches only that one. The first attempt sat in game.js and produced a hero
  * with two thousand points of health and a globe that read `1822/111`.
  */
-const DEV_HP = Number(new URLSearchParams(location.search).get('hp')) || 0;
+// Guarded because this runs headless too. `tools/sim.mjs` and
+// `tools/proc-math.mjs` import this module under node, where there is no
+// `location` at all — and a module-scope read of it does not fail politely, it
+// throws before a single line of the harness runs. The balance sim had been
+// dead on launch since this hook was added, which is a long time for the one
+// tool that says whether the numbers work.
+const DEV_HP = typeof location === 'undefined' ? 0
+  : Number(new URLSearchParams(location.search).get('hp')) || 0;
 
 export function heroStats(h, gear, perks, equipped) {
   const p = perks || {};

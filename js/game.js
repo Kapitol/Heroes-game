@@ -16,6 +16,7 @@ import { SKILLS, skillById, rollDraft, applyCard, MAX_SKILLS } from './perks.js'
 import * as UI from './ui.js';
 import * as Audio from './audio.js';
 import * as Coffin from './coffin.js';
+import * as Intro from './intro.js';
 import * as Rig from './rig.js';
 import * as Particles from './particles.js';
 import { rollBossLoot, bossSkullBonus, wornTier, startingKit, bandIndex } from './items.js';
@@ -182,7 +183,12 @@ UI.init(S, {
   // a context from inside the gesture that asked for it.
   overview() {
     Audio.init(); Audio.resume();
-    showCamp();
+    // The founding plays before the camp on a first launch, and never again
+    // unless `?intro` asks for it. It is told here rather than over the title
+    // because this is the click — a story that starts before anyone has
+    // touched anything is a story played to an empty chair.
+    if (Intro.seen() && !new URLSearchParams(location.search).has('intro')) return showCamp();
+    Intro.play(showCamp);
   },
   // …and the camp's own button is what actually starts the march.
   // The class in the plate is the class the run is walked as, so it is set

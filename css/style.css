@@ -935,3 +935,59 @@ body.camp #belt { opacity:0; pointer-events:none; }
   border:1px solid #3d3025; border-radius:3px;
 }
 #mapClose:hover { border-color:var(--gild-dim); }
+
+/* ── The founding, told once ──────────────────────────────────────────────
+   The panels carry their own caption cartouche painted into the bottom fifth
+   of the picture, so `.introText` is positioned against the *plate* — which
+   holds the panel's aspect ratio — and not against the screen. Get this wrong
+   and the words sit on the art while the box built for them stays empty. */
+#intro {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1.2vh; padding: 2.5vh 2.5vw;
+  background: #0a0806;
+  cursor: pointer;
+  animation: introIn .5s ease both;
+}
+@keyframes introIn { from { opacity: 0 } to { opacity: 1 } }
+.introPlate {
+  position: relative;
+  max-width: min(100%, 62vh * 1.5);
+  max-height: 84vh;
+  min-height: 0;
+  display: flex;
+}
+.introArt {
+  display: block; width: 100%; height: 100%;
+  object-fit: contain;
+  /* The paper is cream and the game is not; a warm shadow keeps the panel from
+     reading as a browser rendering a picture. */
+  box-shadow: 0 2vh 6vh rgba(0, 0, 0, .8);
+}
+.introText {
+  position: absolute; left: 6%; right: 6%;
+  /* The cartouche runs from roughly 80% to 97% of the panel's height in every
+     one of the nine; centring inside that band survives the small differences
+     between them better than pinning to the bottom edge does. */
+  top: 80%; height: 17%;
+  margin: 0;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  color: #2b2016;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(13px, 1.7vh, 22px);
+  line-height: 1.45;
+}
+.introBar {
+  display: flex; align-items: center; gap: 2vw;
+  color: #8a7f6d; font-size: clamp(11px, 1.4vh, 15px); letter-spacing: .18em;
+}
+.introDots { opacity: .75 }
+.introSkip {
+  background: none; border: 1px solid rgba(200, 180, 140, .35);
+  color: #c9bda6; padding: .5em 1.4em; border-radius: 2px;
+  letter-spacing: .18em; text-transform: uppercase;
+  font-size: inherit; font-family: inherit; cursor: pointer;
+}
+.introSkip:hover { border-color: rgba(220, 200, 160, .7); color: #efe4cc }
+
