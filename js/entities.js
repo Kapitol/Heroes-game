@@ -58,10 +58,14 @@ export const CLASSES = [
   // three-loops-then-one cadence (`breakAt: 4`): standing is what they are
   // doing, and the variation is the occasional thing that is not standing.
   //
-  // **On a clip that matches what they hold** — Paladin on `Shield-Idle`,
-  // Warlock and Druid on `Staff-Idle`. All three were on the warrior's
-  // two-handed greatsword idle, which is why the Warlock gripped a scythe like
-  // a claymore.
+  // **The standing idle has to be a standing idle.** Every clip in the library
+  // was tried against a contact sheet, one frame each, and it is not close:
+  // `Staff-Idle-02`, `Shield-Idle-01/02/03` and `Spell Casting` are all *braced*
+  // — feet wide, weight low, weapon across the body. They read as a fight about
+  // to start, which is why three passes of tuning the props kept making the
+  // camp worse. `paladin-Idle` is the one calm stand in the set and it is 1.97s,
+  // so 24 cells hold it whole. The braced clips become the variation, where
+  // being on guard for two seconds in ten is exactly right.
   //
   // **And `cols` is the clip's own length, not a round number.** A cell count
   // is `seconds * 12`, so it differs per clip: `Staff-Idle-02` is 1.83s and
@@ -80,17 +84,17 @@ export const CLASSES = [
   // 320 is as far as it goes while 24 cells still fit inside the 16k texture
   // width a browser will hold.
   { key: 'paladin', name: 'Paladin', sheet: 'art/Pixel-Paladin.png', ready: true,
-    camp: { a: { src: 'art/paladin-camp.png', cols: 30 },
+    camp: { a: { src: 'art/paladin-camp.png', cols: 24 },
            b: { src: 'art/paladin-camp2.png', cols: 30 },
            rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Holds the line and mends it.' },
   { key: 'warlock', name: 'Warlock', sheet: 'art/Pixel-Warlock.png',
-    camp: { a: { src: 'art/warlock-camp.png', cols: 22 },
+    camp: { a: { src: 'art/warlock-camp.png', cols: 24 },
            b: { src: 'art/warlock-camp2.png', cols: 30 },
            rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Spends life to spend the dead.' },
   { key: 'druid',   name: 'Druid',   sheet: 'art/Pixel-Druid.png',
-    camp: { a: { src: 'art/druid-camp.png', cols: 22 },
+    camp: { a: { src: 'art/druid-camp.png', cols: 24 },
            b: { src: 'art/druid-camp2.png', cols: 30 },
            rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Brings the wood in with them.' },
