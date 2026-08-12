@@ -200,8 +200,9 @@ dd b { font-weight:400; color:var(--accent); }
   <p class="eyebrow">Crypt Heroes &middot; Character sheet</p>
   <h1>The Warrior, <em>standing</em></h1>
   <p class="standfirst">
-    One tier, one idle, isolated on the flat angled plane &mdash; the game's own 2:1
-    projection at the game's own tile size, and nothing else in the frame.
+    One tier, one stance at a time, isolated on the flat angled plane &mdash; the
+    game's own 2:1 projection at the game's own tile size, and nothing else in
+    the frame.
   </p>
 
   <div class="stage">
@@ -239,28 +240,42 @@ dd b { font-weight:400; color:var(--accent); }
       <button type="button" aria-pressed="true" style="--band:var(--band-gold)"
         title="Horned plate">5</button>
     </span>
-    <span class="hint">Only tier 5 is cut into this sheet so far.</span>
-
     <span class="label" style="margin-left:auto">Stance</span>
     <select id="stance" aria-label="Stance animation">
-      <option value="idle" selected>Idle</option>
-      <option disabled>Battlecry</option>
-      <option disabled>Skill Tree 1</option>
-      <option disabled>Skill Tree 2</option>
-      <option disabled>Skill Tree 3</option>
-      <option disabled>Skill Tree 4</option>
-      <option disabled>Skill Tree 5</option>
-      <option disabled>Attack 1</option>
-      <option disabled>Attack 2</option>
-      <option disabled>Attack 3</option>
+      <optgroup label="Greatsword idles &mdash; baked">
+        <option value="idle" selected>Idle &mdash; 2.00s</option>
+        <option value="idle2">Idle, second &mdash; 3.77s</option>
+      </optgroup>
+      <optgroup label="Other idles on disk &mdash; not baked">
+        <option disabled>Idle, unarmed</option>
+        <option disabled>Idle, paladin</option>
+        <option disabled>Idle, turn left 90</option>
+        <option disabled>Idle, shield 01</option>
+        <option disabled>Idle, shield 02</option>
+        <option disabled>Idle, shield 03</option>
+        <option disabled>Idle, staff 01</option>
+        <option disabled>Idle, staff 02</option>
+        <option disabled>Idle, staff 03</option>
+      </optgroup>
+      <optgroup label="Not baked">
+        <option disabled>Battlecry</option>
+        <option disabled>Skill Tree 1</option>
+        <option disabled>Skill Tree 2</option>
+        <option disabled>Skill Tree 3</option>
+        <option disabled>Skill Tree 4</option>
+        <option disabled>Skill Tree 5</option>
+        <option disabled>Attack 1</option>
+        <option disabled>Attack 2</option>
+        <option disabled>Attack 3</option>
+      </optgroup>
     </select>
   </div>
 
   <dl>
     <div><dt>Cell</dt><dd><b>350 &times; 540</b></dd></div>
-    <div><dt>Source clip</dt><dd>2.000s, authored at <b>30 fps</b></dd></div>
-    <div><dt>Cells</dt><dd><b>24</b> &nbsp;(2.000s &times; 12)</dd></div>
-    <div><dt>Playback</dt><dd>12 fps, looped &mdash; 1.00&times; speed</dd></div>
+    <div><dt>Source clip</dt><dd id="specClip">2.000s, authored at <b>30 fps</b></dd></div>
+    <div><dt>Cells</dt><dd id="specCells"><b>24</b> &nbsp;(2.000s &times; 12)</dd></div>
+    <div><dt>Playback</dt><dd id="specSpeed">12 fps, looped &mdash; 1.00&times; speed</dd></div>
     <div><dt>Sole, measured</dt><dd><b>465</b> of 540</dd></div>
     <div><dt>Anchor, footprint centre</dt><dd><b>183</b> &nbsp;(cell centre 175)</dd></div>
     <div><dt>Figure height <code>--fh</code></dt><dd>300, crown to sole</dd></div>
@@ -323,7 +338,7 @@ dd b { font-weight:400; color:var(--accent); }
   const SUN = { x: KEY.right / KEY_LEN, y: -KEY.up / KEY_LEN };
 
   // Measured off the sheet rather than taken from the bake's arguments.
-  const CELL_W = 350, CELL_H = 540, COLS = 24, ROWS = 5, FPS = 12;
+  const CELL_W = 350, CELL_H = 540, ROWS = 5, FPS = 12;
   // Which rung of the ladder this sheet is showing. Tier 1 is row 0, so
   // the other four are this one number -- see the disabled tier buttons.
   const TIER = 5, ROW = TIER - 1;
@@ -338,14 +353,35 @@ dd b { font-weight:400; color:var(--accent); }
     return { x: (b + a) / 2, y: (b - a) / 2 };
   };
 
-  // The bake itself, not a copy of it. `sliceGrid` is not needed: every cell
-  // is the same size, so the row and column are arithmetic on the source
-  // rectangle and the 8400x2700 image is never redrawn into a buffer.
-  const idle = new Image(); idle.src = '../art/knight-camp.png';
+  /**
+   * The stances, and how long each one is.
+   *
+   * `cols` is not a setting -- it is the clip's own length: seconds times the
+   * 12fps the sheets are baked at. The two idles differ because the clips do
+   * (2.000s against 3.767s), and a page that assumed one number would play the
+   * long one at nearly twice speed, which is the failure that had the warlock
+   * and the druid dancing at the fire.
+   *
+   * Cell size is shared, which is the only reason one page can play both
+   * without knowing anything about either.
+   */
+  const STANCES = {
+    idle:  { label: 'Idle',         src: '../art/knight-camp.png',  cols: 24, seconds: 2.000 },
+    idle2: { label: 'Idle, second', src: '../art/knight-camp2.png', cols: 45, seconds: 3.767 },
+  };
+  for (const k of Object.keys(STANCES)) {
+    const im = new Image();
+    im.src = STANCES[k].src;
+    STANCES[k].img = im;
+  }
+  // The stance being drawn, and its sheet.
+  const S = () => STANCES[state.stance];
+  const img = () => S().img;
+  const cols = () => S().cols;
 
   const $ = (id) => document.getElementById(id);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const state = { frame: 0, playing: !reduced, scale: 'read' };
+  const state = { frame: 0, playing: !reduced, scale: 'read', stance: 'idle' };
 
   const cv = $('stage'), ctx = cv.getContext('2d');
   let W = 0, H = 0;
@@ -447,9 +483,10 @@ dd b { font-weight:400; color:var(--accent); }
    * than after the transform means the gradient is measured in the figure's
    * own units and holds at any zoom.
    */
-  let shadowCv = null, shadowFor = -1;
+  let shadowCv = null, shadowFor = '';
   function silhouette(frame) {
-    if (shadowFor === frame && shadowCv) return shadowCv;
+    const tag = state.stance + ':' + frame;
+    if (shadowFor === tag && shadowCv) return shadowCv;
     if (!shadowCv) {
       shadowCv = document.createElement('canvas');
       shadowCv.width = CELL_W; shadowCv.height = CELL_H;
@@ -458,7 +495,7 @@ dd b { font-weight:400; color:var(--accent); }
     s.setTransform(1, 0, 0, 1, 0, 0);
     s.clearRect(0, 0, CELL_W, CELL_H);
     s.globalCompositeOperation = 'source-over';
-    s.drawImage(idle, frame * CELL_W, ROW_Y, CELL_W, CELL_H, 0, 0, CELL_W, CELL_H);
+    s.drawImage(img(), frame * CELL_W, ROW_Y, CELL_W, CELL_H, 0, 0, CELL_W, CELL_H);
 
     s.globalCompositeOperation = 'source-in';
     s.fillStyle = '#0a0806';
@@ -475,7 +512,7 @@ dd b { font-weight:400; color:var(--accent); }
     s.fillRect(0, 0, CELL_W, CELL_H);
     s.globalCompositeOperation = 'source-over';
 
-    shadowFor = frame;
+    shadowFor = tag;
     return shadowCv;
   }
 
@@ -493,7 +530,7 @@ dd b { font-weight:400; color:var(--accent); }
    * underneath it.
    */
   function drawCastShadow(feetX, feetY, fig) {
-    if (!idle.complete || !idle.naturalWidth) return;
+    if (!img().complete || !img().naturalWidth) return;
     const L = 1 / Math.tan(KEY.elevation * Math.PI / 180);
     const dx = -SUN.x, dy = -SUN.y * (TILE_H / TILE_W);
 
@@ -556,14 +593,14 @@ dd b { font-weight:400; color:var(--accent); }
     // horizontal axis stays put: an affine, and the sole is its fixed line.
     drawCastShadow(feetX, feetY, fig);
 
-    if (idle.complete && idle.naturalWidth) {
+    if (img().complete && img().naturalWidth) {
       ctx.drawImage(
-        idle, state.frame * CELL_W, ROW_Y, CELL_W, CELL_H,
+        img(), state.frame * CELL_W, ROW_Y, CELL_W, CELL_H,
         feetX - ANCHOR * fig, feetY - SOLE * fig, CELL_W * fig, CELL_H * fig,
       );
     }
 
-    $('count').textContent = String(state.frame + 1).padStart(2, '0') + ' / ' + COLS;
+    $('count').textContent = String(state.frame + 1).padStart(2, '0') + ' / ' + cols();
     $('readout').innerHTML =
       'hero ' + Math.round(HERO_H * z) + 'px &middot; tile ' + Math.round(TILE_W * z) + 'px'
       + (state.scale === 'true' ? '<br>camera zoom 1.6' : '');
@@ -577,7 +614,7 @@ dd b { font-weight:400; color:var(--accent); }
         const step = 1000 / FPS;
         while (acc >= step) {
           acc -= step;
-          state.frame = (state.frame + 1) % COLS;
+          state.frame = (state.frame + 1) % cols();
           $('scrub').value = state.frame;
         }
       }
@@ -614,14 +651,56 @@ dd b { font-weight:400; color:var(--accent); }
     state.frame = +e.target.value; stop(); draw();
   });
 
+  $('stance').addEventListener('change', (e) => {
+    state.stance = e.target.value;
+    // Back to the top. 3.77s and 2.00s do not share a frame index, and
+    // carrying one over lands past the end of the shorter clip.
+    state.frame = 0;
+    syncScrub();
+    draw();
+  });
+
+  // The scrubber's range is the clip's length, not a constant.
+  function syncScrub() {
+    const sc = $('scrub');
+    sc.max = cols() - 1;
+    sc.value = state.frame;
+    syncSpec();
+  }
+
+  /**
+   * The three rows that describe the clip rather than the cell.
+   *
+   * Cell size, sole and anchor are properties of the bake and hold across
+   * every stance. Length, cell count and speed are properties of the *clip*,
+   * so they have to follow the dropdown -- a sheet that kept showing 2.000s
+   * while playing the 3.767s idle would be asserting the exact error the bake
+   * pipeline exists to avoid.
+   */
+  function syncSpec() {
+    const c = S();
+    const exact = Math.round(c.seconds * FPS);
+    $('specClip').innerHTML = c.seconds.toFixed(3) + 's, authored at <b>30 fps</b>';
+    $('specCells').innerHTML = '<b>' + c.cols + '</b> &nbsp;('
+      + c.seconds.toFixed(3) + ' &times; 12)';
+    $('specSpeed').innerHTML = '12 fps, looped &mdash; '
+      + (exact / c.cols).toFixed(2) + '&times; speed';
+  }
+
   const start = () => {
     resize();
+    syncScrub();
     $('play').textContent = state.playing ? 'Pause' : 'Play';
     press($('play'), state.playing);
     draw();
     requestAnimationFrame(tick);
   };
-  if (idle.complete) start(); else idle.addEventListener('load', start);
+  let pending = Object.keys(STANCES).length;
+  const ready = () => { if (--pending === 0) start(); };
+  for (const k of Object.keys(STANCES)) {
+    const im = STANCES[k].img;
+    if (im.complete) ready(); else im.addEventListener('load', ready);
+  }
 
   addEventListener('resize', () => { resize(); draw(); });
 })();
