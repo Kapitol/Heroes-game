@@ -427,11 +427,17 @@ def sky():
     # way round — which put the warm band above the frame and left a black sky
     # that looked exactly like a plane that had failed to render.
     ramp.color_ramp.elements[0].position = 0.0
-    ramp.color_ramp.elements[0].color = (0.150, 0.122, 0.098, 1)   # at the crest
+    # **Cold all the way down.** The first pass put a warm tan at the horizon,
+    # on the reasoning that a sky lifts towards the ground — and it does, at
+    # dusk and at dawn. At one in the morning there is no warm end: the lift is
+    # into a colder, paler blue, and the only warm light in the frame is the
+    # one the camp lit itself. A tan horizon band reads as sunrise no matter
+    # what the rest of the picture is doing.
+    ramp.color_ramp.elements[0].color = (0.031, 0.040, 0.058, 1)   # at the crest
     ramp.color_ramp.elements[1].position = 1.0
-    ramp.color_ramp.elements[1].color = (0.014, 0.019, 0.034, 1)   # the crown
+    ramp.color_ramp.elements[1].color = (0.005, 0.007, 0.016, 1)   # the crown
     mid = ramp.color_ramp.elements.new(0.45)
-    mid.color = (0.036, 0.040, 0.058, 1)
+    mid.color = (0.013, 0.018, 0.032, 1)
     em = nt.nodes.new('ShaderNodeEmission')
     em.inputs['Strength'].default_value = 1.0
     nt.links.new(up_gradient(nt), ramp.inputs['Fac'])
@@ -465,8 +471,8 @@ def mist():
     m.use_nodes = True
     nt = m.node_tree
     b = nt.nodes['Principled BSDF']
-    b.inputs['Base Color'].default_value = (0.09, 0.10, 0.13, 1)
-    b.inputs['Emission Color'].default_value = (0.055, 0.062, 0.080, 1)
+    b.inputs['Base Color'].default_value = (0.055, 0.066, 0.092, 1)
+    b.inputs['Emission Color'].default_value = (0.026, 0.033, 0.050, 1)
     b.inputs['Emission Strength'].default_value = 1.0
     b.inputs['Roughness'].default_value = 1.0
     ramp = nt.nodes.new('ShaderNodeValToRGB')
@@ -701,9 +707,14 @@ def lights():
     # picture wherever the fire does not reach, and at those energies two thirds
     # of the frame was black rather than dark. Moonlight has to *show* the
     # treeline, the crest and the shelter — the fire's job is the clearing.
-    for pos, energy, colour in (((3, -3, 5), 1.95, (0.60, 0.68, 0.92)),
-                                ((-3, -2, 1), 0.55, (0.40, 0.48, 0.72)),
-                                ((-2, 2, 2), 1.05, (0.54, 0.61, 0.86))):
+    # **Down again, and colder.** These were raised to 3.10 while the base plate
+    # was invisible, then to 1.95 once it was not, and both readings were taken
+    # against a sky with a sunrise in it. Moonlight at one in the morning shows
+    # you the shape of the treeline and the colour of nothing; anything brighter
+    # and the frame reads as an hour before dawn, which is a different scene.
+    for pos, energy, colour in (((3, -3, 5), 1.05, (0.46, 0.57, 0.92)),
+                                ((-3, -2, 1), 0.30, (0.32, 0.41, 0.70)),
+                                ((-2, 2, 2), 0.58, (0.42, 0.52, 0.84))):
         l = bpy.data.lights.new('l', 'SUN')
         l.energy, l.color, l.angle = energy * LIGHT, colour, math.radians(6)
         ob = bpy.data.objects.new('l', l)
@@ -868,10 +879,10 @@ def moon():
     m.use_nodes = True
     nt = m.node_tree
     e = nt.nodes.new('ShaderNodeEmission')
-    e.inputs['Color'].default_value = (0.86, 0.90, 1.0, 1.0)
-    e.inputs['Strength'].default_value = 1.45
+    e.inputs['Color'].default_value = (0.80, 0.86, 1.0, 1.0)
+    e.inputs['Strength'].default_value = 0.92
     nt.links.new(e.outputs['Emission'], nt.nodes['Material Output'].inputs['Surface'])
-    bpy.ops.mesh.primitive_circle_add(radius=0.40, vertices=48, fill_type='NGON')
+    bpy.ops.mesh.primitive_circle_add(radius=0.29, vertices=48, fill_type='NGON')
     d = bpy.context.object
     d.name = 'moon'
     # The key is at blender (3, -3, 5) — up and to the right — so the moon goes
