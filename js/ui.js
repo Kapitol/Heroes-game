@@ -808,14 +808,20 @@ const GROUND = 0.34;
 const SQUASH = 0.55;
 let shadowBuf = null;
 
-function campShadow(ctx, sheet, idx, k, flip, x, y, scale, fireX, fireY, W) {
-  const gx = x - fireX, gy = (y - fireY) / GROUND;
-  const dist = Math.hypot(gx, gy) || 1;
-  const h = 44 * 0.92 * scale;              // the body, feet to crown
-
-  // Grown, never shrunk: one allocation covers every frame after the first.
-  // Same reasoning as `litBuf`, and the same generous padding — a raised sword
-  // reaches well above the head.
+/**
+ * The cell being drawn, as one flat colour, in a shared buffer.
+ *
+ * Two things on this screen need the figure's *outline* rather than the figure:
+ * the shadow it throws, and the mark that says which hero is selected. Both are
+ * the same operation — draw the sprite, then `source-in` a colour through the
+ * alpha that is already there — so it lives once. Returns the padding, which is
+ * where the feet ended up.
+ *
+ * Grown, never shrunk: one allocation covers every frame after the first, the
+ * same reasoning as `litBuf`, and the padding is generous because a raised
+ * sword reaches well above the head.
+ */
+function silhouette(sheet, idx, k, flip, h, colour, taper) {
   const pad = Math.ceil(h * 1.8);
   const size = pad * 2;
   if (!shadowBuf) shadowBuf = document.createElement('canvas');
@@ -824,24 +830,70 @@ function campShadow(ctx, sheet, idx, k, flip, x, y, scale, fireX, fireY, W) {
   b.setTransform(1, 0, 0, 1, 0, 0);
   b.clearRect(0, 0, shadowBuf.width, shadowBuf.height);
   Atlas.drawSprite(b, sheet, idx, pad, pad, k, flip);
-  // Solid, through the alpha that is already there.
   b.globalCompositeOperation = 'source-in';
-  b.fillStyle = '#050403';
+  b.fillStyle = colour;
   b.fillRect(0, 0, shadowBuf.width, shadowBuf.height);
-  // …then erased towards the crown, which is the far end once it is thrown.
-  b.globalCompositeOperation = 'destination-out';
-  const g = b.createLinearGradient(0, pad, 0, pad - h * 1.2);
-  g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(0.45, 'rgba(0,0,0,.34)');
-  g.addColorStop(1, 'rgba(0,0,0,.95)');
-  b.fillStyle = g;
-  b.fillRect(0, 0, shadowBuf.width, shadowBuf.height);
+  if (taper) {
+    // Erased towards the crown, which is the far end once it is thrown.
+    b.globalCompositeOperation = 'destination-out';
+    const g = b.createLinearGradient(0, pad, 0, pad - h * 1.25);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(0.55, 'rgba(0,0,0,.22)');
+    g.addColorStop(1, 'rgba(0,0,0,.92)');
+    b.fillStyle = g;
+    b.fillRect(0, 0, shadowBuf.width, shadowBuf.height);
+  }
   b.globalCompositeOperation = 'source-over';
+  return pad;
+}
 
-  const L = (0.80 + Math.min(0.85, dist / (W * 0.30)))
+/**
+ * Which hero is selected, said on the hero rather than on the floor.
+ *
+ * It used to be a pool of gold light on the ground with a ring around it, and
+ * that pool is a second light source in a scene whose whole argument is that
+ * there is exactly one. It lit the dirt from directly above, in a colour
+ * nothing in the frame is, and it did it hardest on the one figure the eye was
+ * already going to.
+ *
+ * This is the same silhouette, in the fire's own colour, blurred and laid
+ * *behind* the figure — a warm edge that reads as the chosen one catching more
+ * of the light than the rest. It touches no ground, and it cannot disagree with
+ * the set about where the light is, because it is the colour of the fire.
+ */
+function campHalo(ctx, sheet, idx, k, flip, x, y, scale) {
+  const h = 44 * 0.92 * scale;
+  const pad = silhouette(sheet, idx, k, flip, h, '#ffb347', false);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  // Twice, at two radii: the tight pass is the edge and the wide one is the
+  // bloom off it. One pass alone is either a hard outline or a smudge.
+  for (const [blur, alpha] of [[h * 0.035, 0.5], [h * 0.11, 0.28]]) {
+    ctx.filter = `blur(${blur.toFixed(1)}px)`;
+    ctx.globalAlpha = alpha * (0.86 + 0.14 * Math.sin(campT * 2.2));
+    ctx.drawImage(shadowBuf, x - pad, y - pad);
+  }
+  ctx.filter = 'none';
+  ctx.restore();
+}
+
+function campShadow(ctx, sheet, idx, k, flip, x, y, scale, fireX, fireY, W) {
+  const gx = x - fireX, gy = (y - fireY) / GROUND;
+  const dist = Math.hypot(gx, gy) || 1;
+  const h = 44 * 0.92 * scale;              // the body, feet to crown
+
+  // Grown, never shrunk: one allocation covers every frame after the first.
+  // Same reasoning as `litBuf`, and the same generous padding — a raised sword
+  // reaches well above the head.
+  const pad = silhouette(sheet, idx, k, flip, h, '#000000', true);
+
+  const L = (0.95 + Math.min(0.95, dist / (W * 0.30)))
     * (1 + 0.045 * Math.sin(campT * 7.3));
-  const fade = (0.85 / (1 + dist / (W * 0.40)))
-    * (0.9 + 0.12 * Math.sin(campT * 2.4));
+  // Near-solid at the feet. The fire is the only light on this ground, so what
+  // it cannot reach is *black*, not a suggestion — earlier passes at 0.62 and
+  // 0.85 both read as no shadow at all on a screen that is already dark.
+  const fade = (1.0 / (1 + dist / (W * 0.55)))
+    * (0.92 + 0.1 * Math.sin(campT * 2.4));
   ctx.save();
   // Multiplied into whatever alpha the caller is drawing at, so an unselected
   // hero's shadow dims with him instead of staying at full strength.
@@ -1227,23 +1279,6 @@ function paintCamp(dt) {
     // everywhere else. Drawn before the locked branch so an empty place that
     // has been selected is lit too: the plate below names it, and this is what
     // says which of the four it is.
-    if (i === camp.sel) {
-      ctx.save();
-      ctx.translate(x, y); ctx.scale(1, 0.34);
-      const r = 22 * scale * 0.5;
-      const ring = ctx.createRadialGradient(0, 0, 4, 0, 0, r);
-      ring.addColorStop(0, 'rgba(200,162,74,.40)');
-      ring.addColorStop(0.7, 'rgba(200,162,74,.13)');
-      ring.addColorStop(1, 'rgba(200,162,74,0)');
-      ctx.fillStyle = ring;
-      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-      // The rim breathes on the fire's clock, so it reads as lit rather than
-      // as a decal stuck to the floor.
-      ctx.strokeStyle = `rgba(224,196,99,${0.5 + Math.sin(campT * 2.2) * 0.14})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(0, 0, r * 0.86, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
-    }
 
     // **A locked class with a doll still stands there.** The rule below — draw
     // the place, not the person — was written when the only stand-in available
@@ -1315,8 +1350,10 @@ function paintCamp(dt) {
       // fire's right has to be mirrored or he is looking out of the picture.
       // A ring of people all facing the same way is a queue, not a camp.
       const flip = x > fireX;
-      // The shadow is this same cell, laid down on the ground first.
+      // The shadow is this same cell, laid down on the ground first, and the
+      // selection halo sits between the two.
       campShadow(ctx, sheet, idx, k, flip, x, y, scale, fireX, fireY, W);
+      if (i === camp.sel) campHalo(ctx, sheet, idx, k, flip, x, y, scale);
       Atlas.drawSprite(ctx, sheet, idx, x, y, k, flip);
     }
     // **No stand-in.** This used to fall back to the vector kit while a sheet
