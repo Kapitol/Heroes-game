@@ -1022,3 +1022,63 @@ disk is the reliable route.
 
 `ASSET-WANTS.md` is the shopping list, and its constraints matter more than its
 list — see the traps in ontology.html.
+
+---
+
+## The road fights with the baked clips now
+
+**The split is decided and wired: the road gets the battle animations, the
+camp keeps the idles.** `DOLL_ART.clips` in js/render.js is the contract — a
+clip per state, driven by clocks the game already keeps, so nothing about
+timing or balance moved:
+
+- `draw` runs on the act channel: `beginEncounter` sets
+  `act = { pose: 'draw', t: 0.9, hold: 0.9 }`, pure theatre, and a skill
+  pressed in the first second simply wins the slot.
+- `battlecry` and `cast` run on the same channel via `CLIP_FOR_ACT`
+  (cry → battlecry; fire/volley/ward → cast). Heal and stomp have no clip and
+  fall through to what they did before — nothing — rather than borrow a wrong
+  one.
+- The two `slash` clips run on `o.swing`, alternated by `o.swings` exactly as
+  the static cells were. The static cells are now the fallback for classes
+  without a bake.
+
+**`window` is which frames of a clip fit the hold.** The clips run seconds at
+12fps and the holds run ~0.5s; squeezing 34 frames into 0.68s is the sped-up
+bug again. A hold plays a window at the clip's own speed and the rest of the
+bake waits for longer holds.
+
+**Scale comes off the pose sheet's standing cell, never the frame drawn** —
+cells are trimmed to content, so fitting a crouched windup to the idle's
+height pulses the hero's size in step with his own swing.
+
+The bakes, all profile (no --yaw), fh 230 like every road sheet, cell widths
+measured per stance (a swing reaches further than a stand — in profile the
+blade sweeps in the screen plane, so the swings need *more* room here):
+
+```bash
+node tools/bake-doll.mjs --out art/knight-road-battlecry-1.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Standing Taunt Battlecry" --frames 17 --fh 230 --cellw 560 --cellh 380 \
+  --from 0 --to 0.5151515151515151          # part 2: --from that --to 1
+node tools/bake-doll.mjs --out art/knight-road-slash-out.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Stable Sword Outward Slash" --frames 24 --fh 230 --cellw 640 --cellh 460
+node tools/bake-doll.mjs --out art/knight-road-slash-in.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Stable Sword Inward Slash" --frames 26 --fh 230 --cellw 600 --cellh 380
+node tools/bake-doll.mjs --out art/knight-road-draw.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Withdrawing Sword" --frames 18 --fh 230 --cellw 520 --cellh 380
+node tools/bake-doll.mjs --out art/knight-road-cast-1.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Great Sword Casting" --frames 29 --fh 230 --cellw 560 --cellh 480 \
+  --from 0 --to 0.49122807017543857         # part 2: --from 0.508... --to 1
+node tools/bake-doll.mjs --out art/knight-road-run.png --glb art/armour/knight.glb \
+  --tiers 5 --clip "Run With Sword" --frames 10 --loop --fh 230 --cellw 480 --cellh 380
+```
+
+Split-part phase arithmetic: a one-shot of N frames samples `i/(N-1)`, so a
+part covering frames a..b runs `--from a/(N-1) --to b/(N-1)` — anything looser
+repeats a frame at the seam. `knight-road-run.png` is baked and unwired: the
+march is a walk and nothing in the game sprints yet.
+
+**`art/knight-walk.png` is a name to leave alone** — it is the road walk/death
+sheet, a different clip at different geometry, and baking a greatsword walk
+over it swapped the hero's stride out from under the game for a minute. The
+greatsword walk is `knight-gs-walk.png`, also currently unwired.

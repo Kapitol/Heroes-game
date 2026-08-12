@@ -403,6 +403,13 @@ function beginEncounter() {
   S.queue.length = 0;
   S.spawnTimer = 0.35;
 
+  // The sword comes out when something blocks the road. Pure theatre, on the
+  // same act channel the skills use — so a skill pressed in the first second
+  // simply wins the slot, and dying drops it like any other act. The hold
+  // covers the spawn delay: the draw finishes about when the first foe
+  // arrives, which is the fiction working out to be the timing.
+  S.hero.act = { pose: 'draw', t: 0.9, hold: 0.9 };
+
   if (isBossWave()) {
     S.formation = { id: 'boss', name: bossFor(S.stage).name, gap: 0 };
     S.queue.push({ boss: true });

@@ -943,7 +943,11 @@ function drawPaintedFighter(ctx, o, sx, sy, t) {
 
   // A skill outranks everything. It is the one thing on screen the player
   // actually pressed, and a hero who keeps swinging through his own heal is a
-  // hero whose buttons do not appear to do anything.
+  // hero whose buttons do not appear to do anything. The clip is checked
+  // first: a class with a baked act plays it, one without falls back to the
+  // painted two-frame pose, and the doll — whose `actions` is null — finally
+  // acts out something instead of standing through its own battlecry.
+  if (drawActClip(ctx, o, sp, sx, sy)) return true;
   if (drawActionPose(ctx, o, sp, sx, sy)) return true;
 
   // **The flinch.** Taking a hit was a red tint and nothing else — a body that
@@ -962,6 +966,14 @@ function drawPaintedFighter(ctx, o, sx, sy, t) {
                        Atlas.tinted(sh, 'rgba(255,60,40,.55)'));
       return true;
     }
+  }
+  // A swing with a clip behind it animates; the static attack cells below are
+  // now the fallback for classes that have no bake. `o.swing` is the clock —
+  // the whole 0..1 of it, not just the `attacking` middle, so the windup and
+  // the follow-through are frames rather than a jump cut into the strike.
+  if (sp.clips && sp.clips.slash && o.swing > 0 && !o.dead) {
+    const clip = sp.clips.slash[(o.swings || 0) % sp.clips.slash.length];
+    if (drawClip(ctx, o, sp, clip, Math.min(1, o.swing), sx, sy)) return true;
   }
   if (drawAnimFrame(ctx, o, sp, sx, sy, attacking, bob)) return true;
 
@@ -1280,7 +1292,103 @@ const DOLL_ART = {
     walk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
     death: [10, 11, 12, 13, 14, 15],
   },
+  /**
+   * The battle stances, as clips driven by clocks the game already keeps.
+   *
+   * Nothing here has a timer of its own. A skill clip runs on `act.t / hold` —
+   * the countdown `SKILL_POSE` already sets — and a slash runs on `o.swing`,
+   * so the animation cannot drift from the mechanic it acts out: the frame the
+   * blow lands on *is* the windup fraction the damage fires on. Baked in
+   * profile at fh 230 like every road sheet, mirrored for facing by `fx`.
+   *
+   * **`window` is which frames of the clip fit the hold.** The clips run
+   * seconds at 12fps and the game's holds run ~0.5s; squeezing 34 frames into
+   * 0.68s is the sped-up-footage bug the bake pipeline exists to avoid. So a
+   * hold plays a *window* of the clip at its own speed — the battlecry's shout,
+   * the cast's release — and the rest of the bake waits for longer holds.
+   *
+   * **`parts` is one clip across several files.** A sheet may not be wider
+   * than the 16,384px a browser will hold as a texture, and the battlecry at
+   * its 560px cell would be 19,040 in one row.
+   */
+  clips: {
+    battlecry: {
+      parts: [{ src: 'art/knight-road-battlecry-1.png', cols: 17 },
+              { src: 'art/knight-road-battlecry-2.png', cols: 17 }],
+      rows: 5, tiered: true, window: [9, 17],
+    },
+    cast: {
+      parts: [{ src: 'art/knight-road-cast-1.png', cols: 29 },
+              { src: 'art/knight-road-cast-2.png', cols: 29 }],
+      rows: 5, tiered: true, window: [28, 35],
+    },
+    draw: {
+      parts: [{ src: 'art/knight-road-draw.png', cols: 18 }],
+      rows: 5, tiered: true, window: [0, 17],
+    },
+    // Alternated per swing by `o.swings`, exactly as the static attack cells
+    // were — the pair is the variety, the clock is the swing.
+    slash: [
+      { parts: [{ src: 'art/knight-road-slash-out.png', cols: 24 }],
+        rows: 5, tiered: true, window: [6, 16] },
+      { parts: [{ src: 'art/knight-road-slash-in.png', cols: 26 }],
+        rows: 5, tiered: true, window: [7, 17] },
+    ],
+  },
 };
+
+/**
+ * Which clip acts out which `SKILL_POSE` pose. Heal and stomp have no baked
+ * clip yet and fall through to what they did before — nothing — rather than
+ * borrowing a wrong one: a stomp drawn as a shout is the exact bug the painted
+ * set refused to ship.
+ */
+const CLIP_FOR_ACT = { cry: 'battlecry', cast: 'cast', draw: 'draw' };
+
+/**
+ * One frame of a clip, on somebody else's clock.
+ *
+ * `k` runs 0..1 and the window maps it to frames, last frame inclusive — a
+ * one-shot that never reaches its final frame stops short of the pose it was
+ * for. Scale comes off the row's *standing* cell in the pose sheet, never off
+ * the frame being drawn: cells are trimmed to content, so a crouched windup is
+ * shorter than a stand, and fitting each frame to the same height would pulse
+ * the hero's size in step with his own swing.
+ */
+function drawClip(ctx, o, sp, clip, k, sx, sy) {
+  const [w0, w1] = clip.window || [0, clip.parts.reduce((t, p) => t + p.cols, 0) - 1];
+  const f = w0 + Math.min(w1 - w0, Math.floor(Math.max(0, k) * (w1 - w0 + 1)));
+
+  // Which file holds this frame. Parts are walked in order, so a frame index
+  // is an offset into the one whose range contains it.
+  let off = 0, part = clip.parts[clip.parts.length - 1], local = part.cols - 1;
+  for (const p of clip.parts) {
+    if (f < off + p.cols) { part = p; local = f - off; break; }
+    off += p.cols;
+  }
+
+  const sh = Atlas.sheet(part.src, part.cols, clip.rows, clip);
+  if (!sh) return false;
+  const idx = (clip.tiered ? sp.row * part.cols : 0) + local;
+  const cell = sh.cells[idx];
+  if (!cell) return false;
+
+  const psh = Atlas.sheet(sp.sheet, sp.cols, sp.rows, sp);
+  const stand = psh && psh.cells[sp.row * sp.cols];
+  const scale = ((clip.h || sp.h) * (o.scale || 1)) / ((stand && stand.h) || cell.h);
+  const src = o.hurt > 0.35 ? Atlas.tinted(sh, 'rgba(255,60,40,.55)') : null;
+  Atlas.drawSprite(ctx, sh, idx, sx, sy, scale, o.fx < 0, src);
+  return true;
+}
+
+/** The act the hero is holding, as a clip, if this class has one baked. */
+function drawActClip(ctx, o, sp, sx, sy) {
+  if (!sp.clips || !o.act || o.dead) return false;
+  const clip = sp.clips[CLIP_FOR_ACT[o.act.pose]];
+  if (!clip) return false;
+  const k = o.act.hold ? 1 - Math.max(0, o.act.t) / o.act.hold : 1;
+  return drawClip(ctx, o, sp, clip, k, sx, sy);
+}
 
 /**
  * Foes that have a doll, by `kind`.
