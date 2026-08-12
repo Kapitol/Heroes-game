@@ -629,32 +629,26 @@ export function showMap(choices, section) {
  * thing the player sees on opening the screen is nothing at all.
  */
 /**
- * **The rendered wood camp is the default set now**, not the painted boneyard.
+ * **The camp set, and which areas have one of their own.**
  *
- * Nine of the ten areas have no camp of their own and every one of them used to
- * fall back to `camp-boneyard.png`, which meant nine levels were shown a
- * graveyard whatever they were called. The fallback is the *rendered* set
- * because a render is the thing this project can now make more of — a new area
- * is a prop list and a seed in `tools/bake-camp.py`, not a generation and a
- * keying pass — so the default should be the kind of set the next one will be.
+ * This was a probe: ask for `art/camp-<area>.png`, and fall back when the
+ * request 404s. That was right while camps were paintings arriving one at a
+ * time, and it is wrong now — a set is *rendered* by `tools/bake-camp.py`, and a
+ * rendered set is a prop list and a seed rather than a file somebody may or may
+ * not have drawn yet. An explicit list says what exists; a 404 says what
+ * happens to be missing, which is not the same thing and is a slower way to
+ * find out.
+ *
+ * `art/camp-town.png` and `art/camp-boneyard.png` are still on disk and no
+ * longer used. They are paintings, and the whole reason for the render is that
+ * a painting has to be *matched* to the figures by eye — which is the 1.35 ->
+ * 2.6 and `cover` -> 215% argument, one decision made twice in two files. The
+ * rendered set is built at the game's own metres-per-pixel instead, so there is
+ * nothing to match.
  */
+const CAMP_SETS = new Set(['wood']);
 const CAMP_FALLBACK = 'art/camp-wood.png';
 let campArt = null;
-
-/**
- * The areas whose camp is *painted* rather than rendered.
- *
- * The two kinds are sized differently and have to be, because they are made
- * against different rulers. A painting is drawn at whatever scale the generator
- * felt like and is then magnified until the figures look right on it, which is
- * what `background-size: 215%` is. A rendered set is built at the game's own
- * metres-per-pixel — a man is `44 * 0.92 * scale` tall in it by construction —
- * so it is shown at its own size, `auto 100%`, which is the CSS default now.
- * Getting this list wrong is visible immediately: a painting at 100% is a
- * postage stamp in a black field, and a render at 215% is a close-up of a
- * campfire.
- */
-const PAINTED = new Set(['town']);
 
 /**
  * The firelight, as light rather than as a glow.
@@ -922,22 +916,17 @@ function campShadow(ctx, sheet, idx, k, flip, x, y, scale, fireX, fireY, W) {
 }
 
 function dressCamp(area) {
-  const src = area ? `art/camp-${area}.png` : CAMP_FALLBACK;
+  const src = CAMP_SETS.has(area) ? `art/camp-${area}.png` : CAMP_FALLBACK;
   if (src === campArt) return;
+  // Still waits for the decode before swapping. Set straight onto the element,
+  // an image that has not arrived blanks the panel, and the first thing on
+  // screen is nothing at all.
   const img = new Image();
   img.onload = () => {
     campArt = src;
-    el.campScene.classList.toggle('painted', PAINTED.has(area));
     el.campScene.style.backgroundImage = `url("../${src}")`;
     firelight = null;
-    if (!PAINTED.has(area)) loadFirelight(src);
-  };
-  img.onerror = () => {
-    campArt = CAMP_FALLBACK;
-    el.campScene.classList.remove('painted');
-    el.campScene.style.backgroundImage = `url("../${CAMP_FALLBACK}")`;
-    firelight = null;
-    loadFirelight(CAMP_FALLBACK);
+    loadFirelight(src);
   };
   img.src = src;
 }

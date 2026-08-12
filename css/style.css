@@ -751,24 +751,11 @@ body.camp #belt { opacity:0; pointer-events:none; }
   background:#000 url("../art/camp-wood.png") 50% 50% / auto 100% no-repeat;
 }
 
-/* **The painted camps keep their magic number.** A painting is drawn at
-   whatever scale the generator felt like, so it is magnified until the figures
-   look right on it, and this is that magnification.
-
-   Measured off the backdrop: a cart wheel is ~95px for ~1.2m and a headstone
-   ~80px for ~0.95m, so the set runs about 85px to the metre — 109 once `cover`
-   has magnified it on a 1316px viewport — and a 1.8m man stands ~197px tall in
-   it. The other direction was tried: zooming the painting to match a 575px hero
-   meant `background-size: 330%`, which cropped the tent and the cart out of
-   frame and magnified a 1536px painting past the point where it holds together.
-
-   215%: `cover` is ~1.285x on a tall viewport and the figures were scaled up by
-   1.93x to match the reference, so the set is magnified by the same 1.93x —
-   1.285 * 1.93 = 2.48 of the painting's own pixels, which is 215% of the
-   element's width. Paired with the 2.6 in `campGeom`; the two numbers are one
-   decision and must move together. `ui.js` decides which sets are painted; see
-   `PAINTED` there. */
-#campScene.painted { background-size:215%; background-position:50% 60% }
+/* The painted camps' `background-size: 215%` lived here and is gone with them.
+   It was the number a painting has to be magnified by so the figures look
+   right on it — measured off a cart wheel and a headstone — and the rendered
+   set needs no such number, because it is built at the game's own
+   metres-per-pixel. See `CAMP_SETS` in js/ui.js. */
 #campCanvas { position:absolute; inset:0; width:100%; height:100%; }
 
 /* The hit areas over the figures. Each is a column the width of one place at
