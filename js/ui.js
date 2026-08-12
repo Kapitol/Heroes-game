@@ -761,75 +761,97 @@ function paintFirelight(ctx, W, H) {
 }
 
 /**
- * A shadow thrown *by the fire*, rather than a disc under the boots.
+ * The figure's own silhouette, thrown across the ground by the fire.
  *
- * `drawShadow` puts a soft round blot beneath a figure, which is right on the
+ * `drawShadow` puts a soft round blot under a figure, which is right on the
  * road — the light there is ambient and comes from nowhere in particular. At
- * the camp there is exactly one light and everybody can see where it is, so a
- * round shadow is the one thing in the frame openly disagreeing with the set:
- * the rendered stones throw theirs outward from the pit and the heroes standing
- * between them did not.
+ * the camp there is one light and everybody can see where it is, so a disc is
+ * the one thing in the frame openly disagreeing with the set: the rendered
+ * stones throw real shadows outward from the pit and the heroes standing
+ * between them had a puck.
  *
- * Three things make it read:
+ * **It is the sprite, not a shape that stands in for it.** Two passes were
+ * spent on ellipses — one plain, one with a contact patch — and neither reads,
+ * because the thing that says *shadow* is recognising the shoulders and the
+ * sword in it. So the cell being drawn is rendered into a buffer, filled solid
+ * through `source-in` to make a silhouette, and laid on the ground.
  *
- * - **It is solved on the ground, not on the screen.** The ground is seen at
- *   24°, so screen-vertical is compressed; the direction away from the fire is
- *   found with y un-squashed by `GROUND`, and the whole shadow is drawn inside
- *   a matching squash. Done in screen space the shadows of the two heroes at
- *   the sides point visibly wrong.
- * - **It lengthens with distance and fades with it.** A point light throws a
- *   longer, weaker shadow the further away the caster is, and the falloff is
- *   what keeps the back row from looking pasted on.
- * - **It moves on the fire's clock** — the same `campT` the plates are
- *   cross-faded on, so the shadows breathe with the light that casts them
- *   rather than on a rhythm of their own.
+ * Three things make it lie down properly:
+ *
+ * - **The ground, not the screen.** The ground is seen at 24°, so the frame is
+ *   squashed by `GROUND` and *then* rotated by the away-angle measured in
+ *   un-squashed space. Rotating first — or measuring the angle on screen —
+ *   points the two figures at the sides visibly wrong.
+ * - **Up becomes away.** Inside that frame the sprite is sheared by
+ *   `transform(0, w, -L, 0, 0, 0)`, which sends the sprite's vertical axis
+ *   along the ground away from the fire and its horizontal axis across. Feet
+ *   stay at the feet; the crown lands `L` figure-heights out.
+ * - **It fades along its length**, erased by a gradient in the buffer before it
+ *   is ever transformed — so the falloff follows the body from sole to crown
+ *   rather than following the screen. A shadow that is as dark at the far end
+ *   as at the feet reads as a cut-out lying on the floor.
+ *
+ * It lengthens and weakens with distance from the fire, and both breathe on
+ * `campT` — the clock the firelight plates are cross-faded on, so the shadow
+ * moves with the light that casts it rather than on a rhythm of its own.
  */
 const GROUND = 0.34;
+const SQUASH = 0.55;
+let shadowBuf = null;
 
-function campShadow(ctx, x, y, scale, fireX, fireY, W) {
+function campShadow(ctx, sheet, idx, k, flip, x, y, scale, fireX, fireY, W) {
   const gx = x - fireX, gy = (y - fireY) / GROUND;
   const dist = Math.hypot(gx, gy) || 1;
-  const r = 6 * scale;
-  // Long enough to read at the fire's edge, and bounded: past a couple of
-  // body-lengths it is a smear rather than a shadow.
-  const len = r * (2.0 + Math.min(3.4, dist / (W * 0.11)))
-    * (1 + 0.06 * Math.sin(campT * 7.3));
-  const fade = (0.86 / (1 + dist / (W * 0.30)))
+  const h = 44 * 0.92 * scale;              // the body, feet to crown
+
+  // Grown, never shrunk: one allocation covers every frame after the first.
+  // Same reasoning as `litBuf`, and the same generous padding — a raised sword
+  // reaches well above the head.
+  const pad = Math.ceil(h * 1.8);
+  const size = pad * 2;
+  if (!shadowBuf) shadowBuf = document.createElement('canvas');
+  if (shadowBuf.width < size) { shadowBuf.width = size; shadowBuf.height = size; }
+  const b = shadowBuf.getContext('2d');
+  b.setTransform(1, 0, 0, 1, 0, 0);
+  b.clearRect(0, 0, shadowBuf.width, shadowBuf.height);
+  Atlas.drawSprite(b, sheet, idx, pad, pad, k, flip);
+  // Solid, through the alpha that is already there.
+  b.globalCompositeOperation = 'source-in';
+  b.fillStyle = '#050403';
+  b.fillRect(0, 0, shadowBuf.width, shadowBuf.height);
+  // …then erased towards the crown, which is the far end once it is thrown.
+  b.globalCompositeOperation = 'destination-out';
+  const g = b.createLinearGradient(0, pad, 0, pad - h * 1.2);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.45, 'rgba(0,0,0,.34)');
+  g.addColorStop(1, 'rgba(0,0,0,.95)');
+  b.fillStyle = g;
+  b.fillRect(0, 0, shadowBuf.width, shadowBuf.height);
+  b.globalCompositeOperation = 'source-over';
+
+  const L = (0.80 + Math.min(0.85, dist / (W * 0.30)))
+    * (1 + 0.045 * Math.sin(campT * 7.3));
+  const fade = (0.85 / (1 + dist / (W * 0.40)))
     * (0.9 + 0.12 * Math.sin(campT * 2.4));
-
-  // **The contact patch, which is the half that makes it read.** A cast shadow
-  // alone is a soft smear leaving the boots, and at this size the eye does not
-  // reliably attach it to the figure — the first pass had one and the shadows
-  // were, fairly, reported missing. What says *standing on the ground* is the
-  // hard dark directly under the feet, where no light reaches at all. So there
-  // are two: a small near-opaque blob at the soles, and the long throw below.
   ctx.save();
+  // Multiplied into whatever alpha the caller is drawing at, so an unselected
+  // hero's shadow dims with him instead of staying at full strength.
+  ctx.globalAlpha *= fade;
   ctx.translate(x, y);
-  ctx.scale(1, GROUND);
-  const contact = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.15);
-  contact.addColorStop(0, 'rgba(4,3,2,.72)');
-  contact.addColorStop(0.55, 'rgba(4,3,2,.42)');
-  contact.addColorStop(1, 'rgba(4,3,2,0)');
-  ctx.fillStyle = contact;
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 1.15, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(1, GROUND);
+  // **`SQUASH`, not `GROUND`, and that is a deliberate lie.** A shadow lying
+  // flat and seen at 24° is foreshortened to a third of its width — which is
+  // exactly what the first version did, and it came out as a laser beam leaving
+  // the boots. Correct, and useless: at this size the only thing that makes a
+  // shadow read is recognising a body in it, and a body a third of its width is
+  // not recognisable. So the shadow stands up off the ground, at 0.55 rather
+  // than 0.34, and is thrown shorter to match. The party ellipse and the
+  // contact of the feet stay on the true 0.34; only the silhouette cheats.
+  ctx.scale(1, SQUASH);
   ctx.rotate(Math.atan2(gy, gx));
-  // Darkest at the feet and gone at the tip — a shadow has a contact point, and
-  // an evenly filled ellipse is a puddle.
-  const g = ctx.createLinearGradient(0, 0, len, 0);
-  g.addColorStop(0, `rgba(6,4,3,${fade.toFixed(3)})`);
-  g.addColorStop(0.45, `rgba(6,4,3,${(fade * 0.5).toFixed(3)})`);
-  g.addColorStop(1, 'rgba(6,4,3,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.ellipse(len * 0.42, 0, len * 0.58, r * 0.92, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.transform(0, 1.12, -L, 0, 0, 0);
+  ctx.filter = `blur(${Math.max(1, h * 0.045).toFixed(1)}px)`;
+  ctx.drawImage(shadowBuf, -pad, -pad);
+  ctx.filter = 'none';
   ctx.restore();
 }
 
@@ -1232,7 +1254,6 @@ function paintCamp(dt) {
       continue;
     }
 
-    campShadow(ctx, x, y, scale, fireX, fireY, W);
     // Everyone else stands back into the dark. Dimming the unselected is what
     // makes the selected one obvious at a glance — a highlight on its own has
     // to be found, a contrast does not.
@@ -1278,7 +1299,10 @@ function paintCamp(dt) {
       // and every sheet in the game inherits that, so a figure standing on the
       // fire's right has to be mirrored or he is looking out of the picture.
       // A ring of people all facing the same way is a queue, not a camp.
-      Atlas.drawSprite(ctx, sheet, idx, x, y, k, x > fireX);
+      const flip = x > fireX;
+      // The shadow is this same cell, laid down on the ground first.
+      campShadow(ctx, sheet, idx, k, flip, x, y, scale, fireX, fireY, W);
+      Atlas.drawSprite(ctx, sheet, idx, x, y, k, flip);
     }
     // **No stand-in.** This used to fall back to the vector kit while a sheet
     // decoded, which meant every visit to the camp opened on four simple
