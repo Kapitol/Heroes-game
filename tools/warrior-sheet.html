@@ -367,13 +367,30 @@ ol.steps:empty { display:none; }
   const SUN = { x: KEY.right / KEY_LEN, y: -KEY.up / KEY_LEN };
 
   // Measured off the sheet rather than taken from the bake's arguments.
-  const CELL_W = 350, CELL_H = 540, FPS = 12;
+  const FPS = 12;
+  /**
+   * Cell size is per stance now, and that is the fix for the cropped sword.
+   *
+   * `--cellw` is a window, not a scale: the same frame baked at 350 and at 900
+   * has the same crown, the same sole and the same height to the pixel, so a
+   * stance can be given more room without any other stance changing size. The
+   * battlecry reaches 300px from the camera axis and was being cut off at 175.
+   *
+   * `--cellh` moves the ground line, because the baker's `by` is a fraction of
+   * the cell. So the sole is stored per stance rather than assumed: 465.5 in a
+   * 540 cell, 536 in the 620 the casting needs to get the blade in.
+   */
+  const cw = () => S().cellw;
+  const ch = () => S().cellh;
+  const sole = () => S().sole;
+  // The camera axis, which is the middle of the cell whatever its width.
+  const anchor = () => S().cellw / 2;
   // Which rungs of the ladder this build can show, and where the chosen one
   // starts in the sheet. The published copy carries pre-cut tier-5 strips, so
   // its row is always 0 and its ladder is one rung long; the repo copy opens
   // the whole five-row bake and indexes into it.
   const TIERS = [1, 2, 3, 4, 5];
-  const rowY = () => (state.tier - 1) * CELL_H;
+  const rowY = () => (state.tier - 1) * ch();
   /**
    * How big a cell is *in the image being read*, against the 350x540 the bake
    * writes. The repo copy opens the sheets at full size and this is 1; the
@@ -384,10 +401,27 @@ ol.steps:empty { display:none; }
    * units, so every measurement on the page means the same thing in both.
    */
   const SS = 1;
-  const srcX = (f) => f * CELL_W * SS;
-  const srcY = () => rowY() * SS;
-  const SRC_W = CELL_W * SS, SRC_H = CELL_H * SS;
-  const SOLE = 465.5;
+
+  /**
+   * Which sheet holds frame `f`, and where it sits in it.
+   *
+   * Two stances are split across a pair of images. A sheet may not be wider
+   * than the 16,384px a browser will hold as a texture, and the battlecry at
+   * the 700px cell it needs would be 23,800 in one row. Splitting it keeps the
+   * whole clip at the right speed; windowing it would have thrown a third of
+   * the taunt away to save a file.
+   */
+  function partOf(f) {
+    const parts = S().parts;
+    let off = 0;
+    for (const p of parts) {
+      if (f < off + p.cols) return { part: p, i: f - off };
+      off += p.cols;
+    }
+    const last = parts[parts.length - 1];
+    return { part: last, i: last.cols - 1 };
+  }
+
   /**
    * The anchor is the **cell centre**, which is the axis the bake's camera
    * sits on -- not the middle of his boots.
@@ -402,7 +436,7 @@ ol.steps:empty { display:none; }
    * cells and a walk cycle want the feet centred every frame. Different
    * technique, different job.)
    */
-  const ANCHOR = 175, FH = 300;
+  const FH = 300;
 
   const toScreen = (x, y) => ({ x: (x - y) * (TILE_W / 2), y: (x + y) * (TILE_H / 2) });
   const toWorld = (sx, sy) => {
@@ -428,7 +462,7 @@ ol.steps:empty { display:none; }
    * marks the ones whose strip would be wider than the 16,384 a browser will
    * hold as a texture. `key` is set only where a bake exists.
    */
-  const CLIPS = [{"file":"Great-Sword-Idle-02","group":"Greatsword","seconds":3.767,"cells":45,"over":false,"key":"idle2"},{"file":"paladin-Great Sword Idle","group":"Greatsword","seconds":2,"cells":24,"over":false,"key":"idle"},{"file":"X Bot@Great Sword Casting","group":"Greatsword","seconds":4.8,"cells":58,"over":true,"key":"cast"},{"file":"X Bot@Run With Sword","group":"Greatsword","seconds":0.8,"cells":10,"over":false,"key":"run"},{"file":"X Bot@Stable Sword Inward Slash","group":"Greatsword","seconds":2.2,"cells":26,"over":false,"key":"slashIn"},{"file":"X Bot@Stable Sword Outward Slash","group":"Greatsword","seconds":2.033,"cells":24,"over":false,"key":"slashOut"},{"file":"X Bot@Withdrawing Sword","group":"Greatsword","seconds":1.5,"cells":18,"over":false,"key":"draw"},{"file":"X Bot@Standing Taunt Battlecry","group":"Unarmed and spell","seconds":2.833,"cells":34,"over":false,"key":"battlecry"},{"file":"Paladin WProp J Nordstrom@Great Sword Casting","group":"Greatsword","seconds":4.8,"cells":58,"over":true,"key":null},{"file":"Paladin-Great-Sword-Idle","group":"Greatsword","seconds":7.567,"cells":91,"over":true,"key":null},{"file":"Stable Sword Inward Slash","group":"Greatsword","seconds":2.2,"cells":26,"over":false,"key":null},{"file":"Combo-pickup-01","group":"Unarmed and spell","seconds":4.867,"cells":58,"over":true,"key":null},{"file":"Combo-pickup-02","group":"Unarmed and spell","seconds":7.2,"cells":86,"over":true,"key":null},{"file":"Combo-pickup-03","group":"Unarmed and spell","seconds":2.4,"cells":29,"over":false,"key":null},{"file":"paladin-Idle","group":"Unarmed and spell","seconds":1.967,"cells":24,"over":false,"key":null},{"file":"paladin-Reaction","group":"Unarmed and spell","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"Standing 1H Cast Spell 01","group":"Unarmed and spell","seconds":2.267,"cells":27,"over":false,"key":null},{"file":"Unarmed Turn Left 90bash","group":"Unarmed and spell","seconds":4,"cells":48,"over":true,"key":null},{"file":"Unarmed Turn Left 90Idle","group":"Unarmed and spell","seconds":4,"cells":48,"over":true,"key":null},{"file":"Unarmed Turn Left 90Walking-01","group":"Unarmed and spell","seconds":1.033,"cells":12,"over":false,"key":null},{"file":"X Bot@Idle","group":"Unarmed and spell","seconds":10,"cells":120,"over":true,"key":null},{"file":"X Bot@Spell Casting","group":"Unarmed and spell","seconds":4.2,"cells":50,"over":true,"key":null},{"file":"X Bot@Standing 2H Cast Spell 01","group":"Unarmed and spell","seconds":2.167,"cells":26,"over":false,"key":null},{"file":"Shield-Idle-01","group":"Shield","seconds":2.533,"cells":30,"over":false,"key":null},{"file":"Shield-Idle-02","group":"Shield","seconds":8.667,"cells":104,"over":true,"key":null},{"file":"Shield-Idle-03","group":"Shield","seconds":7.533,"cells":90,"over":true,"key":null},{"file":"staff-Idle-01","group":"Staff","seconds":9.333,"cells":112,"over":true,"key":null},{"file":"Staff-Idle-02","group":"Staff","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"Staff-Idle-03","group":"Staff","seconds":7.833,"cells":94,"over":true,"key":null},{"file":"Warrok W Kurniawan@Dying","group":"Borrowed from Warrok","seconds":4.4,"cells":53,"over":true,"key":null},{"file":"Warrok W Kurniawan@Getting-Hit","group":"Borrowed from Warrok","seconds":1.067,"cells":13,"over":false,"key":null},{"file":"Warrok W Kurniawan@Mutant Punch","group":"Borrowed from Warrok","seconds":1.1,"cells":13,"over":false,"key":null},{"file":"Warrok W Kurniawan@Standing Walk Back","group":"Borrowed from Warrok","seconds":1.2,"cells":14,"over":false,"key":null},{"file":"Warrok W Kurniawan@Unarmed Turn Left 90","group":"Borrowed from Warrok","seconds":1.5,"cells":18,"over":false,"key":null},{"file":"Warrok W Kurniawan@Unarmed Walk Forward","group":"Borrowed from Warrok","seconds":1.367,"cells":16,"over":false,"key":null},{"file":"Warrok W Kurniawan@Walking-02","group":"Borrowed from Warrok","seconds":1.4,"cells":17,"over":false,"key":null},{"file":"monster-01-Mutant Dying","group":"Foes","seconds":4.6,"cells":55,"over":true,"key":null},{"file":"monster-01-One Hand Sword Combo","group":"Foes","seconds":4.533,"cells":54,"over":true,"key":null},{"file":"monster-01-Walking","group":"Foes","seconds":1.633,"cells":20,"over":false,"key":null},{"file":"monster-02-Mutant Dying","group":"Foes","seconds":4.6,"cells":55,"over":true,"key":null},{"file":"monster-02-Reaction","group":"Foes","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"monster-02-Standing Melee Attack Downward","group":"Foes","seconds":2.267,"cells":27,"over":false,"key":null},{"file":"monster-02-Standing React Large From Front","group":"Foes","seconds":1,"cells":12,"over":false,"key":null},{"file":"monster-02-Standing Run Forward","group":"Foes","seconds":0.833,"cells":10,"over":false,"key":null}];
+  const CLIPS = [{"file":"Great-Sword-Idle-02","group":"Greatsword","seconds":3.767,"cells":45,"over":false,"key":"idle2"},{"file":"Great-Sword-Walk","group":"Greatsword","seconds":1.367,"cells":16,"over":false,"key":"walk"},{"file":"paladin-Great Sword Idle","group":"Greatsword","seconds":2,"cells":24,"over":false,"key":"idle"},{"file":"X Bot@Great Sword Casting","group":"Greatsword","seconds":4.8,"cells":58,"over":true,"key":"cast"},{"file":"X Bot@Run With Sword","group":"Greatsword","seconds":0.8,"cells":10,"over":false,"key":"run"},{"file":"X Bot@Stable Sword Inward Slash","group":"Greatsword","seconds":2.2,"cells":26,"over":false,"key":"slashIn"},{"file":"X Bot@Stable Sword Outward Slash","group":"Greatsword","seconds":2.033,"cells":24,"over":false,"key":"slashOut"},{"file":"X Bot@Withdrawing Sword","group":"Greatsword","seconds":1.5,"cells":18,"over":false,"key":"draw"},{"file":"X Bot@Standing Taunt Battlecry","group":"Unarmed and spell","seconds":2.833,"cells":34,"over":false,"key":"battlecry"},{"file":"Paladin WProp J Nordstrom@Great Sword Casting","group":"Greatsword","seconds":4.8,"cells":58,"over":true,"key":null},{"file":"Paladin-Great-Sword-Idle","group":"Greatsword","seconds":7.567,"cells":91,"over":true,"key":null},{"file":"Stable Sword Inward Slash","group":"Greatsword","seconds":2.2,"cells":26,"over":false,"key":null},{"file":"Combo-pickup-01","group":"Unarmed and spell","seconds":4.867,"cells":58,"over":true,"key":null},{"file":"Combo-pickup-02","group":"Unarmed and spell","seconds":7.2,"cells":86,"over":true,"key":null},{"file":"Combo-pickup-03","group":"Unarmed and spell","seconds":2.4,"cells":29,"over":false,"key":null},{"file":"paladin-Idle","group":"Unarmed and spell","seconds":1.967,"cells":24,"over":false,"key":null},{"file":"paladin-Reaction","group":"Unarmed and spell","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"Standing 1H Cast Spell 01","group":"Unarmed and spell","seconds":2.267,"cells":27,"over":false,"key":null},{"file":"Unarmed Turn Left 90bash","group":"Unarmed and spell","seconds":4,"cells":48,"over":true,"key":null},{"file":"Unarmed Turn Left 90Idle","group":"Unarmed and spell","seconds":4,"cells":48,"over":true,"key":null},{"file":"Unarmed Turn Left 90Walking-01","group":"Unarmed and spell","seconds":1.033,"cells":12,"over":false,"key":null},{"file":"X Bot@Idle","group":"Unarmed and spell","seconds":10,"cells":120,"over":true,"key":null},{"file":"X Bot@Spell Casting","group":"Unarmed and spell","seconds":4.2,"cells":50,"over":true,"key":null},{"file":"X Bot@Standing 2H Cast Spell 01","group":"Unarmed and spell","seconds":2.167,"cells":26,"over":false,"key":null},{"file":"Shield-Idle-01","group":"Shield","seconds":2.533,"cells":30,"over":false,"key":null},{"file":"Shield-Idle-02","group":"Shield","seconds":8.667,"cells":104,"over":true,"key":null},{"file":"Shield-Idle-03","group":"Shield","seconds":7.533,"cells":90,"over":true,"key":null},{"file":"staff-Idle-01","group":"Staff","seconds":9.333,"cells":112,"over":true,"key":null},{"file":"Staff-Idle-02","group":"Staff","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"Staff-Idle-03","group":"Staff","seconds":7.833,"cells":94,"over":true,"key":null},{"file":"Warrok W Kurniawan@Dying","group":"Borrowed from Warrok","seconds":4.4,"cells":53,"over":true,"key":null},{"file":"Warrok W Kurniawan@Getting-Hit","group":"Borrowed from Warrok","seconds":1.067,"cells":13,"over":false,"key":null},{"file":"Warrok W Kurniawan@Mutant Punch","group":"Borrowed from Warrok","seconds":1.1,"cells":13,"over":false,"key":null},{"file":"Warrok W Kurniawan@Standing Walk Back","group":"Borrowed from Warrok","seconds":1.2,"cells":14,"over":false,"key":null},{"file":"Warrok W Kurniawan@Unarmed Turn Left 90","group":"Borrowed from Warrok","seconds":1.5,"cells":18,"over":false,"key":null},{"file":"Warrok W Kurniawan@Unarmed Walk Forward","group":"Borrowed from Warrok","seconds":1.367,"cells":16,"over":false,"key":null},{"file":"Warrok W Kurniawan@Walking-02","group":"Borrowed from Warrok","seconds":1.4,"cells":17,"over":false,"key":null},{"file":"monster-01-Mutant Dying","group":"Foes","seconds":4.6,"cells":55,"over":true,"key":null},{"file":"monster-01-One Hand Sword Combo","group":"Foes","seconds":4.533,"cells":54,"over":true,"key":null},{"file":"monster-01-Walking","group":"Foes","seconds":1.633,"cells":20,"over":false,"key":null},{"file":"monster-02-Mutant Dying","group":"Foes","seconds":4.6,"cells":55,"over":true,"key":null},{"file":"monster-02-Reaction","group":"Foes","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"monster-02-Standing Melee Attack Downward","group":"Foes","seconds":2.267,"cells":27,"over":false,"key":null},{"file":"monster-02-Standing React Large From Front","group":"Foes","seconds":1,"cells":12,"over":false,"key":null},{"file":"monster-02-Standing Run Forward","group":"Foes","seconds":0.833,"cells":10,"over":false,"key":null}];
   const byFile = new Map(CLIPS.map((c) => [c.file, c]));
 
   /**
@@ -436,14 +470,18 @@ ol.steps:empty { display:none; }
    * setting, a measurement -- so the long casting runs 46 cells and the run
    * runs 10, and both play at their own speed.
    */
-  const STANCES = {"idle": {"label": "Idle", "cols": 24, "seconds": 2, "loop": true, "file": "paladin-Great Sword Idle"}, "idle2": {"label": "Idle, second", "cols": 45, "seconds": 3.767, "loop": true, "file": "Great-Sword-Idle-02"}, "battlecry": {"label": "Battlecry", "cols": 34, "seconds": 2.833, "loop": false, "file": "X Bot@Standing Taunt Battlecry"}, "slashOut": {"label": "Slash, outward", "cols": 24, "seconds": 2.033, "loop": false, "file": "X Bot@Stable Sword Outward Slash"}, "slashIn": {"label": "Slash, inward", "cols": 26, "seconds": 2.2, "loop": false, "file": "X Bot@Stable Sword Inward Slash"}, "draw": {"label": "Draw sword", "cols": 18, "seconds": 1.5, "loop": false, "file": "X Bot@Withdrawing Sword"}, "run": {"label": "Run", "cols": 10, "seconds": 0.8, "loop": true, "file": "X Bot@Run With Sword"}, "cast": {"label": "Casting", "cols": 46, "seconds": 4.8, "loop": false, "file": "X Bot@Great Sword Casting"}};
+  const STANCES = {"idle": {"label": "Idle", "cols": 24, "seconds": 2, "loop": true, "file": "paladin-Great Sword Idle", "cellw": 350, "cellh": 540, "sole": 465.5, "parts": [{"cols": 24}]}, "idle2": {"label": "Idle, second", "cols": 45, "seconds": 3.767, "loop": true, "file": "Great-Sword-Idle-02", "cellw": 350, "cellh": 540, "sole": 465.5, "parts": [{"cols": 45}]}, "walk": {"label": "Walk", "cols": 16, "seconds": 1.367, "loop": true, "file": "Great-Sword-Walk", "cellw": 500, "cellh": 540, "sole": 465.5, "parts": [{"cols": 16}]}, "run": {"label": "Run", "cols": 10, "seconds": 0.8, "loop": true, "file": "X Bot@Run With Sword", "cellw": 350, "cellh": 540, "sole": 465.5, "parts": [{"cols": 10}]}, "battlecry": {"label": "Battlecry", "cols": 34, "seconds": 2.833, "loop": false, "file": "X Bot@Standing Taunt Battlecry", "cellw": 700, "cellh": 540, "sole": 465.5, "parts": [{"cols": 17}, {"cols": 17}]}, "slashOut": {"label": "Slash, outward", "cols": 24, "seconds": 2.033, "loop": false, "file": "X Bot@Stable Sword Outward Slash", "cellw": 680, "cellh": 540, "sole": 465.5, "parts": [{"cols": 24}]}, "slashIn": {"label": "Slash, inward", "cols": 26, "seconds": 2.2, "loop": false, "file": "X Bot@Stable Sword Inward Slash", "cellw": 500, "cellh": 540, "sole": 465.5, "parts": [{"cols": 26}]}, "draw": {"label": "Draw sword", "cols": 18, "seconds": 1.5, "loop": false, "file": "X Bot@Withdrawing Sword", "cellw": 620, "cellh": 540, "sole": 465.5, "parts": [{"cols": 18}]}, "cast": {"label": "Casting", "cols": 58, "seconds": 4.8, "loop": false, "file": "X Bot@Great Sword Casting", "cellw": 560, "cellh": 620, "sole": 536, "parts": [{"cols": 29}, {"cols": 29}]}};
   // Where the pixels come from differs by build: the published page inlines a
   // tier-5 strip per stance, the repo page opens the whole 5-row bake.
-  const SRC = {"idle": "../art/knight-camp.png", "idle2": "../art/knight-camp2.png", "battlecry": "../art/knight-battlecry.png", "slashOut": "../art/knight-slash-out.png", "slashIn": "../art/knight-slash-in.png", "draw": "../art/knight-draw.png", "run": "../art/knight-run.png", "cast": "../art/knight-cast.png"};
+  const SRC = {"idle": ["../art/knight-camp.png"], "idle2": ["../art/knight-camp2.png"], "walk": ["../art/knight-gs-walk.png"], "run": ["../art/knight-run.png"], "battlecry": ["../art/knight-battlecry-1.png", "../art/knight-battlecry-2.png"], "slashOut": ["../art/knight-slash-out.png"], "slashIn": ["../art/knight-slash-in.png"], "draw": ["../art/knight-draw.png"], "cast": ["../art/knight-cast-1.png", "../art/knight-cast-2.png"]};
+  const IMAGES = [];
   for (const k of Object.keys(STANCES)) {
-    const im = new Image();
-    im.src = SRC[k];
-    STANCES[k].img = im;
+    STANCES[k].parts.forEach((part, i) => {
+      const im = new Image();
+      im.src = SRC[k][i];
+      part.img = im;
+      IMAGES.push(im);
+    });
   }
   // The stance being drawn, and its sheet. In sequence mode that is whatever
   // step is currently running, not what the dropdown says.
@@ -455,7 +493,7 @@ ol.steps:empty { display:none; }
     }
     return state.stance;
   }
-  const img = () => S().img;
+
   const cols = () => S().cols;
 
   const $ = (id) => document.getElementById(id);
@@ -573,27 +611,31 @@ ol.steps:empty { display:none; }
     if (shadowFor === tag && shadowCv) return shadowCv;
     if (!shadowCv) {
       shadowCv = document.createElement('canvas');
-      shadowCv.width = CELL_W; shadowCv.height = CELL_H;
+    }
+    const W0 = cw(), H0 = ch();
+    if (shadowCv.width !== W0 || shadowCv.height !== H0) {
+      shadowCv.width = W0; shadowCv.height = H0;
     }
     const s = shadowCv.getContext('2d');
     s.setTransform(1, 0, 0, 1, 0, 0);
-    s.clearRect(0, 0, CELL_W, CELL_H);
+    s.clearRect(0, 0, W0, H0);
     s.globalCompositeOperation = 'source-over';
-    s.drawImage(img(), srcX(frame), srcY(), SRC_W, SRC_H, 0, 0, CELL_W, CELL_H);
+    const { part, i } = partOf(frame);
+    s.drawImage(part.img, i * W0 * SS, rowY() * SS, W0 * SS, H0 * SS, 0, 0, W0, H0);
 
     s.globalCompositeOperation = 'source-in';
     s.fillStyle = '#0a0806';
-    s.fillRect(0, 0, CELL_W, CELL_H);
+    s.fillRect(0, 0, W0, H0);
 
     // Thin it out towards the top of the cell -- the end of the shadow that
     // lands furthest from his feet.
     s.globalCompositeOperation = 'destination-out';
-    const fade = s.createLinearGradient(0, SOLE, 0, 0);
+    const fade = s.createLinearGradient(0, sole(), 0, 0);
     fade.addColorStop(0, 'rgba(0,0,0,0)');
     fade.addColorStop(.45, 'rgba(0,0,0,.30)');
     fade.addColorStop(1, 'rgba(0,0,0,.72)');
     s.fillStyle = fade;
-    s.fillRect(0, 0, CELL_W, CELL_H);
+    s.fillRect(0, 0, W0, H0);
     s.globalCompositeOperation = 'source-over';
 
     shadowFor = tag;
@@ -614,14 +656,14 @@ ol.steps:empty { display:none; }
    * underneath it.
    */
   function drawCastShadow(feetX, feetY, fig) {
-    if (!img().complete || !img().naturalWidth) return;
+    if (!partOf(state.frame).part.img.complete) return;
     const L = 1 / Math.tan(KEY.elevation * Math.PI / 180);
     const dx = -SUN.x, dy = -SUN.y * (TILE_H / TILE_W);
 
     const a = fig, b = 0;
     const c = -fig * L * dx, d = -fig * L * dy;
-    const e = feetX - fig * ANCHOR - c * SOLE;
-    const f = feetY - d * SOLE;
+    const e = feetX - fig * anchor() - c * sole();
+    const f = feetY - d * sole();
 
     ctx.save();
     ctx.globalAlpha = 0.5;
@@ -661,7 +703,6 @@ ol.steps:empty { display:none; }
     ctx.restore();
 
     const fig = (HERO_H * z) / FH;
-    const foot = 57 * fig;          // measured footprint half-width
 
     drawSun(feetX, feetY);
 
@@ -677,10 +718,11 @@ ol.steps:empty { display:none; }
     // horizontal axis stays put: an affine, and the sole is its fixed line.
     drawCastShadow(feetX, feetY, fig);
 
-    if (img().complete && img().naturalWidth) {
+    const { part, i } = partOf(state.frame);
+    if (part.img.complete && part.img.naturalWidth) {
       ctx.drawImage(
-        img(), srcX(state.frame), srcY(), SRC_W, SRC_H,
-        feetX - ANCHOR * fig, feetY - SOLE * fig, CELL_W * fig, CELL_H * fig,
+        part.img, i * cw() * SS, rowY() * SS, cw() * SS, ch() * SS,
+        feetX - anchor() * fig, feetY - sole() * fig, cw() * fig, ch() * fig,
       );
     }
 
@@ -1003,10 +1045,9 @@ ol.steps:empty { display:none; }
     draw();
     requestAnimationFrame(tick);
   };
-  let pending = Object.keys(STANCES).length;
+  let pending = IMAGES.length;
   const ready = () => { if (--pending === 0) start(); };
-  for (const k of Object.keys(STANCES)) {
-    const im = STANCES[k].img;
+  for (const im of IMAGES) {
     if (im.complete) ready(); else im.addEventListener('load', ready);
   }
 
