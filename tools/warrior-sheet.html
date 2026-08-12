@@ -374,6 +374,19 @@ ol.steps:empty { display:none; }
   // the whole five-row bake and indexes into it.
   const TIERS = [1, 2, 3, 4, 5];
   const rowY = () => (state.tier - 1) * CELL_H;
+  /**
+   * How big a cell is *in the image being read*, against the 350x540 the bake
+   * writes. The repo copy opens the sheets at full size and this is 1; the
+   * published copy carries strips cut down to fit under 16MB, so its cells are
+   * smaller than the geometry everywhere else on this page assumes.
+   *
+   * It scales the source rectangle only. SOLE, ANCHOR and FH stay in bake
+   * units, so every measurement on the page means the same thing in both.
+   */
+  const SS = 1;
+  const srcX = (f) => f * CELL_W * SS;
+  const srcY = () => rowY() * SS;
+  const SRC_W = CELL_W * SS, SRC_H = CELL_H * SS;
   const SOLE = 465.5;
   /**
    * The anchor is the **cell centre**, which is the axis the bake's camera
@@ -566,7 +579,7 @@ ol.steps:empty { display:none; }
     s.setTransform(1, 0, 0, 1, 0, 0);
     s.clearRect(0, 0, CELL_W, CELL_H);
     s.globalCompositeOperation = 'source-over';
-    s.drawImage(img(), frame * CELL_W, rowY(), CELL_W, CELL_H, 0, 0, CELL_W, CELL_H);
+    s.drawImage(img(), srcX(frame), srcY(), SRC_W, SRC_H, 0, 0, CELL_W, CELL_H);
 
     s.globalCompositeOperation = 'source-in';
     s.fillStyle = '#0a0806';
@@ -666,7 +679,7 @@ ol.steps:empty { display:none; }
 
     if (img().complete && img().naturalWidth) {
       ctx.drawImage(
-        img(), state.frame * CELL_W, rowY(), CELL_W, CELL_H,
+        img(), srcX(state.frame), srcY(), SRC_W, SRC_H,
         feetX - ANCHOR * fig, feetY - SOLE * fig, CELL_W * fig, CELL_H * fig,
       );
     }
