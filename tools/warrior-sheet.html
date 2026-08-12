@@ -191,6 +191,51 @@ dt code {
 dd { margin:0; font-variant-numeric:tabular-nums; color:var(--text); }
 dd b { font-weight:400; color:var(--accent); }
 
+/* ---------- the sequence builder ---------- */
+/* A work list, not a timeline widget. Rows in order, each one a clip and a
+   number of times to run it; the chain is the order they are written in. */
+.builder {
+  display:flex; flex-direction:column; gap:14px;
+  border:1px solid var(--rule); border-radius:2px;
+  padding:16px clamp(12px,2.5vw,20px);
+  background:color-mix(in srgb, var(--card) 55%, transparent);
+}
+.builder .top { display:flex; flex-wrap:wrap; align-items:center; gap:10px 12px; }
+.builder .top .label { margin-right:2px; }
+.builder input[type=text] {
+  font:inherit; font-size:14px; color:var(--text); background:var(--card);
+  border:1px solid var(--rule); border-radius:2px; padding:7px 12px; min-width:190px;
+}
+.builder input[type=text]::placeholder { color:var(--text-faint); }
+
+ol.steps { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+ol.steps:empty { display:none; }
+.step { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.step .n {
+  font-size:11px; letter-spacing:.14em; color:var(--text-faint);
+  font-variant-numeric:tabular-nums; width:22px; flex:none;
+}
+.step select { flex:1 1 320px; min-width:0; }
+.step .times { font-size:13px; color:var(--text-faint); flex:none; }
+.step input[type=number] {
+  font:inherit; font-size:14px; color:var(--text); background:var(--card);
+  border:1px solid var(--rule); border-radius:2px; padding:7px 6px 7px 10px;
+  width:66px; flex:none; font-variant-numeric:tabular-nums;
+}
+.step .len {
+  font-size:12px; color:var(--text-faint); font-variant-numeric:tabular-nums;
+  flex:none; min-width:60px; text-align:right;
+}
+.step .drop {
+  padding:6px 10px; font-size:13px; line-height:1; color:var(--text-faint); flex:none;
+}
+.step .drop:hover { border-color:var(--blood-lit); color:var(--blood-lit); }
+/* A step whose clip has no sheet yet: it stays in the sequence and is stepped
+   over on playback, because the sequence is a plan as much as a preview. */
+.step.unbaked select { border-style:dashed; color:var(--text-faint); }
+
+.builder .foot { max-width:none; }
+
 .foot { margin:0; color:var(--text-faint); font-size:14px; max-width:64ch; text-wrap:pretty; }
 .foot code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; }
 </style>
@@ -198,12 +243,7 @@ dd b { font-weight:400; color:var(--accent); }
 <div class="wrap">
 
   <p class="eyebrow">Crypt Heroes &middot; Character sheet</p>
-  <h1>The Warrior, <em>standing</em></h1>
-  <p class="standfirst">
-    One tier, one stance at a time, isolated on the flat angled plane &mdash; the
-    game's own 2:1 projection at the game's own tile size, and nothing else in
-    the frame.
-  </p>
+  <h1>The <em>Warrior</em></h1>
 
   <div class="stage">
     <canvas id="stage" aria-label="The warrior's idle animation on a flat angled plane"></canvas>
@@ -241,35 +281,25 @@ dd b { font-weight:400; color:var(--accent); }
         title="Horned plate">5</button>
     </span>
     <span class="label" style="margin-left:auto">Stance</span>
-    <select id="stance" aria-label="Stance animation">
-      <optgroup label="Greatsword idles &mdash; baked">
-        <option value="idle" selected>Idle &mdash; 2.00s</option>
-        <option value="idle2">Idle, second &mdash; 3.77s</option>
-      </optgroup>
-      <optgroup label="Other idles on disk &mdash; not baked">
-        <option disabled>Idle, unarmed</option>
-        <option disabled>Idle, paladin</option>
-        <option disabled>Idle, turn left 90</option>
-        <option disabled>Idle, shield 01</option>
-        <option disabled>Idle, shield 02</option>
-        <option disabled>Idle, shield 03</option>
-        <option disabled>Idle, staff 01</option>
-        <option disabled>Idle, staff 02</option>
-        <option disabled>Idle, staff 03</option>
-      </optgroup>
-      <optgroup label="Not baked">
-        <option disabled>Battlecry</option>
-        <option disabled>Skill Tree 1</option>
-        <option disabled>Skill Tree 2</option>
-        <option disabled>Skill Tree 3</option>
-        <option disabled>Skill Tree 4</option>
-        <option disabled>Skill Tree 5</option>
-        <option disabled>Attack 1</option>
-        <option disabled>Attack 2</option>
-        <option disabled>Attack 3</option>
-      </optgroup>
-    </select>
+    <select id="stance" aria-label="Stance animation"></select>
   </div>
+
+  <section class="builder">
+    <div class="top">
+      <span class="label">Sequence</span>
+      <button id="seqAdd" type="button">Add a clip</button>
+      <button id="seqPlay" type="button" aria-pressed="false">Play sequence</button>
+      <input id="seqName" type="text" placeholder="Name this sequence"
+             aria-label="Sequence name" style="margin-left:auto">
+      <button id="seqSave" type="button">Save</button>
+      <select id="seqLoad" aria-label="Saved sequences"></select>
+      <button id="seqDel" type="button">Delete</button>
+    </div>
+
+    <ol class="steps" id="seqSteps"></ol>
+
+    <p class="foot" id="seqNote"></p>
+  </section>
 
   <dl>
     <div><dt>Cell</dt><dd><b>350 &times; 540</b></dd></div>
@@ -365,6 +395,15 @@ dd b { font-weight:400; color:var(--accent); }
    * Cell size is shared, which is the only reason one page can play both
    * without knowing anything about either.
    */
+  /**
+   * The whole clip library, measured. `stances.mjs` builds this off the FBX
+   * files themselves: `cells` is the clip's own length times 12, and `over`
+   * marks the ones whose strip would be wider than the 16,384 a browser will
+   * hold as a texture. `key` is set only where a bake exists.
+   */
+  const CLIPS = [{"file":"Great-Sword-Idle-02","group":"Greatsword","seconds":3.767,"cells":45,"over":false,"key":"idle2"},{"file":"paladin-Great Sword Idle","group":"Greatsword","seconds":2,"cells":24,"over":false,"key":"idle"},{"file":"Paladin WProp J Nordstrom@Great Sword Casting","group":"Greatsword","seconds":4.8,"cells":58,"over":true,"key":null},{"file":"Paladin-Great-Sword-Idle","group":"Greatsword","seconds":7.567,"cells":91,"over":true,"key":null},{"file":"Stable Sword Inward Slash","group":"Greatsword","seconds":2.2,"cells":26,"over":false,"key":null},{"file":"X Bot@Great Sword Casting","group":"Greatsword","seconds":4.8,"cells":58,"over":true,"key":null},{"file":"X Bot@Run With Sword","group":"Greatsword","seconds":0.8,"cells":10,"over":false,"key":null},{"file":"X Bot@Stable Sword Inward Slash","group":"Greatsword","seconds":2.2,"cells":26,"over":false,"key":null},{"file":"X Bot@Stable Sword Outward Slash","group":"Greatsword","seconds":2.033,"cells":24,"over":false,"key":null},{"file":"X Bot@Withdrawing Sword","group":"Greatsword","seconds":1.5,"cells":18,"over":false,"key":null},{"file":"Combo-pickup-01","group":"Unarmed and spell","seconds":4.867,"cells":58,"over":true,"key":null},{"file":"Combo-pickup-02","group":"Unarmed and spell","seconds":7.2,"cells":86,"over":true,"key":null},{"file":"Combo-pickup-03","group":"Unarmed and spell","seconds":2.4,"cells":29,"over":false,"key":null},{"file":"paladin-Idle","group":"Unarmed and spell","seconds":1.967,"cells":24,"over":false,"key":null},{"file":"paladin-Reaction","group":"Unarmed and spell","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"Standing 1H Cast Spell 01","group":"Unarmed and spell","seconds":2.267,"cells":27,"over":false,"key":null},{"file":"Unarmed Turn Left 90bash","group":"Unarmed and spell","seconds":4,"cells":48,"over":true,"key":null},{"file":"Unarmed Turn Left 90Idle","group":"Unarmed and spell","seconds":4,"cells":48,"over":true,"key":null},{"file":"Unarmed Turn Left 90Walking-01","group":"Unarmed and spell","seconds":1.033,"cells":12,"over":false,"key":null},{"file":"X Bot@Idle","group":"Unarmed and spell","seconds":10,"cells":120,"over":true,"key":null},{"file":"X Bot@Spell Casting","group":"Unarmed and spell","seconds":4.2,"cells":50,"over":true,"key":null},{"file":"X Bot@Standing 2H Cast Spell 01","group":"Unarmed and spell","seconds":2.167,"cells":26,"over":false,"key":null},{"file":"X Bot@Standing Taunt Battlecry","group":"Unarmed and spell","seconds":2.833,"cells":34,"over":false,"key":null},{"file":"Shield-Idle-01","group":"Shield","seconds":2.533,"cells":30,"over":false,"key":null},{"file":"Shield-Idle-02","group":"Shield","seconds":8.667,"cells":104,"over":true,"key":null},{"file":"Shield-Idle-03","group":"Shield","seconds":7.533,"cells":90,"over":true,"key":null},{"file":"staff-Idle-01","group":"Staff","seconds":9.333,"cells":112,"over":true,"key":null},{"file":"Staff-Idle-02","group":"Staff","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"Staff-Idle-03","group":"Staff","seconds":7.833,"cells":94,"over":true,"key":null},{"file":"Warrok W Kurniawan@Dying","group":"Borrowed from Warrok","seconds":4.4,"cells":53,"over":true,"key":null},{"file":"Warrok W Kurniawan@Getting-Hit","group":"Borrowed from Warrok","seconds":1.067,"cells":13,"over":false,"key":null},{"file":"Warrok W Kurniawan@Mutant Punch","group":"Borrowed from Warrok","seconds":1.1,"cells":13,"over":false,"key":null},{"file":"Warrok W Kurniawan@Standing Walk Back","group":"Borrowed from Warrok","seconds":1.2,"cells":14,"over":false,"key":null},{"file":"Warrok W Kurniawan@Unarmed Turn Left 90","group":"Borrowed from Warrok","seconds":1.5,"cells":18,"over":false,"key":null},{"file":"Warrok W Kurniawan@Unarmed Walk Forward","group":"Borrowed from Warrok","seconds":1.367,"cells":16,"over":false,"key":null},{"file":"Warrok W Kurniawan@Walking-02","group":"Borrowed from Warrok","seconds":1.4,"cells":17,"over":false,"key":null},{"file":"monster-01-Mutant Dying","group":"Foes","seconds":4.6,"cells":55,"over":true,"key":null},{"file":"monster-01-One Hand Sword Combo","group":"Foes","seconds":4.533,"cells":54,"over":true,"key":null},{"file":"monster-01-Walking","group":"Foes","seconds":1.633,"cells":20,"over":false,"key":null},{"file":"monster-02-Mutant Dying","group":"Foes","seconds":4.6,"cells":55,"over":true,"key":null},{"file":"monster-02-Reaction","group":"Foes","seconds":1.833,"cells":22,"over":false,"key":null},{"file":"monster-02-Standing Melee Attack Downward","group":"Foes","seconds":2.267,"cells":27,"over":false,"key":null},{"file":"monster-02-Standing React Large From Front","group":"Foes","seconds":1,"cells":12,"over":false,"key":null},{"file":"monster-02-Standing Run Forward","group":"Foes","seconds":0.833,"cells":10,"over":false,"key":null}];
+  const byFile = new Map(CLIPS.map((c) => [c.file, c]));
+
   const STANCES = {
     idle:  { label: 'Idle',         src: '../art/knight-camp.png',  cols: 24, seconds: 2.000 },
     idle2: { label: 'Idle, second', src: '../art/knight-camp2.png', cols: 45, seconds: 3.767 },
@@ -374,14 +413,26 @@ dd b { font-weight:400; color:var(--accent); }
     im.src = STANCES[k].src;
     STANCES[k].img = im;
   }
-  // The stance being drawn, and its sheet.
-  const S = () => STANCES[state.stance];
+  // The stance being drawn, and its sheet. In sequence mode that is whatever
+  // step is currently running, not what the dropdown says.
+  const S = () => STANCES[playing_key()];
+  function playing_key() {
+    if (state.mode === 'seq') {
+      const run = runnable();
+      if (run.length) return byFile.get(run[state.step % run.length].file).key;
+    }
+    return state.stance;
+  }
   const img = () => S().img;
   const cols = () => S().cols;
 
   const $ = (id) => document.getElementById(id);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const state = { frame: 0, playing: !reduced, scale: 'read', stance: 'idle' };
+  const state = {
+    frame: 0, playing: !reduced, scale: 'read', stance: 'idle',
+    // 'stance' loops one clip; 'seq' walks the sequence below the stage.
+    mode: 'stance', seq: [], step: 0, rep: 0,
+  };
 
   const cv = $('stage'), ctx = cv.getContext('2d');
   let W = 0, H = 0;
@@ -485,7 +536,7 @@ dd b { font-weight:400; color:var(--accent); }
    */
   let shadowCv = null, shadowFor = '';
   function silhouette(frame) {
-    const tag = state.stance + ':' + frame;
+    const tag = playing_key() + ':' + frame;
     if (shadowFor === tag && shadowCv) return shadowCv;
     if (!shadowCv) {
       shadowCv = document.createElement('canvas');
@@ -614,7 +665,7 @@ dd b { font-weight:400; color:var(--accent); }
         const step = 1000 / FPS;
         while (acc >= step) {
           acc -= step;
-          state.frame = (state.frame + 1) % cols();
+          advance();
           $('scrub').value = state.frame;
         }
       }
@@ -624,6 +675,30 @@ dd b { font-weight:400; color:var(--accent); }
       last = 0;
     }
     requestAnimationFrame(tick);
+  }
+
+  /**
+   * One frame on.
+   *
+   * In stance mode that is a loop and nothing else. In sequence mode the end
+   * of a clip is also the end of a repeat, and the end of the last repeat is
+   * the end of a step -- so the three counters roll over into each other like
+   * a clock, and the sequence itself loops.
+   */
+  function advance() {
+    const n = cols();
+    if (state.frame + 1 < n) { state.frame++; return; }
+    state.frame = 0;
+    if (state.mode !== 'seq') return;
+
+    const run = runnable();
+    if (!run.length) return;
+    const cur = run[state.step % run.length];
+    if (state.rep + 1 < cur.reps) { state.rep++; return; }
+    state.rep = 0;
+    state.step = (state.step + 1) % run.length;
+    syncScrub();
+    markStep();
   }
 
   const press = (el, on) => el.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -652,7 +727,12 @@ dd b { font-weight:400; color:var(--accent); }
   });
 
   $('stance').addEventListener('change', (e) => {
-    state.stance = e.target.value;
+    const c = byFile.get(e.target.value);
+    if (!c || !c.key) return;
+    state.stance = c.key;
+    state.mode = 'stance';
+    press($('seqPlay'), false);
+    $('seqPlay').textContent = 'Play sequence';
     // Back to the top. 3.77s and 2.00s do not share a frame index, and
     // carrying one over lands past the end of the shorter clip.
     state.frame = 0;
@@ -687,8 +767,178 @@ dd b { font-weight:400; color:var(--accent); }
       + (exact / c.cols).toFixed(2) + '&times; speed';
   }
 
+  // ---- the sequence builder ----------------------------------------------
+
+  /** The steps that can actually be shown: the ones whose clip has a bake. */
+  const runnable = () => state.seq.filter((st) => byFile.get(st.file)?.key);
+
+  /** Clip options, grouped, for both the stance list and every step row. */
+  function clipOptions(selected, playableOnly) {
+    const groups = [];
+    for (const c of CLIPS) {
+      const label = c.key ? 'Baked &mdash; playable' : c.group + ' &mdash; not baked';
+      let g = groups.find((x) => x.label === label);
+      if (!g) groups.push(g = { label, items: [] });
+      g.items.push(c);
+    }
+    return groups.map((g) => {
+      const opts = g.items
+        .filter((c) => !playableOnly || c.key)
+        .map((c) => '<option value="' + esc(c.file) + '"'
+          + (c.file === selected ? ' selected' : '')
+          + (playableOnly && !c.key ? ' disabled' : '')
+          + '>' + esc(c.file) + ' &mdash; ' + c.seconds.toFixed(2) + 's, '
+          + c.cells + ' cells' + (c.over ? ', needs a window' : '') + '</option>')
+        .join('');
+      return opts ? '<optgroup label="' + g.label + '">' + opts + '</optgroup>' : '';
+    }).join('');
+  }
+
+  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  function renderSteps() {
+    const ol = $('seqSteps');
+    ol.innerHTML = state.seq.map((st, i) => {
+      const c = byFile.get(st.file);
+      return '<li class="step' + (c && c.key ? '' : ' unbaked') + '" data-i="' + i + '">'
+        + '<span class="n">' + String(i + 1).padStart(2, '0') + '</span>'
+        + '<select aria-label="Clip for step ' + (i + 1) + '">'
+        + clipOptions(st.file, false) + '</select>'
+        + '<span class="times">&times;</span>'
+        + '<input type="number" min="1" max="99" value="' + st.reps
+        + '" aria-label="Repeats for step ' + (i + 1) + '">'
+        + '<span class="len">' + (c ? (c.seconds * st.reps).toFixed(2) + 's' : '--') + '</span>'
+        + '<button type="button" class="drop" aria-label="Remove step ' + (i + 1) + '">Remove</button>'
+        + '</li>';
+    }).join('');
+
+    ol.querySelectorAll('.step').forEach((li) => {
+      const i = +li.dataset.i;
+      li.querySelector('select').addEventListener('change', (e) => {
+        state.seq[i].file = e.target.value;
+        resetSeq(); renderSteps(); draw();
+      });
+      li.querySelector('input').addEventListener('change', (e) => {
+        state.seq[i].reps = Math.max(1, Math.min(99, +e.target.value || 1));
+        resetSeq(); renderSteps(); draw();
+      });
+      li.querySelector('.drop').addEventListener('click', () => {
+        state.seq.splice(i, 1);
+        resetSeq(); renderSteps(); draw();
+      });
+    });
+
+    markStep();
+    noteSeq();
+  }
+
+  /** Which step is on screen, so the list reads as a playhead. */
+  function markStep() {
+    const run = runnable();
+    const cur = state.mode === 'seq' && run.length ? run[state.step % run.length] : null;
+    $('seqSteps').querySelectorAll('.step').forEach((li) => {
+      const st = state.seq[+li.dataset.i];
+      li.style.opacity = (!cur || st === cur) ? '1' : '.55';
+    });
+  }
+
+  function noteSeq() {
+    const total = state.seq.reduce(
+      (t, st) => t + (byFile.get(st.file)?.seconds || 0) * st.reps, 0);
+    const dead = state.seq.filter((st) => !byFile.get(st.file)?.key).length;
+    if (!state.seq.length) {
+      $('seqNote').innerHTML = 'Add a clip to start building a sequence. '
+        + 'Any clip can go in one; the ones without a bake behind them are kept '
+        + 'in the order and stepped over on playback.';
+      return;
+    }
+    $('seqNote').innerHTML = state.seq.length + ' step' + (state.seq.length > 1 ? 's' : '')
+      + ', ' + total.toFixed(2) + 's a cycle'
+      + (dead ? ' &mdash; <b>' + dead + ' not baked yet and skipped when played</b>' : '')
+      + '<br><code>' + esc(JSON.stringify(state.seq)) + '</code>';
+  }
+
+  function resetSeq() { state.step = 0; state.rep = 0; state.frame = 0; syncScrub(); }
+
+  $('seqAdd').addEventListener('click', () => {
+    // Default to something that plays, so a new row shows something.
+    state.seq.push({ file: 'paladin-Great Sword Idle', reps: 1 });
+    resetSeq(); renderSteps(); draw();
+  });
+
+  $('seqPlay').addEventListener('click', () => {
+    state.mode = state.mode === 'seq' ? 'stance' : 'seq';
+    press($('seqPlay'), state.mode === 'seq');
+    $('seqPlay').textContent = state.mode === 'seq' ? 'Stop sequence' : 'Play sequence';
+    resetSeq();
+    if (state.mode === 'seq') {
+      state.playing = true;
+      $('play').textContent = 'Pause';
+      press($('play'), true);
+    }
+    renderSteps(); draw();
+  });
+
+  // ---- saving -------------------------------------------------------------
+  //
+  // localStorage where it is allowed, and the JSON under the list either way:
+  // a published page can be sandboxed out of storage, and a sequence that only
+  // exists in a tab is not saved in any sense worth the word.
+  const STORE = 'cryptHeroes.warrior.sequences';
+  const load = () => {
+    try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (e) { return {}; }
+  };
+  const save = (all) => {
+    try { localStorage.setItem(STORE, JSON.stringify(all)); return true; } catch (e) { return false; }
+  };
+
+  function refreshSaved(pick) {
+    const all = load();
+    const names = Object.keys(all).sort();
+    $('seqLoad').innerHTML = '<option value="">Saved sequences&hellip;</option>'
+      + names.map((n) => '<option value="' + esc(n) + '"'
+        + (n === pick ? ' selected' : '') + '>' + esc(n) + '</option>').join('');
+  }
+
+  $('seqSave').addEventListener('click', () => {
+    const name = $('seqName').value.trim();
+    if (!name) { $('seqName').focus(); return; }
+    if (!state.seq.length) return;
+    const all = load();
+    all[name] = state.seq.map((st) => ({ file: st.file, reps: st.reps }));
+    const ok = save(all);
+    refreshSaved(name);
+    $('seqNote').innerHTML = ok
+      ? 'Saved as <b>' + esc(name) + '</b>.<br><code>' + esc(JSON.stringify(state.seq)) + '</code>'
+      : 'This page cannot write to storage here &mdash; copy the line below to keep it.'
+        + '<br><code>' + esc(JSON.stringify(state.seq)) + '</code>';
+  });
+
+  $('seqLoad').addEventListener('change', (e) => {
+    const all = load();
+    const seq = all[e.target.value];
+    if (!seq) return;
+    state.seq = seq.map((st) => ({ file: st.file, reps: st.reps }));
+    $('seqName').value = e.target.value;
+    resetSeq(); renderSteps(); draw();
+  });
+
+  $('seqDel').addEventListener('click', () => {
+    const name = $('seqLoad').value;
+    if (!name) return;
+    const all = load();
+    delete all[name];
+    save(all);
+    refreshSaved();
+    noteSeq();
+  });
+
   const start = () => {
     resize();
+    $('stance').innerHTML = clipOptions('paladin-Great Sword Idle', true);
+    refreshSaved();
+    renderSteps();
     syncScrub();
     $('play').textContent = state.playing ? 'Pause' : 'Play';
     press($('play'), state.playing);
