@@ -101,7 +101,7 @@ def parse_args():
     argv = sys.argv
     argv = argv[argv.index('--') + 1:] if '--' in argv else []
     out = {'out': None, 'kit': KIT, 'fbx': 'art/mixamo/X Bot.fbx', 'tex': '512', 'head': HEAD,
-           'subdiv': '1', 'parts': None, 'weapon': None}
+           'subdiv': '1', 'parts': None, 'weapon': None, 'shield': None}
     i = 0
     while i < len(argv):
         k = argv[i].lstrip('-')
@@ -391,7 +391,7 @@ def apply_fit(objs, xf):
             v.co = inv @ ((p - xf['from']) * xf['s'] + xf['to'])
 
 
-def hand_grip(arm):
+def hand_grip(arm, side_of='Right'):
     """
     Where a weapon sits in the fist, and which way it points.
 
@@ -402,10 +402,10 @@ def hand_grip(arm):
     the right size and angle for whatever hand it is put in.
     """
     bone = lambda n: arm.data.bones.get(n) or arm.data.bones.get(n.replace(':', ''))
-    hand = bone('mixamorig:RightHand')
-    index = bone('mixamorig:RightHandIndex1')
-    pinky = bone('mixamorig:RightHandPinky1')
-    middle = bone('mixamorig:RightHandMiddle1')
+    hand = bone(f'mixamorig:{side_of}Hand')
+    index = bone(f'mixamorig:{side_of}HandIndex1')
+    pinky = bone(f'mixamorig:{side_of}HandPinky1')
+    middle = bone(f'mixamorig:{side_of}HandMiddle1')
     if not (hand and index and pinky and middle):
         return None
     m = arm.matrix_world
@@ -430,8 +430,114 @@ def hand_grip(arm):
     return (pi + pp) / 2, grip, flat, side, palm
 
 
-def add_weapon(name, length, tier, arm, body):
-    """One weapon, scaled to the hero and rigid in his fist."""
+def stance(arm):
+    """Which way is up and which way the figure faces, off its own bones.
+
+    A blade is placed entirely from the fist — a grip is a grip whatever the
+    body is doing. A shield is not: it hangs on the forearm with its face across
+    the front of the body, so placing it needs to know where the front *is*, and
+    the hand alone cannot say. Both axes are measured rather than assumed,
+    because the FBX import applies a rotation and a scale of its own and any
+    guess about which world axis is up survives exactly until that changes.
+    """
+    bone = lambda n: arm.data.bones.get(n) or arm.data.bones.get(n.replace(':', ''))
+    hips, head = bone('mixamorig:Hips'), bone('mixamorig:Head')
+    la, ra = bone('mixamorig:LeftArm'), bone('mixamorig:RightArm')
+    if not (hips and head and la and ra):
+        return None
+    m = arm.matrix_world
+    up = ((m @ head.head_local) - (m @ hips.head_local)).normalized()
+    across = ((m @ la.head_local) - (m @ ra.head_local)).normalized()   # right → left
+    # Right-handed and forward: with `across` running to the left and `up` up,
+    # their cross is the way the chest points.
+    facing = across.cross(up).normalized()
+    return up, across, facing
+
+
+def add_shield(name, length, arm, body, tier):
+    """A shield, on the forearm rather than in the fist.
+
+    **The pack models a shield centred on its own origin**, face in the XZ
+    plane with the normal on Y — nothing like the blades, which run out of the
+    origin along +Z with the grip at zero. So it cannot go through `add_weapon`:
+    seating its origin in the palm would bury half of it in the hand and point
+    its face at the floor.
+
+    Placed from `stance` instead: height up the figure, face across the front,
+    and pushed out from the palm along the forearm so the arm is behind it
+    rather than through it.
+    """
+    ob = import_prop(name)
+    if not ob:
+        return None
+    pts = [ob.matrix_world @ v.co for v in ob.data.vertices]
+    span = max(p.z for p in pts) - min(p.z for p in pts)      # its height
+    body_h = bounds([body])[1].z - bounds([body])[0].z
+    s = (length * body_h) / max(1e-6, span)
+
+    grip = hand_grip(arm, 'Left')
+    if not grip:
+        return None
+    at, along, flat, side, palm = grip
+
+    # **In the hand's frame, not the world's.** The first version placed it on
+    # the skeleton's own up-and-facing, which is correct in the rest pose and
+    # wrong in every other: the shield is bound rigidly to `LeftHand`, so
+    # whatever the clip does to that hand it also does to the shield. A shield
+    # idle turns the left hand to hold one, and a shield placed on world axes
+    # came out lying flat like a tray at waist height.
+    #
+    # So it takes the hand's own basis, the same one the blades use: its face
+    # points out of the palm, its height runs across the knuckles, and its width
+    # runs along them. Then the hand can do whatever the animation asks and the
+    # shield stays on the arm.
+    # Turned to face out. Straps and enarmes are modelled on the near side of
+    # the pack's shield, so the unflipped basis presents the *back* of it to the
+    # camera — two leather bars where the boss should be. Both the width and the
+    # normal are negated rather than one, which keeps the basis right-handed: a
+    # mirrored basis flips every face winding and the shield disappears under
+    # ordinary back-face culling, which is the same trap `hand_grip` documents.
+    seat = palm + flat * (length * body_h * 0.14)
+    ob.matrix_world = (Matrix.Translation(seat)
+                       @ Matrix((-along, -flat, side)).transposed().to_4x4()
+                       @ Matrix.Scale(s, 4))
+    ob.name = f'T{tier}_shield'
+    dress_prop(ob)
+    bind_prop(ob, arm, 'mixamorig:LeftHand')
+    return ob
+
+
+def dress_prop(ob):
+    """Alpha, metal and roughness for a pack model that carries no maps."""
+    # **The pack's materials arrive with an alpha of zero.** Blender's FBX
+    # importer reads a transparency factor these files did not mean, the glTF
+    # exporter writes `baseColorFactor` alpha 0, and three obeys it — so the
+    # weapon renders lit, depth-written and completely invisible, because the
+    # doll bakes on a transparent background and zero-alpha pixels take the
+    # background's nothing with them. It is the most confusing possible failure:
+    # the mesh is in the fist, the right size, `visible === true`, and not there.
+    for mat in ob.data.materials:
+        if not mat or not mat.use_nodes:
+            continue
+        mat.blend_method = 'OPAQUE'
+        # **And they arrive as flat paint.** The weapon FBXs carry no textures
+        # at all — seven materials with a diffuse colour and nothing else — so
+        # next to armour built from 4096-sourced maps the blade was a solid grey
+        # shape. There is no map to restore, but there is a material: steel and
+        # gold are metal, wood is not, and saying so is the whole difference
+        # between a prop and a blade. Keyed off the pack's own material names.
+        family = mat.name.split('.')[0]
+        metal = family in ('Steel', 'LightSteel', 'DarkSteel', 'Gold', 'LightGold')
+        for node in mat.node_tree.nodes:
+            if node.type == 'BSDF_PRINCIPLED':
+                node.inputs['Alpha'].default_value = 1.0
+                node.inputs['Metallic'].default_value = 1.0 if metal else 0.0
+                node.inputs['Roughness'].default_value = 0.28 if metal else 0.74
+
+
+
+def import_prop(name):
+    """One model out of the weapon pack, joined into a single object."""
     path = os.path.join(WEAPON_DIR, f'{name}.fbx')
     if not os.path.exists(path):
         return None
@@ -441,8 +547,6 @@ def add_weapon(name, length, tier, arm, body):
     meshes = [o for o in fresh if o.type == 'MESH']
     if not meshes:
         return None
-
-    # One object, whatever the file split it into.
     bpy.ops.object.select_all(action='DESELECT')
     for m in meshes:
         m.select_set(True)
@@ -453,6 +557,38 @@ def add_weapon(name, length, tier, arm, body):
     for o in fresh:
         if o.type != 'MESH' and o.name in bpy.data.objects:
             bpy.data.objects.remove(o, do_unlink=True)
+    # **Bake the import transform into the vertices.** Both callers measure the
+    # model in world space and then *replace* `matrix_world` with a basis of
+    # their own — which silently maps the model's *local* axes, not the ones
+    # that were measured. For the blades the two happen to agree; for a shield
+    # they do not, and it comes out lying flat like a tray, held out in front at
+    # waist height. Applying the transform makes local and world the same frame
+    # and the measurement mean what it says.
+    bpy.ops.object.select_all(action='DESELECT')
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    return ob
+
+
+def bind_prop(ob, arm, bone_name):
+    """Rigid: every vertex on one bone, no transfer and no falloff.
+
+    A weapon that flexes is a weapon made of rubber, and Data Transfer would
+    give it the flesh's weights — exactly the wrong answer for a held object."""
+    g = ob.vertex_groups.new(name=bone_name)
+    g.add(range(len(ob.data.vertices)), 1.0, 'REPLACE')
+    mod = ob.modifiers.new('Armature', 'ARMATURE')
+    mod.object = arm
+    ob.parent = arm
+    return ob
+
+
+def add_weapon(name, length, tier, arm, body):
+    """One weapon, scaled to the hero and rigid in his fist."""
+    ob = import_prop(name)
+    if not ob:
+        return None
 
     # **The pack models blade-along-+Z with the grip at the origin**, which is
     # what makes this placeable at all: the origin is the thing to put in the
@@ -480,40 +616,8 @@ def add_weapon(name, length, tier, arm, body):
                        @ Matrix.Scale(s, 4))
     ob.name = f'T{tier}_weapon'
 
-    # **The pack's materials arrive with an alpha of zero.** Blender's FBX
-    # importer reads a transparency factor these files did not mean, the glTF
-    # exporter writes `baseColorFactor` alpha 0, and three obeys it — so the
-    # weapon renders lit, depth-written and completely invisible, because the
-    # doll bakes on a transparent background and zero-alpha pixels take the
-    # background's nothing with them. It is the most confusing possible failure:
-    # the mesh is in the fist, the right size, `visible === true`, and not there.
-    for mat in ob.data.materials:
-        if not mat or not mat.use_nodes:
-            continue
-        mat.blend_method = 'OPAQUE'
-        # **And they arrive as flat paint.** The weapon FBXs carry no textures
-        # at all — seven materials with a diffuse colour and nothing else — so
-        # next to armour built from 4096-sourced maps the blade was a solid grey
-        # shape. There is no map to restore, but there is a material: steel and
-        # gold are metal, wood is not, and saying so is the whole difference
-        # between a prop and a blade. Keyed off the pack's own material names.
-        family = mat.name.split('.')[0]
-        metal = family in ('Steel', 'LightSteel', 'DarkSteel', 'Gold', 'LightGold')
-        for node in mat.node_tree.nodes:
-            if node.type == 'BSDF_PRINCIPLED':
-                node.inputs['Alpha'].default_value = 1.0
-                node.inputs['Metallic'].default_value = 1.0 if metal else 0.0
-                node.inputs['Roughness'].default_value = 0.28 if metal else 0.74
-
-    # Rigid: every vertex on the hand bone, no transfer and no falloff. A
-    # weapon that flexes is a weapon made of rubber, and Data Transfer would
-    # give it the flesh's weights — which is exactly the wrong answer here.
-    g = ob.vertex_groups.new(name='mixamorig:RightHand')
-    g.add(range(len(ob.data.vertices)), 1.0, 'REPLACE')
-    mod = ob.modifiers.new('Armature', 'ARMATURE')
-    mod.object = arm
-    ob.parent = arm
-    return ob
+    dress_prop(ob)
+    return bind_prop(ob, arm, 'mixamorig:RightHand')
 
 
 def skin(ob, arm, body):
@@ -632,6 +736,15 @@ def main():
     for n, (name, length) in enumerate(WEAPONS, start=1):
         w = add_weapon(name, length, n, arm, body)
         print(f'outfit T{n} weapon: {name}' + ('' if w else ' — MISSING'))
+
+    # **The off hand.** `--shield Shield_Heater@0.42` hangs one on the left arm,
+    # for a character whose idle is a shield stance — a shield idle with an
+    # empty left hand reads as a man bracing against nothing.
+    if ARGS['shield']:
+        sname, _, slen = ARGS['shield'].partition('@')
+        for n in range(1, len(WEAPONS) + 1 or 2):
+            sh = add_shield(sname, float(slen or 0.42), arm, body, n)
+            print(f'outfit T{n} shield: {sname}' + ('' if sh else ' — MISSING'))
 
     head = base_head(ARGS['head'], xf)
     skin(head, arm, body)

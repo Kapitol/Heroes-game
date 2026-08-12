@@ -54,8 +54,12 @@ export const CLASSES = [
   // this run can be.
   //
   // One outfit each, so `rows: 1` — the five-row ladder is the warrior's
-  // armoury and nobody else has one. One idle sheet each, so no `b`: the cycle
-  // in ui.js treats the variation as optional. Built by:
+  // armoury and nobody else has one. Two idle sheets each, on the same
+  // three-loops-then-one cadence as the hero (`breakAt: 4`), and **on a clip
+  // that matches what they are holding**: the Paladin is on `Shield-Idle`, the
+  // Warlock and Druid on `Staff-Idle`. They were all on the warrior's
+  // two-handed greatsword idle before, which is why the Warlock gripped a
+  // scythe like a claymore. Built by:
   //
   //   blender --background --python tools/outfit.py -- --out art/armour/<k>.glb \
   //     --parts <the kit's part names> --weapon <Model@length>
@@ -68,13 +72,19 @@ export const CLASSES = [
   // 320 is as far as it goes while 24 cells still fit inside the 16k texture
   // width a browser will hold.
   { key: 'paladin', name: 'Paladin', sheet: 'art/Pixel-Paladin.png', ready: true,
-    camp: { a: { src: 'art/paladin-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 300 },
+    camp: { a: { src: 'art/paladin-camp.png', cols: 24 },
+           b: { src: 'art/paladin-camp2.png', cols: 24 },
+           rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Holds the line and mends it.' },
   { key: 'warlock', name: 'Warlock', sheet: 'art/Pixel-Warlock.png',
-    camp: { a: { src: 'art/warlock-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 300 },
+    camp: { a: { src: 'art/warlock-camp.png', cols: 24 },
+           b: { src: 'art/warlock-camp2.png', cols: 24 },
+           rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Spends life to spend the dead.' },
   { key: 'druid',   name: 'Druid',   sheet: 'art/Pixel-Druid.png',
-    camp: { a: { src: 'art/druid-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 300 },
+    camp: { a: { src: 'art/druid-camp.png', cols: 24 },
+           b: { src: 'art/druid-camp2.png', cols: 24 },
+           rows: 1, fps: 12, breakAt: 4, fh: 300 },
     blurb: 'Brings the wood in with them.' },
 ];
 

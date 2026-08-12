@@ -154,6 +154,17 @@ function findClip(name) {
   // dresses anyone. This is how the Paladin dies with Warrok's Dying.
   const any = [...files].find((f) => f.endsWith(`@${name}.fbx`) || f.endsWith(`-${name}.fbx`));
   if (any) return any.replace(/\.fbx$/, '');
+  // **And once more without caring about case.** Mixamo names a download after
+  // the animation, but a file renamed by hand is named by a person — and one of
+  // three otherwise identical clips arrived as `staff-Idle-01.fbx` against its
+  // siblings' `Staff-`. A missing clip stops the bake with a list of five names
+  // it tried, all of which look right, which is a bad ten minutes.
+  const lower = name.toLowerCase();
+  const loose = [...files].find((f) => {
+    const stem = f.replace(/\.fbx$/, '').toLowerCase();
+    return stem === lower || stem.endsWith(`@${lower}`) || stem.endsWith(`-${lower}`);
+  });
+  if (loose) return loose.replace(/\.fbx$/, '');
   throw new Error(`no file for clip "${name}" (tried ${tries.filter(Boolean).join(', ')}, and no other character has it)`);
 }
 
