@@ -845,3 +845,41 @@ done in screen space the two at the sides point visibly wrong.
    a scythe like a claymore.
 4. The pack ships no textures, so every prop is a flat colour keyed off its
    material name. A `Textures` folder beside the meshes replaces `PALETTE`.
+
+---
+
+## The founding is spoken now
+
+Nine recorded lines under `audio/intro-<n>.mp3`, one per panel of
+`js/intro.js`, played by `Audio.narrate`.
+
+**The line drives the panel and the panel stops the line.** A reader faster than
+the narrator clicks on and the line fades out over 80ms; a reader who is slower
+keeps the picture until the sentence finishes. A panel with no file waits for a
+click exactly as the whole intro did before there was any audio.
+
+Three things in the mix are deliberate:
+
+- **Voice is a third bus**, beside the effects and above the music. Not on the
+  music bus: a player who turned the score down would have silenced the story.
+- **The score ducks to 35%** underneath, ramped rather than stepped — an instant
+  drop on a sustained pad is audible as a click in the pad, which is the
+  artefact ducking exists to hide. `setMusicVolume` respects the duck.
+- **Either extension.** `VOICES` takes an array and the first that decodes wins,
+  because the boss lines arrived as mp3 and a session may deliver m4a. Renaming
+  a performance to satisfy a loader is the wrong way round.
+
+**The bug to keep out of the next thing that uses `narrate`:** it originally
+reported "nothing to play" by calling `onEnd`. That looks helpful and is not —
+the intro advances a panel when a line *ends*, so a missing file read as "this
+panel is over" and the whole founding played itself out in three frames. Nothing
+to play is `null`, and only null.
+
+Measured, panel hold against line length: 8260/8176, 6600/6713, 6599/6766,
+4601/4545 ms. The sequence is about 75 seconds end to end, where it used to be
+click-paced.
+
+**Recording notes for the remaining voice work**, since they are not obvious:
+`audio.js` peak-normalises off the decoded buffer and finds the onset itself, so
+files should arrive *raw* — no normalising, no compression, no topping and
+tailing. Mono is fine and preferable.
