@@ -24,8 +24,18 @@
       <div id="waveText">Marching…</div>
       <div id="waveBar"><i></i></div>
     </div>
+    <!-- The boss, and what he is winding up. Both hidden until there is one. -->
+    <div id="bossWrap" class="hidden">
+      <div id="bossName">The Butcher <span id="bossRank">ELITE</span></div>
+      <div id="bossBar"><i></i><span id="bossHp">100 / 100</span></div>
+      <div id="castWrap" class="hidden">
+        <div id="castName">SLAM</div>
+        <div id="castBar"><i></i></div>
+      </div>
+    </div>
     <div id="purse">
       <div class="skullCount">☠ <span id="skullText">0</span></div>
+      <div class="skullCount killCount">☠ <span id="killText">0</span></div>
       <button id="btnPause" class="plate" title="Pause (P or Space)" aria-label="Pause">⏸</button>
       <button id="btnMenu" class="plate" title="Menu (Esc)" aria-label="Menu">☰</button>
     </div>
@@ -156,10 +166,6 @@
   <div id="overlay" class="overlay">
     <div class="overlayInner">
       <h1 id="ovTitle">CRYPT&nbsp;HEROES</h1>
-      <p class="tag">A road that starts in daylight and does not stay there</p>
-      <p id="ovText">Your hero walks and fights without being told. You spend the
-      cooldowns, you steer the coffin as it falls, and you spend the skulls it
-      shakes loose on what they become.</p>
       <button class="wide" id="ovBtn">Begin</button>
     </div>
   </div>

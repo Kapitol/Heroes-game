@@ -16,6 +16,7 @@ import { SKILLS, skillById, rollDraft, applyCard, MAX_SKILLS } from './perks.js'
 import * as UI from './ui.js';
 import * as Audio from './audio.js';
 import * as Coffin from './coffin.js';
+import { DOLL_CAMP } from './render.js';
 import * as Intro from './intro.js';
 import * as Rig from './rig.js';
 import * as Particles from './particles.js';
@@ -890,7 +891,14 @@ function showCamp() {
     return {
       key: c.key,
       name: c.name,
-      sheet: c.sheet,
+      // **The camp shows what the road shows.** `c.sheet` is the painted
+      // class art from before the doll; a player who picks a warrior at the
+      // fire and then watches a knight walk away has been shown the wrong
+      // man. `DOLL_ART` is the same sheet the hero is drawn from — four
+      // columns, five tiered rows — so the camp figure changes with his
+      // armour for free.
+      sheet: mine ? DOLL_CAMP.src : c.sheet,
+      cols: mine ? DOLL_CAMP.cols : 2,
       // Not ready yet: no body is drawn, only the worn ground of a place.
       locked: !c.ready,
       // Takeable is what the button reads: this run can only be walked by the
@@ -1540,7 +1548,10 @@ function bossAI(m, h, d, dt) {
       m.casting = mv;
       m.castT = 0;
       m.telegraph = { x: mv.id === 'charge' ? h.x : m.x, y: mv.id === 'charge' ? h.y : m.y };
-      UI.toast(mv.text);
+      // No toast: the cast bar under the boss's health says the same word, in
+      // the move's own colour, with the wind-up actually running down. Two
+      // announcements of one event is one too many, and the toast was the
+      // weaker — no timing, and nowhere near the thing doing it.
       Audio.sfx.buff();
       return;
     }

@@ -33,6 +33,8 @@ export function init(state, handlers) {
                     'hpGlobe', 'hpText', 'xpGlobe', 'xpStrip', 'xpText', 'skills',
                     'statList', 'gearPanel', 'menuPanel', 'runStats', 'deathOverlay', 'reviveNum',
                     'overlay', 'ovBtn', 'btnGear', 'btnMenu', 'btnReset', 'deathText',
+                    'bossWrap', 'bossName', 'bossRank', 'bossBar', 'bossHp', 'castWrap', 'castName', 'castBar',
+                    'killText',
                     'draftPanel', 'draftCards', 'perkList',
                     'draftPurse', 'btnPause', 'pausedTag', 'volSlider', 'volValue', 'btnMute',
                     'slotsLeft', 'slotsRight', 'dollCanvas', 'dollLevel', 'bagList', 'bagCount',
@@ -138,7 +140,9 @@ export function rebuildRunes() {
   S.loadout.forEach((id, i) => {
     const s = skillById(id);
     const b = document.createElement('button');
-    b.className = 'rune ready';
+    // The id rides on the class so the stylesheet can colour attack and
+    // healing differently — see `.rune.k-*` in css/style.css.
+    b.className = `rune ready k-${s.id}`;
     b.title = `${s.name} — ${s.desc}`;
     b.innerHTML = `<span class="key">${i + 1}</span>${s.glyph}<span class="cd"></span>`;
     b.addEventListener('click', (e) => { e.stopPropagation(); H.skill(i); });
@@ -201,6 +205,44 @@ export function togglePanel(id) {
  * arbitrary point of the image in the centre of a circle.
  */
 const MINIMAP_ZOOM = 5.2;
+
+/**
+ * The boss's health, and the move he is winding up.
+ *
+ * **Both are read straight off the monster, not mirrored into UI state.** The
+ * fight already knows everything this shows — `m.hp`, `m.enraged`, `m.casting`
+ * and `m.castT` — and a second copy would be a second thing to keep in step
+ * with a creature that can die between frames.
+ *
+ * The cast bar is the reason a telegraph is fair. The ring on the ground says
+ * *where*, and until now nothing said *how long*: `mv.tell` is the wind-up in
+ * seconds and this is that number made visible, in the move's own colour so
+ * the bar and the ring on the floor are obviously the same event.
+ */
+function drawBoss(S) {
+  const boss = S.monsters && S.monsters.find((m) => m.boss && !m.dead);
+  el.bossWrap.classList.toggle('hidden', !boss);
+  if (!boss) return;
+
+  el.bossName.firstChild.textContent = `${boss.name} `;
+  el.bossRank.textContent = boss.enraged ? 'ENRAGED' : 'ELITE';
+  el.bossRank.classList.toggle('enraged', !!boss.enraged);
+  el.bossBar.querySelector('i').style.width =
+    `${Math.max(0, Math.min(1, boss.hp / boss.maxHp)) * 100}%`;
+  // **The number as well as the bar.** A bar answers "how much is left" and a
+  // number answers "how much longer" — with a boss whose health runs into the
+  // thousands, a sliver of red is the difference between one more swing and
+  // twenty, and the bar alone cannot say which.
+  el.bossHp.textContent = `${Math.max(0, Math.round(boss.hp))} / ${Math.round(boss.maxHp)}`;
+
+  const mv = boss.casting;
+  el.castWrap.classList.toggle('hidden', !mv);
+  if (!mv) return;
+  el.castName.textContent = mv.text;
+  const fill = el.castBar.querySelector('i');
+  fill.style.width = `${Math.min(1, (boss.castT || 0) / Math.max(0.05, mv.tell)) * 100}%`;
+  fill.style.background = mv.colour || '#ff7a3a';
+}
 
 export function updateMinimap() {
   const box = el.minimap.clientWidth || 62;
@@ -354,6 +396,8 @@ export function frame(S, dt) {
   el.xpStrip.querySelector('i').style.width = `${Math.min(100, (S.hero.xp / S.hero.xpNext) * 100)}%`;
   el.xpText.textContent = `Level ${S.hero.level} · ${Math.floor(S.hero.xp)} / ${S.hero.xpNext}`;
   el.skullText.textContent = S.skulls.toLocaleString();
+  el.killText.textContent = (S.kills | 0).toLocaleString();
+  drawBoss(S);
 
   // The globe fills towards the cheapest thing skulls can still buy — which is
   // now only ever a card, since armour is taken off bosses and never bought.
@@ -730,9 +774,12 @@ const GHOST = { ...kitFor('hero'), skin: '#100d0a', cloth: '#100d0a', mail: '#15
  * Sliced by content, not by lattice: generated sheets never land on an even
  * grid, and the attack pose is twice the width of the idle one.
  */
-export const heroSheet = (src = 'art/Pixel-Warrior.png') => Atlas.sheet(src, 2, 5, { auto: true });
-// Column 0 is idle, column 1 is the swing.
-const heroCell = (tier, attacking) => (Math.max(1, Math.min(5, tier)) - 1) * 2 + (attacking ? 1 : 0);
+export const heroSheet = (src = 'art/Pixel-Warrior.png', cols = 2) =>
+  Atlas.sheet(src, cols, 5, cols === 2 ? { auto: true } : undefined);
+// Column 0 is idle whatever the sheet; the painted classes carry two columns
+// and the baked doll four, so the stride between rows is the column count.
+const heroCell = (tier, attacking, cols = 2) =>
+  (Math.max(1, Math.min(5, tier)) - 1) * cols + (attacking ? 1 : 0);
 
 /**
  * A figure with the fire on them.
@@ -875,14 +922,15 @@ function paintCamp(dt) {
     // makes the selected one obvious at a glance — a highlight on its own has
     // to be found, a contrast does not.
     if (i !== camp.sel) ctx.globalAlpha = 0.62;
-    const sheet = heroSheet(s.sheet);
+    const sheet = heroSheet(s.sheet, s.cols || 2);
     if (sheet) {
       // Matched to the vector figure it replaces, so the camp's composition —
       // which was tuned against that — still holds: same crown height, same
       // feet on the same ground.
-      const cell = sheet.cells[heroCell(s.tier || 1, false)];
+      const idx = heroCell(s.tier || 1, false, s.cols || 2);
+      const cell = sheet.cells[idx];
       const k = cell ? (44 * 0.92 * scale) / cell.h : 1;
-      Atlas.drawSprite(ctx, sheet, heroCell(s.tier || 1, false), x, y, k, false);
+      Atlas.drawSprite(ctx, sheet, idx, x, y, k, false);
     } else {
       // Only the class carrying this run's gear has a kit of its own; the rest
       // fall back to the base look for the moment before their sheet decodes.

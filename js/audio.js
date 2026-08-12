@@ -238,10 +238,14 @@ function pluck(freq, t0) {
   lp.connect(g).connect(musicGain);
 }
 
-// A breath of filtered noise under everything. It is the one part that never
-// changes, so it is kept far too quiet to hear on its own — it only stops the
-// silences between phrases from sounding like the game has crashed.
+// **Removed: the bed used to breathe, and the breathing was the problem.**
+// A loop of noise through a 240Hz lowpass whose cutoff was swung ±90Hz by an
+// LFO at 0.05Hz — one swell every twenty seconds — was meant to keep the
+// silences between phrases from sounding like a crash. What it actually
+// sounded like was an engine idling somewhere off screen, and once heard it
+// could not be unheard. The silences can sound like silence.
 function startBed() {
+  return;
   const len = ctx.sampleRate * 4;
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
   const d = buf.getChannelData(0);
@@ -513,7 +517,10 @@ export const sfx = {
    * fallback — silence is the right failure here, where a tone twice a second
    * would be worse than nothing.
    */
-  step()       { sample('step', 0.3, 0.12); },
+  // **Quieter again.** This fires two or three times a second for the whole
+  // game, and a footfall the player can pick out individually is one they will
+  // come to hate. It was 0.3 and read as boots on a stage.
+  step()       { sample('step', 0.16, 0.12); },
 
   encounter()  { if (sample('clash', 0.6)) return;
                  noise({ dur: 0.4, gain: 0.22, freq: 700, q: 0.6, type: 'bandpass' });

@@ -1208,8 +1208,28 @@ const GRID_OVER = Q.get('grid') === 'over';
  * slashes alternated per swing by `attacks`, and the flinch is Warrok's
  * Getting-Hit.
  */
+/**
+ * Where the hero's own art lives, for anything outside the depth pass that
+ * needs to draw him — the camp, chiefly. Exported so the fire and the road
+ * cannot drift apart: one constant, two screens.
+ */
+export const DOLL_SHEET = { src: 'art/knight-combat.png', cols: 4, rows: 5 };
+
+/**
+ * The same hero, baked for a portrait rather than for a sprite.
+ *
+ * **A road cell and a camp figure are not the same picture at two sizes.** The
+ * road bakes at `fh=230` and is drawn 56 pixels tall; the camp draws the hero
+ * four hundred pixels tall, so sharing the sheet meant upscaling by a factor of
+ * two and showing art whose lighting and posterisation were chosen for a
+ * thumbnail. This is one idle pose per tier at `fh=620`, lit by a warmer key
+ * because the only light at the camp is the fire, and left unposterised — the
+ * step that reads as paint at road size reads as banding at this one.
+ */
+export const DOLL_CAMP = { src: 'art/knight-camp.png', cols: 1, rows: 5 };
+
 const DOLL_ART = {
-  sheet: 'art/knight-combat.png', cols: 4, rows: 5, attacks: [1, 2], react: 3,
+  sheet: DOLL_SHEET.src, cols: DOLL_SHEET.cols, rows: DOLL_SHEET.rows, attacks: [1, 2], react: 3,
   // The warrior's skill poses are painted warrior art and survive a merge
   // unless cleared: a heal that flashes the old hero for a beat is worse than
   // a heal the knight does not act out.
@@ -1714,6 +1734,12 @@ function drawOverheads(ctx, S, t) {
 
   for (const m of S.monsters) {
     if (m.dead || m.hp >= m.maxHp) continue;
+    // **A boss wears his health at the top of the screen, not over his head.**
+    // The plate up there carries his name, his rank and the numbers; a second
+    // bar floating on him says the same thing worse, and in a fight where he
+    // fills a third of the screen the two are never far enough apart to read
+    // as separate. Everything smaller keeps its bar — those have no plate.
+    if (m.boss) continue;
     const p = toScreen(m.x, m.y);
     const top = p.y - 46 * (m.scale || 1) - 8;
     const w = m.boss ? 74 : 34;
