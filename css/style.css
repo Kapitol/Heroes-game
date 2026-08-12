@@ -717,16 +717,41 @@ body.camp #belt { opacity:0; pointer-events:none; }
 /* Opaque, unlike the other overlays: the road is still painted on the canvas
    underneath, and a lit strip of pavement showing through the camp's own dark
    ground is the one thing that breaks the place completely. */
-#campPanel {
-  background:radial-gradient(ellipse at 50% 74%, #140e08, #060504 62%);
-  background-color:#060504;
+/* **No panel background any more.** It was a radial vignette drawn to frame a
+   letterboxed set; with the set filling the viewport it simply painted over
+   the top of it, and the camp came up almost black. The flat colour stays as
+   what shows for the frame before the backdrop decodes. */
+#campPanel { background:#060504; }
+ /* The plate and the road button ride at the foot of the screen now that the
+    set is full-bleed — centred over it, they sat on the fire. */
+.campInner {
+  position:fixed; left:0; right:0; bottom:3.5vh; z-index:2;
+  width:100%; text-align:center;
 }
-.campInner { width:min(1240px,100%); text-align:center; }
 /* 16/9, not 16/7: the set needs sky to stand against, and the shallower
    box left the top quarter of the frame as dead black. */
+/* **The set fills the viewport.** It used to be a 3:2 box inside a centred
+   column, which put a thick black border round a night scene that is already
+   dark — and, worse, fixed the scene's scale independently of the figures
+   standing in it, so the hero read as a miniature in a diorama. Filling the
+   screen ties the two together: the camp is the screen, and the figures are
+   sized against it. `cover` keeps the backdrop's own proportions and crops
+   rather than stretching. */
 #campScene {
-  position:relative; width:100%; aspect-ratio:3/2; max-height:66vh;
-  background:url("../art/camp-boneyard.png") center / cover no-repeat;
+  position:fixed; inset:0; width:100vw; height:100vh; max-height:none;
+  aspect-ratio:auto;
+  /* **`cover`, and the figures come down to meet it.**
+     Measured off the backdrop: a cart wheel is ~95px for ~1.2m and a headstone
+     ~80px for ~0.95m, so the set runs about 85px to the metre — 109 once
+     `cover` has magnified it on a 1316px viewport — and a 1.8m man stands
+     ~197px tall in it. The other direction was tried: zooming the painting to
+     match a 575px hero meant `background-size: 330%`, which cropped the tent
+     and the cart out of frame and magnified a 1536px painting past the point
+     where it holds together. Scaling the hero is the cheaper half of the same
+     equation, and it *improves* him — the camp sheet is baked at 420px, so a
+     200px figure is downscaled, and downscaling hides polygon edges that
+     magnification puts under a microscope. */
+  background:url("../art/camp-boneyard.png") 50% 55% / cover no-repeat;
 }
 #campCanvas { position:absolute; inset:0; width:100%; height:100%; }
 
@@ -805,7 +830,7 @@ body.camp #belt { opacity:0; pointer-events:none; }
 .csPlate b, .csPlate i { white-space:nowrap; }
 
 @media (max-width:620px) {
-  #campScene { aspect-ratio:1/1; max-height:56vh; }
+  #campScene { aspect-ratio:auto; max-height:none; }
   /* Four names across a phone collided: each slot is ~45px wide and the plates
      were 65px, so "Warrior / Level 2" printed across "Paladin / Not this run".
      They shrink and wrap inside their own slot instead. */
@@ -1126,3 +1151,14 @@ body.camp #belt { opacity:0; pointer-events:none; }
   font-size: 10px; letter-spacing: .14em; color: #d8c9a4;
   text-shadow: 0 1px 2px #000;
 }
+
+
+/* The camp arrives rather than appearing: js/ui.js drives the opacity from 0
+   once every figure's sheet has decoded, and this makes that a fade rather
+   than a step. Kept short — this is a loader, not a transition. */
+#campScene { transition: opacity .18s linear }
+
+
+/* With the set full-bleed, the scene has to sit above the panel's own colour
+   and below the plate. */
+#campScene { z-index:1 }

@@ -106,6 +106,12 @@ const LIGHT = qNum('light', 1);
 // change happens in the bake, where it costs nothing at runtime: a figure lit
 // by the same daylight in the town and the inferno belongs to neither.
 const KEY = Q.get('key');
+// **A head that never turns reads as a mannequin.** Mixamo's idles lock the
+// neck to the chest — the body breathes and shifts weight and the head does
+// not move at all — which is invisible on a 56-pixel sprite and obvious on a
+// portrait. `headturn` is the peak yaw in degrees; the turn is a sine over the
+// clip's phase, so it passes through zero at both ends and the loop closes.
+const HEAD_TURN = qNum('headturn', 0);
 // **A cycle is sampled `i / STRIP`; a one-shot is sampled `i / (STRIP - 1)`.**
 // The difference is one frame and it is the difference between a walk and a
 // limp: a loop's last sample is its first one again, so including the endpoint
@@ -492,6 +498,32 @@ scene.add(doll);
 Object.assign(key.shadow.camera, { left: -2, right: 2, top: 2, bottom: -2, near: 0.1, far: 20 });
 key.shadow.camera.updateProjectionMatrix();
 
+/** A bone by either spelling — FBXLoader strips Mixamo's colon, glTF keeps it. */
+const boneOf = (n) => doll.getObjectByName(n) || doll.getObjectByName(n.replace(':', ''));
+
+/**
+ * Turn the head, after the clip has posed it and before the camera sees it.
+ *
+ * Split between neck and head so it reads as a look rather than a swivel, and
+ * applied on the *world* up axis: a bone's local axes are whatever Mixamo
+ * happened to export, and rotating on `y` in bone space tips the head sideways
+ * as often as it turns it. `rotateOnWorldAxis` does the parent maths.
+ *
+ * The mixer rewrites every bone each frame, so this has to be re-applied after
+ * `mixer.update` rather than set once.
+ */
+function turnHead(phase) {
+  if (!HEAD_TURN) return;
+  const yaw = (HEAD_TURN * Math.PI / 180) * Math.sin(phase * Math.PI * 2);
+  const up = new THREE.Vector3(0, 1, 0);
+  doll.updateMatrixWorld(true);
+  boneOf('mixamorig:Neck')?.rotateOnWorldAxis(up, yaw * 0.4);
+  boneOf('mixamorig:Head')?.rotateOnWorldAxis(up, yaw * 0.6);
+  // A shade of tilt with it. A head that turns on a perfectly level axis is
+  // the other kind of robot.
+  boneOf('mixamorig:Head')?.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), yaw * 0.12);
+}
+
 /**
  * Frame one cell of the strip.
  *
@@ -522,6 +554,7 @@ function frame(i) {
         : i / Math.max(1, STRIP - 1);
     mixer.setTime(0);
     mixer.update(phase * duration);
+    turnHead(phase);
   }
 
   renderer.setViewport((W / STRIP) * i, 0, W / STRIP, H);

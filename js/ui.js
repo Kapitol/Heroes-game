@@ -654,6 +654,12 @@ export function showCamp(roster, section) {
   // spend — and left up it competes with the one thing this screen is for.
   document.body.classList.toggle('camp', !!roster);
   if (!roster) { camp = null; return; }
+  // Every visit starts dark and fades up, so the scene never opens on a
+  // half-decoded roster. Touching each sheet here also *starts* the decode a
+  // frame before the first paint asks for it.
+  campFade = 0;
+  el.campScene.style.opacity = '0';
+  for (const s of roster) if (s.sheet) heroSheet(s.sheet, s.cols || 2);
   // Open on somebody the road can actually be taken as — on a run already
   // under way that is the class walking it, and anything else opens the screen
   // on a disabled button with no clue that the fix is to click your own hero.
@@ -689,7 +695,12 @@ function campGeom(i, n, W, H) {
   const x = cx + Math.cos(th) * rx;
   const y = cy + Math.sin(th) * ry;
   const depth = (-Math.sin(th) + 1) / 2;      // 1 behind the fire, 0 in front of it
-  const scale = (H / 300) * 3.8 * (1 - depth * 0.34);
+  // **1.35, measured, not chosen.** The backdrop runs ~85px to the metre and
+  // `cover` magnifies it ~1.285x on a tall viewport, so a 1.8m figure is about
+  // 197px — and `44 * 0.92 * scale` reaches that at a multiplier of 1.3. It was
+  // 3.8, which made the hero five metres tall and put his face close enough to
+  // count the triangles in it.
+  const scale = (H / 300) * 1.35 * (1 - depth * 0.34);
   return { f: x / W, depth, x, y, scale, headY: y - 44 * 0.92 * scale };
 }
 
@@ -778,8 +789,9 @@ export const heroSheet = (src = 'art/Pixel-Warrior.png', cols = 2) =>
   Atlas.sheet(src, cols, 5, cols === 2 ? { auto: true } : undefined);
 // Column 0 is idle whatever the sheet; the painted classes carry two columns
 // and the baked doll four, so the stride between rows is the column count.
-const heroCell = (tier, attacking, cols = 2) =>
-  (Math.max(1, Math.min(5, tier)) - 1) * cols + (attacking ? 1 : 0);
+const heroCell = (tier, attacking, cols = 2, frame = 0) =>
+  (Math.max(1, Math.min(5, tier)) - 1) * cols
+  + (attacking ? 1 : Math.min(cols - 1, Math.max(0, frame)));
 
 /**
  * A figure with the fire on them.
@@ -824,12 +836,77 @@ function litActor(ctx, a, x, y, t, fireX) {
 }
 
 /**
+ * Stars, over the painted sky and under everything else.
+ *
+ * **Deterministic positions, drifting brightness.** The field is generated
+ * from a fixed seed each frame rather than stored, so it survives a resize
+ * without a rebuild and costs no state; the twinkle is two sine waves of
+ * different periods per star, which never quite line up and so never look
+ * like a pulse. Amplitudes are small on purpose — a star that goes out
+ * entirely reads as a dead pixel, and one that flashes reads as an effect.
+ *
+ * They stop a third of the way down, where the backdrop's treeline begins.
+ * Below that the sky is not sky, and a star behind a tent is a bug nobody has
+ * to see twice.
+ */
+const STARS = 90;
+function drawStars(ctx, W, H) {
+  const band = H * 0.34;
+  ctx.save();
+  for (let i = 0; i < STARS; i++) {
+    // A cheap hash, so the sky is the same sky every frame and every session.
+    const a = Math.sin(i * 12.9898) * 43758.5453;
+    const b = Math.sin(i * 78.233) * 12345.6789;
+    const x = (a - Math.floor(a)) * W;
+    const y = (b - Math.floor(b)) * band;
+    const twinkle = 0.55
+      + 0.28 * Math.sin(campT * 1.1 + i * 2.3)
+      + 0.17 * Math.sin(campT * 0.43 + i * 5.1);
+    // Fading out towards the treeline keeps the field from ending on a line.
+    const fade = 1 - (y / band) ** 1.5;
+    const r = 0.6 + ((a * 7) - Math.floor(a * 7)) * 0.8;
+    ctx.globalAlpha = Math.max(0, twinkle * fade * 0.5);
+    ctx.fillStyle = i % 9 === 0 ? '#cfe0ff' : '#f3ecd8';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
  * One frame of the camp. Driven from `frame()` rather than its own loop: the
  * render loop runs whether or not the run does, so the fire is already being
  * given frames and a second rAF would only fight it for them.
  */
+// **The figure keeps its own clock.** `campT` drives the fire's flicker and
+// the selection ring's pulse, and a hero stepping his frames off the same
+// accumulator ends up beating with them — not in step exactly, but close
+// enough and often enough that the eye reads it as mechanical. One extra
+// number buys a body that is plainly not on the fire's rhythm.
+let idleT = 0;
+// 0 while sheets are still decoding, then eases to 1. The camp is a still
+// scene a player looks at rather than acts in, so it can afford to arrive.
+let campFade = 0;
+
 function paintCamp(dt) {
   campT += dt;
+  idleT += dt;
+
+  // **Everybody, or nobody.** A per-figure fade would stagger them in as each
+  // sheet finished, which is the same pop spread over more frames. `Atlas.sheet`
+  // returns null until an image has decoded, so this asks the same question the
+  // draw does. The `0.6` floor means a camp whose art never loads at all still
+  // becomes visible rather than staying black for ever.
+  // **Only the slots that will actually draw a body.** A locked class has a
+  // sheet name in its slot and no art on disk, so waiting on it meant `ready`
+  // was never true and the camp crept in over the fallback's full three
+  // seconds — which looks less like a fade and more like a fault.
+  const wanted = camp.slots.filter((s) => s.sheet && !s.locked);
+  const ready = wanted.every((s) => heroSheet(s.sheet, s.cols || 2)
+    && (!s.anim || heroSheet(s.anim.b.src, s.anim.b.cols)));
+  campFade = Math.min(1, campFade + dt / (ready ? 0.35 : 0.9));
+  el.campScene.style.opacity = campFade.toFixed(3);
   const cv = el.campCanvas, ctx = cv.getContext('2d');
   const box = cv.getBoundingClientRect();
   if (!box.width) return;
@@ -843,6 +920,7 @@ function paintCamp(dt) {
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
+  drawStars(ctx, W, H);
   const n = camp.slots.length;
   const fireX = W / 2, fireY = H * 0.72;
 
@@ -922,21 +1000,46 @@ function paintCamp(dt) {
     // makes the selected one obvious at a glance — a highlight on its own has
     // to be found, a contrast does not.
     if (i !== camp.sel) ctx.globalAlpha = 0.62;
-    const sheet = heroSheet(s.sheet, s.cols || 2);
-    if (sheet) {
-      // Matched to the vector figure it replaces, so the camp's composition —
-      // which was tuned against that — still holds: same crown height, same
-      // feet on the same ground.
-      const idx = heroCell(s.tier || 1, false, s.cols || 2);
-      const cell = sheet.cells[idx];
-      const k = cell ? (44 * 0.92 * scale) / cell.h : 1;
-      Atlas.drawSprite(ctx, sheet, idx, x, y, k, false);
-    } else {
-      // Only the class carrying this run's gear has a kit of its own; the rest
-      // fall back to the base look for the moment before their sheet decodes.
-      litActor(ctx, { kit: s.kit || kitFor('hero'), scale, walk: 0, swing: 0, hurt: 0, fx: 0.2 },
-               x, y, campT + i * 1.7, fireX);
+
+    // **Two loops of the plain idle, then one of the variation**, walked from
+    // the clock rather than from a counter: a counter needs state that has to
+    // survive a resize and a change of class, and the clock already knows.
+    // Each figure is offset by its slot so four heroes round a fire do not
+    // breathe in unison.
+    const an = s.anim;
+    let src = s.sheet, cols = s.cols || 2, frame = 0;
+    if (an) {
+      const plain = an.a.cols * (an.breakAt - 1);
+      const cycle = plain + an.b.cols;
+      const at = Math.floor(idleT * an.fps + i * 1.7) % cycle;
+      if (at < plain) { src = an.a.src; cols = an.a.cols; frame = at % an.a.cols; }
+      else { src = an.b.src; cols = an.b.cols; frame = at - plain; }
     }
+
+    const sheet = heroSheet(src, cols);
+    if (sheet) {
+      const idx = heroCell(s.tier || 1, false, cols, frame);
+      // **Sized from one reference cell, never from the frame being drawn.**
+      // `sliceGrid` trims every cell to its own content, so a frame where the
+      // sword rides higher is a taller cell — and dividing by *that* made the
+      // hero shrink whenever his weapon went up. The row's first cell is the
+      // ruler, so his height is a property of the character rather than of the
+      // pose. It has to be the *same* reference across both sheets, which is
+      // why the two idles are baked at one `fh`.
+      // Baked figure height when we have one — see `fh` in DOLL_CAMP — and the
+      // cell's own height only for the painted classes, which have no bake to
+      // ask. Frame 0 is not good enough: the two idle sheets start from
+      // different poses, so the hero changed size as the cycle crossed over.
+      const ref = an ? an.fh : (sheet.cells[heroCell(s.tier || 1, false, cols, 0)] || {}).h;
+      const k = ref ? (44 * 0.92 * scale) / ref : 1;
+      Atlas.drawSprite(ctx, sheet, idx, x, y, k, false);
+    }
+    // **No stand-in.** This used to fall back to the vector kit while a sheet
+    // decoded, which meant every visit to the camp opened on four simple
+    // shapes that were then replaced by the real figures a beat later. A pop
+    // like that reads as a bug even when it is only a loader; better to draw
+    // nothing for the few frames it takes and fade the whole scene in once
+    // everybody has arrived — see `campReady` below.
     ctx.globalAlpha = 1;
   }
 

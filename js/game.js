@@ -897,8 +897,11 @@ function showCamp() {
       // man. `DOLL_ART` is the same sheet the hero is drawn from — four
       // columns, five tiered rows — so the camp figure changes with his
       // armour for free.
-      sheet: mine ? DOLL_CAMP.src : c.sheet,
-      cols: mine ? DOLL_CAMP.cols : 2,
+      // Two idle sheets for the run's own class; everyone else keeps their
+      // painted portrait. `anim` is passed whole so ui.js can walk the cycle.
+      sheet: mine ? DOLL_CAMP.a.src : c.sheet,
+      cols: mine ? DOLL_CAMP.a.cols : 2,
+      anim: mine ? DOLL_CAMP : null,
       // Not ready yet: no body is drawn, only the worn ground of a place.
       locked: !c.ready,
       // Takeable is what the button reads: this run can only be walked by the

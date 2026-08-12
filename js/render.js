@@ -1226,7 +1226,28 @@ export const DOLL_SHEET = { src: 'art/knight-combat.png', cols: 4, rows: 5 };
  * because the only light at the camp is the fire, and left unposterised — the
  * step that reads as paint at road size reads as banding at this one.
  */
-export const DOLL_CAMP = { src: 'art/knight-camp.png', cols: 1, rows: 5 };
+export const DOLL_CAMP = {
+  // **12fps, and that number is the whole point.** Mixamo exports at 30fps and
+  // the first attempt sampled six frames out of a two-second clip — 3fps, which
+  // is a slideshow however carefully the playback rate is matched. Twelve reads
+  // as motion. It costs frames: `Great Sword Idle` is 2.0s so it needs 24, and
+  // `Great-Sword-Idle-02` is 3.77s so it needs 45.
+  //
+  // **Two sheets, because 69 columns will not fit in one.** At 250px a cell
+  // that is 17,000px of width, past what a browser will hold as a texture. So
+  // the plain idle is one sheet, the variation another, and the cycle below
+  // walks from one to the other: two loops of the first, then one of the second.
+  a: { src: 'art/knight-camp.png', cols: 24 },
+  b: { src: 'art/knight-camp2.png', cols: 45 },
+  rows: 5, fps: 12, breakAt: 3,
+  // **The height the doll was baked at**, and the only honest ruler for it.
+  // Cells are trimmed to their content by `sliceGrid`, so cell height tracks
+  // the *pose* — a raised sword makes a taller cell — and scaling by it shrank
+  // the hero every time he lifted his weapon. Both sheets are baked at the
+  // same `--fh`, so this one number sizes every frame of both identically.
+  fh: 210,
+};
+
 
 const DOLL_ART = {
   sheet: DOLL_SHEET.src, cols: DOLL_SHEET.cols, rows: DOLL_SHEET.rows, attacks: [1, 2], react: 3,

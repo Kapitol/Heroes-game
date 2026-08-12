@@ -66,6 +66,12 @@ const light = Number(opt('light', 1));
 // plastic. Both are bake-side by design — nothing at runtime learns about them.
 const keyColour = opt('key', null);
 const posterize = Number(opt('posterize', 0));
+// Peak degrees of head turn baked into the loop — see HEAD_TURN in doll.html.
+const headTurn = Number(opt('headturn', 0));
+// Degrees to turn the doll away from the strict side view. The road needs a
+// profile it can mirror for facing; a portrait does not, and three-quarters is
+// how a character is shown when he is being *looked at* rather than followed.
+const yaw = Number(opt('yaw', 0));
 // The cell is generous on purpose. A slash reaches well past the silhouette of
 // a standing figure, and a cell that fits the idle clips the swing — which is
 // invisible in the sheet and obvious in the game. `sliceGrid` trims the slack
@@ -157,6 +163,8 @@ const url = (o) => {
   if (sword) q.set('sword', '1');
   if (light !== 1) q.set('light', String(light));
   if (keyColour) q.set('key', String(keyColour));
+  if (headTurn) q.set('headturn', String(headTurn));
+  if (yaw) q.set('yaw', String(yaw));
   if (o.loop) q.set('loop', '1');
   return `${BASE}/tools/doll.html?${q}`;
 };

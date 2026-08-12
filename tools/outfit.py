@@ -60,12 +60,22 @@ HEAD = ('/Volumes/Z-Drive/Youtube-game/crypt-heroes/Universal Base Characters[St
 # `length` is the finished weapon in hero-heights, not in the pack's units: the
 # pack ships a 5.5-unit sword and the hero is 1.8 tall, so a raw import is a
 # telegraph pole. A longsword is a bit over half a man; a dagger a fifth.
+# **No dagger.** Every idle and every attack clip in the library is a
+# two-handed guard, and a knife held in both fists at chest height reads as a
+# man about to peel something. Tier 1 gets the same blade as tier 2 at a
+# shorter length — a shortsword — which is a real distinction and costs no
+# extra model.
+# **Bigger than life, on purpose.** Every clip in the library is a greatsword
+# stance — both hands on the hilt, the blade held out from the body — and a
+# realistically-proportioned sword in that pose reads as a man gripping a
+# butter knife with unusual seriousness. These run from a bit over half a
+# man's height to nearly all of it, which is what the animation was drawn for.
 WEAPONS = [
-    ('Dagger', 0.22),
-    ('Sword', 0.52),
-    ('Sword_2', 0.55),
-    ('Sword_Big', 0.68),
-    ('Sword_Golden', 0.60),
+    ('Sword', 0.58),
+    ('Sword', 0.70),
+    ('Sword_2', 0.80),
+    ('Sword_Big', 0.96),
+    ('Sword_Golden', 0.90),
 ]
 WEAPON_DIR = ('/Volumes/Z-Drive/Youtube-game/crypt-heroes/art/Story/kit/waepons/FBX')
 
@@ -90,7 +100,8 @@ TIERS = [
 def parse_args():
     argv = sys.argv
     argv = argv[argv.index('--') + 1:] if '--' in argv else []
-    out = {'out': None, 'kit': KIT, 'fbx': 'art/mixamo/X Bot.fbx', 'tex': '512', 'head': HEAD}
+    out = {'out': None, 'kit': KIT, 'fbx': 'art/mixamo/X Bot.fbx', 'tex': '512', 'head': HEAD,
+           'subdiv': '1'}
     i = 0
     while i < len(argv):
         k = argv[i].lstrip('-')
@@ -106,6 +117,7 @@ def parse_args():
 
 ARGS = parse_args()
 TEX = int(ARGS['tex'])          # the size every texture is taken down to
+SUBDIV = int(ARGS['subdiv'])    # smoothing passes before export; see `smooth`
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 resolve = lambda p: p if os.path.isabs(p) else os.path.join(ROOT, p)
 
@@ -346,7 +358,10 @@ def hand_grip(arm):
     # same warning for the same reason.
     if side.cross(flat).dot(grip) < 0:
         side = -side
-    return (pi + pp) / 2, grip, flat, side
+    # The palm's centre as well as the knuckle line: a weapon seated on the
+    # knuckles alone sits on top of the hand rather than in it.
+    palm = (pi + pp + pm + (m @ hand.head_local)) / 4
+    return (pi + pp) / 2, grip, flat, side, palm
 
 
 def add_weapon(name, length, tier, arm, body):
@@ -384,8 +399,17 @@ def add_weapon(name, length, tier, arm, body):
     grip = hand_grip(arm)
     if not grip:
         return None
-    at, along, flat, side = grip
-    ob.matrix_world = (Matrix.Translation(at)
+    at, along, flat, side, palm = grip
+
+    # **The fist has to close *around* the grip, not beside the pommel.** Two
+    # corrections, and the first render needed both. The knuckle midpoint is the
+    # top of the fist, so the hilt is pulled back a third of the way towards the
+    # wrist to pass through the palm; and the pack models the grip *above* its
+    # origin, so placing the origin in the hand leaves the hand holding the
+    # pommel with the whole hilt sticking out. Sliding it back along its own
+    # axis by a twelfth of its length puts the wrapped part in the fingers.
+    seat = at + (palm - at) * 0.32 - along * (length * body_h * 0.085)
+    ob.matrix_world = (Matrix.Translation(seat)
                        @ Matrix((side, flat, along)).transposed().to_4x4()
                        @ Matrix.Scale(s, 4))
     ob.name = f'T{tier}_weapon'
@@ -483,6 +507,33 @@ def dedupe_images():
             img.scale(TEX, TEX)
 
 
+def smooth(objs):
+    """
+    Subdivide everything before it is exported.
+
+    **The renderer is offline, so polygons are free.** The kit is stylised
+    low-poly — 129,000 triangles across all five tiers, and already 96% smooth
+    shaded, so the faceting that shows at portrait size is real geometry and
+    not a shading bug. Nothing downstream ever sees a triangle: the GLB is
+    rendered to a sprite sheet once and the game draws pixels. So the only cost
+    of a subdivision pass is bake time, and the return is a silhouette that
+    stops reading as a cut gem at four hundred pixels tall.
+
+    Catmull-Clark rather than simple: simple subdivision adds vertices without
+    moving them, which is more triangles and exactly the same outline.
+    """
+    if not SUBDIV:
+        return
+    for o in objs:
+        if o.type != 'MESH':
+            continue
+        mod = o.modifiers.new('Subdivision', 'SUBSURF')
+        mod.levels = mod.render_levels = SUBDIV
+        # Keeps plate edges from melting: the limit surface rounds every
+        # corner, and armour is meant to have corners.
+        mod.use_limit_surface = False
+
+
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     arm, body = import_character(resolve(ARGS['fbx']))
@@ -504,11 +555,17 @@ def main():
     dedupe_images()
     bpy.data.objects.remove(body, do_unlink=True)
 
+    smooth([o for o in bpy.context.scene.objects if o.type == 'MESH'])
+
     out = resolve(ARGS['out'])
     os.makedirs(os.path.dirname(out), exist_ok=True)
     bpy.ops.export_scene.gltf(
         filepath=out, export_format='GLB', use_visible=False,
-        export_skins=True, export_animations=False)
+        export_skins=True, export_animations=False,
+        # **Applied, or the subdivision never leaves Blender.** The exporter
+        # evaluates every modifier except the armature, which is exactly the
+        # split wanted here: denser meshes, skinning untouched.
+        export_apply=True)
     print(f'outfit: {len(worn)} parts over {len(TIERS)} tiers, fitted x{xf["s"]:.3f}, '
           f'{os.path.relpath(out, ROOT)}')
     if missing:

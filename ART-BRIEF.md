@@ -201,6 +201,37 @@ the bake to any model that brought no maps, and it is a stopgap.
   which for bark means no single run of vertical striation strong enough to
   read as a direction when it tiles.
 
+### 1e. Camp backdrop, re-framed — `camp-<area>.png`
+
+**The current one is painted too wide for the figures standing in it.**
+Measured off `camp-boneyard.png` at 1536×1024: a cart wheel is ~95px for a
+~1.2m wheel and a headstone ~80px for ~0.95m, so the set runs about **85px to
+the metre** and a 1.8m man should stand ~155px tall in it. The camp draws the
+hero at 575px on a 1316px viewport. Filling the screen with the painting and
+zooming it to 175% closes most of that, but matching exactly would need 330% —
+a 1536px image magnified nearly four times, which crops the tent and the cart
+out of frame and turns the brushwork to porridge.
+
+So the next one is painted for the shot the game actually takes:
+
+```
+A dark fantasy graveyard clearing at night, painted in oils. A ring of bare
+firelit ground in the centre, wide enough for four figures to stand around
+it. Headstones, a ruined stone arch and a collapsed cart at the edges of the
+light. Deep night sky above with a suggestion of cloud.
+
+Framed as a stage: the clearing fills the lower two thirds, the horizon sits
+high, and there is nothing important in the outer eighth of the frame — it
+will be cropped. No people, no animals, no fire itself: the fire and the
+figures are drawn by the engine on top.
+```
+
+- **2560×1440 or larger.** It is displayed full-bleed on a desktop viewport;
+  the current 1536px is already being magnified before anything is cropped.
+- **Scale it for a two-metre figure standing at the fire**, which means
+  headstones about a third of a man's height and the arch about twice it.
+  Everything else follows from that one relationship.
+
 ### 2. Prop sheet — `props-<area>.png` — **4 columns × 3 rows**
 
 The engine scatters these itself from a tile hash, choosing between variants
