@@ -47,6 +47,13 @@ KIT = ('/Volumes/Z-Drive/Youtube-game/crypt-heroes/Modular Character Outfits - '
 HEAD = ('/Volumes/Z-Drive/Youtube-game/crypt-heroes/Universal Base Characters[Standard]/'
         'Base Characters/Godot - UE/Superhero_Male_FullBody.gltf')
 
+# Hair, which the base pack ships separately and **already rigged to the head
+# bone** — so it needs no weight transfer, only the same fit the head gets and a
+# rigid bind to `mixamorig:Head`. `Hair_Long`, `Hair_SimpleParted`, `Hair_Buns`,
+# `Hair_Buzzed`, `Hair_Beard` and `Eyebrows_Regular` are the set.
+HAIR_DIR = ('/Volumes/Z-Drive/Youtube-game/crypt-heroes/Universal Base Characters[Standard]/'
+            'Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)')
+
 # The armoury's other half: what he holds.
 #
 # **Real weapons, sized and hung off the hand bone in Blender.** Until now the
@@ -101,7 +108,7 @@ def parse_args():
     argv = sys.argv
     argv = argv[argv.index('--') + 1:] if '--' in argv else []
     out = {'out': None, 'kit': KIT, 'fbx': 'art/mixamo/X Bot.fbx', 'tex': '512', 'head': HEAD,
-           'subdiv': '1', 'parts': None, 'weapon': None, 'shield': None, 'grip': 'fist', 'stiff': None, 'hand': 'Right'}
+           'subdiv': '1', 'parts': None, 'weapon': None, 'shield': None, 'grip': 'fist', 'stiff': None, 'hand': 'Right', 'hair': None}
     i = 0
     while i < len(argv):
         k = argv[i].lstrip('-')
@@ -677,6 +684,58 @@ def add_weapon(name, length, tier, arm, body):
     return bind_prop(ob, arm, f'mixamorig:{hand}Hand')
 
 
+def add_hair(name, xf, arm, tier=None):
+    """One hairstyle, fitted like the head and rigid on the head bone.
+
+    **No weight transfer.** The pack exports these already rigged to the head
+    bone, so there is exactly one bone involved and Data Transfer would only
+    invent a falloff across a scalp that does not bend. It goes through the same
+    `apply_fit` the head does — which is the only reason it lands on the skull
+    rather than beside it — and is then bound rigidly, like a weapon in a fist.
+    """
+    path = os.path.join(HAIR_DIR, f'{name}.gltf')
+    if not os.path.exists(path):
+        return None
+    before = set(bpy.context.scene.objects)
+    bpy.ops.import_scene.gltf(filepath=path)
+    fresh = [o for o in bpy.context.scene.objects if o not in before]
+    meshes = [o for o in fresh if o.type == 'MESH']
+    if not meshes:
+        return None
+    ob = max(meshes, key=lambda o: len(o.data.vertices))
+    ob.modifiers.clear()
+    ob.vertex_groups.clear()
+    mw = ob.matrix_world.copy()
+    ob.parent = None
+    ob.matrix_world = mw
+    # Untiered on purpose: the tier prefix is what hides a mesh on the other
+    # four rungs, and a man does not change hair when he changes armour.
+    # Untiered unless asked: the tier prefix is what hides a mesh on the other
+    # rungs, and a man does not change hair when he changes armour — but he does
+    # put a helmet over it.
+    ob.name = f'T{tier}_hair_{name}' if tier else f'Hair_{name}'
+    # **The pack's hair map is a greyscale.** It is painted to be tinted by the
+    # material's base-colour factor, and ours arrives with that factor white —
+    # so every hairstyle bakes silver, which on four characters at one fire
+    # reads as a family of ghosts rather than a choice. `--haircol '#3a2418'`
+    # multiplies a colour through it; leaving it off keeps the silver, which
+    # suits exactly one of them.
+    # **No tint, and the flag is gone rather than left lying.** The pack's hair
+    # map is a greyscale meant to be coloured by the material, and two ways of
+    # doing that both failed silently: a MixRGB between texture and Base Color
+    # is not a pattern Blender's glTF writer recognises, so it exports the bare
+    # texture; and multiplying the pixels of a copied image does not survive
+    # either, because a copy still points at the file it came from. Every doll
+    # therefore has silver hair. It suits the Warlock, it reads as a grey
+    # veteran on the Warrior, and it is wrong as a *default* — but a switch that
+    # quietly does nothing is worse than no switch.
+    apply_fit([ob], xf)
+    live = set(bpy.context.scene.objects)
+    for o in [o for o in fresh if o in live and o is not ob]:
+        bpy.data.objects.remove(o, do_unlink=True)
+    return bind_prop(ob, arm, 'mixamorig:Head')
+
+
 def stiffen_fingers(ob):
     """Make a sleeve follow the wrist instead of the fingers.
 
@@ -844,6 +903,19 @@ def main():
 
     head = base_head(ARGS['head'], xf)
     skin(head, arm, body)
+
+    # **Hair, and every doll in this game has been bald.** It is not that the
+    # head lost it — the pack keeps hairstyles in a folder of their own, already
+    # rigged to the head bone, and nothing ever imported them. A bald man reads
+    # as a monk or a convict, which is a characterisation nobody chose, and it
+    # is the same four faces at the fire.
+    # `Name@tier` puts a hairstyle on one rung only. The ladder's tiers 2, 4 and
+    # 5 wear a hood or an armet, and hair is untiered by default — so a knight
+    # with hair would wear it *through* his helmet on three rungs out of five.
+    for spec in [n.strip() for n in (ARGS['hair'] or '').split(',') if n.strip()]:
+        name, _, tier = spec.partition('@')
+        h = add_hair(name, xf, arm, tier or None)
+        print(f'outfit hair: {spec}' + ('' if h else ' — MISSING'))
     dedupe_images()
     bpy.data.objects.remove(body, do_unlink=True)
     # …and the joint pads with it. See `import_character`.
