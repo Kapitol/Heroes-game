@@ -714,12 +714,6 @@ def add_hair(name, xf, arm, tier=None):
     # rungs, and a man does not change hair when he changes armour — but he does
     # put a helmet over it.
     ob.name = f'T{tier}_hair_{name}' if tier else f'Hair_{name}'
-    # **The pack's hair map is a greyscale.** It is painted to be tinted by the
-    # material's base-colour factor, and ours arrives with that factor white —
-    # so every hairstyle bakes silver, which on four characters at one fire
-    # reads as a family of ghosts rather than a choice. `--haircol '#3a2418'`
-    # multiplies a colour through it; leaving it off keeps the silver, which
-    # suits exactly one of them.
     # **No tint, and the flag is gone rather than left lying.** The pack's hair
     # map is a greyscale meant to be coloured by the material, and two ways of
     # doing that both failed silently: a MixRGB between texture and Base Color
