@@ -751,7 +751,12 @@ body.camp #belt { opacity:0; pointer-events:none; }
      equation, and it *improves* him — the camp sheet is baked at 420px, so a
      200px figure is downscaled, and downscaling hides polygon edges that
      magnification puts under a microscope. */
-  background:url("../art/camp-boneyard.png") 50% 55% / cover no-repeat;
+  /* 215%: `cover` is ~1.285x on a tall viewport and the figures were scaled
+     up by 1.93x to match the reference, so the set is magnified by the same
+     1.93x — 1.285 * 1.93 = 2.48 of the painting's own pixels, which is 215% of
+     the element's width. Paired with the 2.6 in `campGeom`; the two numbers
+     are one decision and must move together. */
+  background:url("../art/camp-boneyard.png") 50% 60% / 215% no-repeat;
 }
 #campCanvas { position:absolute; inset:0; width:100%; height:100%; }
 

@@ -695,12 +695,17 @@ function campGeom(i, n, W, H) {
   const x = cx + Math.cos(th) * rx;
   const y = cy + Math.sin(th) * ry;
   const depth = (-Math.sin(th) + 1) / 2;      // 1 behind the fire, 0 in front of it
-  // **1.35, measured, not chosen.** The backdrop runs ~85px to the metre and
-  // `cover` magnifies it ~1.285x on a tall viewport, so a 1.8m figure is about
-  // 197px — and `44 * 0.92 * scale` reaches that at a multiplier of 1.3. It was
-  // 3.8, which made the hero five metres tall and put his face close enough to
-  // count the triangles in it.
-  const scale = (H / 300) * 1.35 * (1 - depth * 0.34);
+  // **2.6, from the reference shot.** Measured off WoW's character select: a
+  // character stands about 31% of the viewport's height there, and ours stood
+  // at 15%. `44 * 0.92 * (H/300) * m * (1 - depth*0.34)` reaches 31% at m=2.6.
+  //
+  // This is *not* the earlier 1.35, which was the figure's true scale against
+  // the painting. The reference solves that differently: it moves the camera
+  // in, so the set is magnified by the same amount as the characters and the
+  // relationship between them survives. The backdrop's `background-size` in
+  // css/style.css carries the other half of this number — change one and the
+  // hero is either a giant in a wide field or a doll in a close-up.
+  const scale = (H / 300) * 2.6 * (1 - depth * 0.34);
   return { f: x / W, depth, x, y, scale, headY: y - 44 * 0.92 * scale };
 }
 
