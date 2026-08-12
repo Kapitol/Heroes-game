@@ -1236,10 +1236,19 @@ export const DOLL_CAMP = {
   // **Two sheets, because 69 columns will not fit in one.** At 250px a cell
   // that is 17,000px of width, past what a browser will hold as a texture. So
   // the plain idle is one sheet, the variation another, and the cycle below
-  // walks from one to the other: two loops of the first, then one of the second.
+  // walks from one to the other: `breakAt - 1` loops of the first, then one of
+  // the second.
+  //
+  // **`breakAt` is a ratio, not a count.** At 3 the two sheets ran 48 frames
+  // against 45 — near enough alternating, and a variation that comes round
+  // every four seconds stops being a variation: the eye learns it and starts
+  // reading the *return* to the plain idle as another move. The plain one
+  // should dominate. Three loops is 72 frames against 45, 1.6:1, which is the
+  // closest a whole number of loops gets to 1.75 — and it has to be whole, or
+  // the cycle cuts the standing idle off mid-breath.
   a: { src: 'art/knight-camp.png', cols: 24 },
   b: { src: 'art/knight-camp2.png', cols: 45 },
-  rows: 5, fps: 12, breakAt: 3,
+  rows: 5, fps: 12, breakAt: 4,
   // **The height the doll was baked at**, and the only honest ruler for it.
   // Cells are trimmed to their content by `sliceGrid`, so cell height tracks
   // the *pose* — a raised sword makes a taller cell — and scaling by it shrank
