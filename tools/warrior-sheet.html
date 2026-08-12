@@ -23,8 +23,13 @@
   (-1.6, 5, 4.6) against a camera at (-8, 0, 0), so up and to the right, 45.7
   degrees of elevation. It does not move with `--yaw`: `doll.rotation.y`
   turns the doll and leaves the lights alone, so -45 changes which side of him
-  is lit and never where the light is. The cast shadow is thrown away from it.
-  The game draws the hero no shadow at all; this one belongs to the sheet.
+  is lit and never where the light is.
+
+  The shadow is the sprite's own alpha, projected: a point `h` above the sole
+  lands `h / tan(elevation)` away, so the cell's y axis maps onto the shadow's
+  direction and the sole line stays fixed. It is rebuilt per frame, which is
+  why it moves with him -- it is the pose, not a shape standing in for it. The
+  game draws the hero no shadow at all; this one belongs to the sheet.
 
   The tier buttons and the stance list are deliberately dead. Every stance but
   the idle exists in art/mixamo and has not been baked, and the gap is the
@@ -269,8 +274,12 @@ dd b { font-weight:400; color:var(--accent); }
     warrior's ladder, and the row is one number to change when the others are
     wanted. He does not sit in the middle of his cell: the greatsword hangs to
     one side, so the centre of the artwork and the centre of the man are
-    different, and the anchor above is the man. The contact shadow is drawn by
-    this page, squashed to the tile's own 2:1 &mdash; the bake carries none.
+    different, and the anchor above is the man. The shadow is his own outline
+    projected onto the plane &mdash; the sprite's own alpha, leaned away from the
+    sun by <code>height / tan(elevation)</code> and softened with distance from
+    his boots &mdash; so it moves when he does and cannot fall out of agreement
+    with the pose. It belongs to this page: the bake carries none and the game
+    draws the hero none.
   </p>
 
   <p class="foot">
@@ -318,6 +327,9 @@ dd b { font-weight:400; color:var(--accent); }
   // Which rung of the ladder this sheet is showing. Tier 1 is row 0, so
   // the other four are this one number -- see the disabled tier buttons.
   const TIER = 5, ROW = TIER - 1;
+  // Where this sheet's row starts. The published copy carries one pre-cut
+  // strip, so it is 0; the repo copy opens the whole 24x5 bake and indexes in.
+  const ROW_Y = ROW * CELL_H;
   const SOLE = 465.5, ANCHOR = 183, FH = 300;
 
   const toScreen = (x, y) => ({ x: (x - y) * (TILE_W / 2), y: (x + y) * (TILE_H / 2) });
@@ -421,6 +433,84 @@ dd b { font-weight:400; color:var(--accent); }
     ctx.restore();
   }
 
+  /**
+   * The current frame as a soft dark silhouette, in cell space.
+   *
+   * Built by drawing the cell and then filling it through `source-in`, which
+   * keeps the sprite's alpha and throws its colour away -- the outline comes
+   * from the art, so it can never disagree with the pose being drawn.
+   *
+   * The fade up the cell is the penumbra. A real shadow is sharpest where the
+   * caster touches the ground and softens with distance from it, and in this
+   * projection distance from the ground *is* height up the sprite: his boots
+   * are the contact and the blade tip is the far end. Doing it here rather
+   * than after the transform means the gradient is measured in the figure's
+   * own units and holds at any zoom.
+   */
+  let shadowCv = null, shadowFor = -1;
+  function silhouette(frame) {
+    if (shadowFor === frame && shadowCv) return shadowCv;
+    if (!shadowCv) {
+      shadowCv = document.createElement('canvas');
+      shadowCv.width = CELL_W; shadowCv.height = CELL_H;
+    }
+    const s = shadowCv.getContext('2d');
+    s.setTransform(1, 0, 0, 1, 0, 0);
+    s.clearRect(0, 0, CELL_W, CELL_H);
+    s.globalCompositeOperation = 'source-over';
+    s.drawImage(idle, frame * CELL_W, ROW_Y, CELL_W, CELL_H, 0, 0, CELL_W, CELL_H);
+
+    s.globalCompositeOperation = 'source-in';
+    s.fillStyle = '#0a0806';
+    s.fillRect(0, 0, CELL_W, CELL_H);
+
+    // Thin it out towards the top of the cell -- the end of the shadow that
+    // lands furthest from his feet.
+    s.globalCompositeOperation = 'destination-out';
+    const fade = s.createLinearGradient(0, SOLE, 0, 0);
+    fade.addColorStop(0, 'rgba(0,0,0,0)');
+    fade.addColorStop(.45, 'rgba(0,0,0,.30)');
+    fade.addColorStop(1, 'rgba(0,0,0,.72)');
+    s.fillStyle = fade;
+    s.fillRect(0, 0, CELL_W, CELL_H);
+    s.globalCompositeOperation = 'source-over';
+
+    shadowFor = frame;
+    return shadowCv;
+  }
+
+  /**
+   * Lay that silhouette down on the plane.
+   *
+   * Under a directional light a point `h` above the sole lands `h / tan(el)`
+   * away along the ground. So the sprite's y axis maps onto the shadow's
+   * direction and its x axis is left alone, which is an affine with the sole
+   * line as its fixed line -- his feet stay put and everything above them
+   * leans away from the sun.
+   *
+   * The direction's vertical is squashed by the tile's own 2:1 on the way in,
+   * or the shadow lies across a plane at a different angle from the one drawn
+   * underneath it.
+   */
+  function drawCastShadow(feetX, feetY, fig) {
+    if (!idle.complete || !idle.naturalWidth) return;
+    const L = 1 / Math.tan(KEY.elevation * Math.PI / 180);
+    const dx = -SUN.x, dy = -SUN.y * (TILE_H / TILE_W);
+
+    const a = fig, b = 0;
+    const c = -fig * L * dx, d = -fig * L * dy;
+    const e = feetX - fig * ANCHOR - c * SOLE;
+    const f = feetY - d * SOLE;
+
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    // Blur in device pixels, so the softness does not swell with the zoom.
+    ctx.filter = 'blur(' + Math.max(1.5, 5 * fig).toFixed(1) + 'px)';
+    ctx.transform(a, b, c, d, e, f);
+    ctx.drawImage(silhouette(state.frame), 0, 0);
+    ctx.restore();
+  }
+
   function draw() {
     if (!W) return;
     ctx.clearRect(0, 0, W, H);
@@ -454,47 +544,21 @@ dd b { font-weight:400; color:var(--accent); }
 
     drawSun(feetX, feetY);
 
-    // **The shadow is thrown away from the sun, not dropped under him.** A
-    // symmetrical blob says the light is overhead, which contradicts the
-    // shading already baked into every pixel of the figure. Length comes off
-    // the key's elevation: a body casts `height / tan(elevation)`, and at 45.7
-    // degrees that is very close to its own height.
-    const len = (HERO_H * z) / Math.tan(KEY.elevation * Math.PI / 180);
-
-    ctx.save();
-    ctx.translate(feetX, feetY);
-    // Into the plane. Everything inside this is a circle-space: the squash is
-    // what makes a round shadow read as lying on the angled ground.
-    ctx.scale(1, TILE_H / TILE_W);
-    // Un-squash the direction before taking its angle, or the shadow points
-    // somewhere the sun is not.
-    const theta = Math.atan2(-SUN.y * (TILE_W / TILE_H), -SUN.x);
-    ctx.rotate(theta);
-    ctx.translate(len * 0.42, 0);
-    ctx.scale(len * 0.62, foot * 1.05);
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-    g.addColorStop(0, 'rgba(10,8,6,.46)');
-    g.addColorStop(.55, 'rgba(10,8,6,.22)');
-    g.addColorStop(1, 'rgba(10,8,6,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-
-    // A tighter contact patch under the boots. Without it the cast shadow
-    // floats off on its own and he stops touching the plane.
-    ctx.save();
-    ctx.translate(feetX, feetY);
-    ctx.scale(1, TILE_H / TILE_W);
-    const c = ctx.createRadialGradient(0, 0, 0, 0, 0, foot * 1.35);
-    c.addColorStop(0, 'rgba(10,8,6,.5)');
-    c.addColorStop(1, 'rgba(10,8,6,0)');
-    ctx.fillStyle = c;
-    ctx.beginPath(); ctx.arc(0, 0, foot * 1.35, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
+    // **The shadow is his own silhouette, laid down on the plane.** A blob
+    // says "something roughly this wide is here"; the figure's outline says
+    // which way he is facing, where the blade is, and that his feet are apart
+    // -- and it cannot drift out of agreement with the pose, because it *is*
+    // the pose.
+    //
+    // The projection is the one a directional light actually makes. A point
+    // `h` above the sole lands `h / tan(elevation)` away along the ground, so
+    // the sprite's vertical axis maps to the shadow's direction and its
+    // horizontal axis stays put: an affine, and the sole is its fixed line.
+    drawCastShadow(feetX, feetY, fig);
 
     if (idle.complete && idle.naturalWidth) {
       ctx.drawImage(
-        idle, state.frame * CELL_W, ROW * CELL_H, CELL_W, CELL_H,
+        idle, state.frame * CELL_W, ROW_Y, CELL_W, CELL_H,
         feetX - ANCHOR * fig, feetY - SOLE * fig, CELL_W * fig, CELL_H * fig,
       );
     }
