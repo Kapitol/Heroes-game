@@ -68,13 +68,13 @@ export const CLASSES = [
   // 320 is as far as it goes while 24 cells still fit inside the 16k texture
   // width a browser will hold.
   { key: 'paladin', name: 'Paladin', sheet: 'art/Pixel-Paladin.png', ready: true,
-    camp: { a: { src: 'art/paladin-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 320 },
+    camp: { a: { src: 'art/paladin-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 300 },
     blurb: 'Holds the line and mends it.' },
   { key: 'warlock', name: 'Warlock', sheet: 'art/Pixel-Warlock.png',
-    camp: { a: { src: 'art/warlock-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 320 },
+    camp: { a: { src: 'art/warlock-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 300 },
     blurb: 'Spends life to spend the dead.' },
   { key: 'druid',   name: 'Druid',   sheet: 'art/Pixel-Druid.png',
-    camp: { a: { src: 'art/druid-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 320 },
+    camp: { a: { src: 'art/druid-camp.png', cols: 24 }, rows: 1, fps: 12, breakAt: 2, fh: 300 },
     blurb: 'Brings the wood in with them.' },
 ];
 

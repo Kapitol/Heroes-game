@@ -1248,13 +1248,22 @@ export const DOLL_CAMP = {
   // the cycle cuts the standing idle off mid-breath.
   a: { src: 'art/knight-camp.png', cols: 24 },
   b: { src: 'art/knight-camp2.png', cols: 45 },
-  rows: 5, fps: 12, breakAt: 4,
+  rows: 5, fps: 12, breakAt: 4, yaw: -45,
   // **The height the doll was baked at**, and the only honest ruler for it.
   // Cells are trimmed to their content by `sliceGrid`, so cell height tracks
   // the *pose* — a raised sword makes a taller cell — and scaling by it shrank
   // the hero every time he lifted his weapon. Both sheets are baked at the
   // same `--fh`, so this one number sizes every frame of both identically.
-  fh: 210,
+  // **300, and baked three-quarters on.** Two changes that had to happen
+  // together. The camp draws a figure near 300 pixels tall and this was 210, so
+  // every sheet was being magnified by half again — soft in exactly the place
+  // the player is looking hardest. And the doll baked in strict profile,
+  // because that is what the *road* needs: one side view it can mirror for
+  // facing. A camp is not a road. Nobody is walking, and a row of profiles at a
+  // fire is four people ignoring each other. `--yaw -45` turns them towards the
+  // camera far enough to be looked at and not so far that the blade disappears
+  // edge-on. See the bake commands in ART-BRIEF and ontology.
+  fh: 300,
 };
 
 

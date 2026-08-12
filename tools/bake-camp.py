@@ -381,8 +381,8 @@ def fire():
     # clearing is lit at all. One light strong enough to reach the treeline burns
     # the fire ring out entirely — measured on the first pass, where the stones
     # came back white.
-    for z, energy, radius, colour in ((0.42, 165.0, 0.14, (1.0, 0.58, 0.24)),
-                                      (1.30, 70.0, 1.10, (1.0, 0.50, 0.20))):
+    for z, energy, radius, colour in ((0.42, 240.0, 0.14, (1.0, 0.57, 0.23)),
+                                      (1.30, 105.0, 1.10, (1.0, 0.49, 0.19))):
         l = bpy.data.lights.new('fire', 'POINT')
         l.energy, l.color, l.shadow_soft_size = energy * LIGHT, colour, radius
         ob = bpy.data.objects.new('fire', l)
@@ -712,9 +712,15 @@ def lights():
     # against a sky with a sunrise in it. Moonlight at one in the morning shows
     # you the shape of the treeline and the colour of nothing; anything brighter
     # and the frame reads as an hour before dawn, which is a different scene.
-    for pos, energy, colour in (((3, -3, 5), 1.05, (0.46, 0.57, 0.92)),
-                                ((-3, -2, 1), 0.30, (0.32, 0.41, 0.70)),
-                                ((-2, 2, 2), 0.58, (0.42, 0.52, 0.84))):
+    # **An accent, not a key.** The fire is the light in this picture and the
+    # moon is what proves the rest of the world is still there — a rim on the
+    # crest, a cold edge on the treeline, nothing in the clearing that the fire
+    # has not put there. Every drop in these numbers has been a drop: 3.10 while
+    # the base plate was invisible, 1.95 once it was not, 1.05 for a sky with
+    # the sunrise taken out of it, and 0.52 to stop it competing with the fire.
+    for pos, energy, colour in (((3, -3, 5), 0.52, (0.44, 0.56, 0.94)),
+                                ((-3, -2, 1), 0.13, (0.30, 0.40, 0.72)),
+                                ((-2, 2, 2), 0.30, (0.40, 0.51, 0.86))):
         l = bpy.data.lights.new('l', 'SUN')
         l.energy, l.color, l.angle = energy * LIGHT, colour, math.radians(6)
         ob = bpy.data.objects.new('l', l)
