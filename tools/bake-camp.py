@@ -82,7 +82,7 @@ def parse_args():
     argv = argv[argv.index('--') + 1:] if '--' in argv else []
     out = {'out': 'art/camp-wood.png', 'src': SRC, 'seed': '7',
            'light': '1', 'samples': '64', 'pitch': str(PITCH), 'res': f'{RES_X}x{RES_Y}',
-           'vignette': '1.1'}
+           'vignette': '1.1', 'layers': '3'}
     i = 0
     while i < len(argv):
         k = argv[i].lstrip('-')
@@ -157,6 +157,11 @@ def flat(name, colour, rough=0.92):
 
 
 MATS = {}
+
+# Filled as the scene is built. `bake()` turns these on and off between passes:
+# the fire alone, the moon alone, and the two emissive surfaces that must appear
+# in exactly one plate or be added to the frame once per plate.
+FIRE_LIGHTS, SUNS, EMISSIVE = [], [], []
 
 
 def family(mat_name):
@@ -364,7 +369,12 @@ def fire():
         l.energy, l.color, l.shadow_soft_size = energy * LIGHT, colour, radius
         ob = bpy.data.objects.new('fire', l)
         ob.location = (0, 0, z)
+        # Stashed on the object so `bake()` can move the flame and put it back
+        # without a second table to keep in step with this one.
+        ob['home'] = (0.0, 0.0, z)
+        ob['watts'] = energy * LIGHT
         bpy.context.scene.collection.objects.link(ob)
+        FIRE_LIGHTS.append(ob)
 
 
 def up_gradient(nt):
@@ -423,6 +433,7 @@ def sky():
     p.rotation_euler = (math.radians(90 - PITCH), 0, 0)
     p.location = (0, Y_MID + 40 * COS_P, -40 * SIN_P)
     p.data.materials.append(m)
+    EMISSIVE.append(p)
 
 
 def mist():
@@ -466,6 +477,7 @@ def mist():
         p.rotation_euler = (math.radians(90 - PITCH * 0.35), 0, 0)
         p.location = (0, CREST + dy, h * 0.30)
         p.data.materials.append(m)
+        EMISSIVE.append(p)
 
 
 def treeline():
@@ -674,6 +686,7 @@ def lights():
         ob = bpy.data.objects.new('l', l)
         bpy.context.scene.collection.objects.link(ob)
         ob.rotation_euler = (Vector((0, 0, 0)) - Vector(pos)).to_track_quat('-Z', 'Y').to_euler()
+        SUNS.append(ob)
 
 
 def camera():
@@ -763,6 +776,66 @@ def vignette(path, strength):
     return float(fall.min())
 
 
+def bake(out, layers):
+    """The base plate, then one firelight plate per flame position.
+
+    **This is the difference between a picture of a camp and a camp.** A single
+    render bakes the fire's light into the ground, and a baked highlight is a
+    stain: it never moves, so the one warm thing on the screen is the only thing
+    that is provably dead. Light is additive, so it can be *rendered* additively
+    — the moon and the fire are separate passes over the same geometry, and the
+    canvas adds them back at whatever weights it likes, thirty times a second.
+
+    The base is the set with the fire out: moonlight, sky, mist, and a clearing
+    with a cold pit in it. Each fire plate is the same geometry lit by the fire
+    *alone*, on black, with the flame shifted a hand's width from where it was
+    on the last one. Cross-fading between them at runtime does what no amount of
+    canvas gradient can: the stones' shadows swing, the near faces of the rocks
+    take the light and give it up, and the bushes at the clearing's edge come
+    forward and go back.
+
+    They are cheap. A fire plate is black over most of its area and PNG knows
+    it: the base is megabytes and the plates are a fraction of that.
+
+    **The plates carry no sky and no mist.** Both are emissive — they would
+    arrive at full strength in every plate and be added three times over. They
+    are hidden for these passes, which is also why the plates are black at the
+    top rather than dark blue.
+    """
+    sc = bpy.context.scene
+    stem = out[:-4] if out.endswith('.png') else out
+    written = []
+
+    for ob in FIRE_LIGHTS:
+        ob.data.energy = 0.0
+    sc.render.filepath = out
+    bpy.ops.render.render(write_still=True)
+    darkest = vignette(out, float(ARGS['vignette']))
+    written.append(out)
+
+    for ob in SUNS:
+        ob.data.energy = 0.0
+    for ob in EMISSIVE:
+        ob.hide_render = True
+    for i in range(layers):
+        # The flame walks a small circle. A hand's width at this scale is about
+        # a quarter of the fire ring, which is enough to swing the stones'
+        # shadows visibly and not enough to look like the fire is being carried.
+        a = math.tau * i / layers
+        for ob in FIRE_LIGHTS:
+            base = ob['home']
+            ob.location = (base[0] + math.cos(a) * 0.16,
+                           base[1] + math.sin(a) * 0.11, base[2])
+            ob.data.energy = ob['watts'] * (0.94 + 0.12 * ((i * 7) % 5) / 4)
+        path = f'{stem}-fire{i + 1}.png'
+        sc.render.filepath = path
+        bpy.ops.render.render(write_still=True)
+        vignette(path, float(ARGS['vignette']))
+        written.append(path)
+
+    return darkest, written
+
+
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     ground()
@@ -793,10 +866,9 @@ def main():
     sc.render.image_settings.file_format = 'PNG'
     sc.render.image_settings.color_mode = 'RGB'
     out = resolve(ARGS['out'])
-    sc.render.filepath = out
-    bpy.ops.render.render(write_still=True)
-    darkest = vignette(out, float(ARGS['vignette']))
+    darkest, written = bake(out, int(ARGS['layers']))
 
+    print(f'camp: {len(written)} plates — base + {len(written) - 1} firelight')
     print(f'camp: vignette to {darkest:.2f} at the corners')
     print(f'camp: in frame x +-{HALF_W:.2f}m, y {Y_BOT:.1f}..{Y_TOP:.1f}m')
     print(f'camp: {RES_X}x{RES_Y}, {SPAN_X:.2f}m x {SPAN_Y:.2f}m, '

@@ -656,6 +656,93 @@ let campArt = null;
  */
 const PAINTED = new Set(['town']);
 
+/**
+ * The firelight, as light rather than as a glow.
+ *
+ * `tools/bake-camp.py` renders a rendered camp four times: once with the fire
+ * out, and three more with the fire *alone* and its flame moved a hand's width
+ * between each. Those three are `-fire1..3.png`, black everywhere the fire does
+ * not reach, and light is additive — so drawing them over the set with
+ * `lighter`, at weights that wander, relights the scene from the middle every
+ * frame. Stones' shadows swing, the near faces of the rocks take the light and
+ * give it up, the bushes at the clearing's edge come forward and go back.
+ *
+ * The alternative is what this replaces: one radial gradient. A gradient
+ * brightens the picture; it cannot light anything *in* the picture, because it
+ * does not know where anything is. Three plates do, because Blender did.
+ */
+const FIRE_PLATES = 3;
+let firelight = null;
+
+function loadFirelight(src) {
+  firelight = { stem: src.slice(0, -4), imgs: [], scaled: null, key: '' };
+  const mine = firelight;
+  for (let i = 0; i < FIRE_PLATES; i++) {
+    const img = new Image();
+    // A missing plate is not an error. A camp set may be a single image — every
+    // painted one is — and the gradient is still there to fall back on.
+    img.onload = () => { if (firelight === mine) mine.imgs[i] = img; };
+    img.src = `${mine.stem}-fire${i + 1}.png`;
+  }
+}
+
+/**
+ * Scale the plates to the element once, not every frame.
+ *
+ * Each is 3200x1440 and the viewport is a third of that, so blitting them at
+ * source size means three full downscales a frame for a screen that never
+ * moves. They are redrawn only when the canvas changes size — which is a resize
+ * and nothing else.
+ */
+function scaleFirelight(W, H) {
+  const key = `${Math.round(W)}x${Math.round(H)}`;
+  if (firelight.key === key && firelight.scaled) return true;
+  if (firelight.imgs.length < FIRE_PLATES || firelight.imgs.some((i) => !i)) return false;
+  firelight.scaled = firelight.imgs.map((img) => {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(W));
+    c.height = Math.max(1, Math.round(H));
+    // Laid out exactly as `background-size: auto 100%; background-position:
+    // 50% 50%` lays the set out, or the light lands a few pixels off the thing
+    // it is supposed to be coming off.
+    const dw = H * (img.naturalWidth / img.naturalHeight);
+    c.getContext('2d').drawImage(img, (W - dw) / 2, 0, dw, H);
+    return c;
+  });
+  firelight.key = key;
+  return true;
+}
+
+function paintFirelight(ctx, W, H) {
+  if (!firelight || !scaleFirelight(W, H)) return false;
+  // Three slow waves that never line up, normalised so the total light stays
+  // put while its *direction* wanders — then one fast flicker over all of it.
+  // Normalising matters: without it the three sum to a brightness that pumps,
+  // and a fire that pumps in step with its own movement reads as a lamp on a
+  // dimmer rather than as a flame.
+  const F = [1.9, 2.7, 1.45], O = [0, 2.1, 4.0];
+  let sum = 0;
+  const raw = F.map((f, i) => {
+    const v = 0.15 + 0.85 * (0.5 + 0.5 * Math.sin(campT * f + O[i]));
+    sum += v;
+    return v;
+  });
+  // **Over one plate's worth, not under.** The plates were rendered as light and
+  // are being added as *pixels*: Blender tone-maps each pass on its own, so the
+  // sum of two tone-mapped plates is dimmer than one tone-mapped sum. 1.28 is
+  // where the composite matches the single render this replaced, measured by
+  // eye against it at the fire's edge.
+  const amp = 1.28 + 0.15 * Math.sin(campT * 7.3) + 0.07 * Math.sin(campT * 11.9);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  firelight.scaled.forEach((c, i) => {
+    ctx.globalAlpha = Math.max(0, (raw[i] / sum) * amp);
+    ctx.drawImage(c, 0, 0, W, H);
+  });
+  ctx.restore();
+  return true;
+}
+
 function dressCamp(area) {
   const src = area ? `art/camp-${area}.png` : CAMP_FALLBACK;
   if (src === campArt) return;
@@ -664,11 +751,15 @@ function dressCamp(area) {
     campArt = src;
     el.campScene.classList.toggle('painted', PAINTED.has(area));
     el.campScene.style.backgroundImage = `url("../${src}")`;
+    firelight = null;
+    if (!PAINTED.has(area)) loadFirelight(src);
   };
   img.onerror = () => {
     campArt = CAMP_FALLBACK;
     el.campScene.classList.remove('painted');
     el.campScene.style.backgroundImage = `url("../${CAMP_FALLBACK}")`;
+    firelight = null;
+    loadFirelight(CAMP_FALLBACK);
   };
   img.src = src;
 }
@@ -955,16 +1046,21 @@ function paintCamp(dt) {
   const n = camp.slots.length;
   const fireX = W / 2, fireY = H * 0.72;
 
-  // No ground and no scenery are painted here any more: art/camp-boneyard.png is
-  // the set, and a drawn clearing on top of a painted one is two grounds. All
-  // that is left is the fire's own light, which has to be live because it moves.
-  const flick = 0.88 + Math.sin(campT * 2.4) * 0.08 + Math.sin(campT * 7.3) * 0.04;
-  const glow = ctx.createRadialGradient(fireX, fireY - 26, 10, fireX, fireY - 26, W * 0.30 * flick);
-  glow.addColorStop(0, 'rgba(255,172,74,.20)');
-  glow.addColorStop(0.42, 'rgba(206,116,42,.08)');
-  glow.addColorStop(1, 'rgba(255,140,50,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, W, H);
+  // No ground and no scenery are painted here any more: the camp set is the
+  // set, and a drawn clearing on top of a rendered one is two grounds. All that
+  // is left is the fire's own light, which has to be live because it moves.
+  if (!paintFirelight(ctx, W, H)) {
+    // The painted camps have no plates, so they keep the gradient. It is a
+    // glow rather than light: it brightens the picture without anything in the
+    // picture being lit, which is exactly the difference the plates buy.
+    const flick = 0.88 + Math.sin(campT * 2.4) * 0.08 + Math.sin(campT * 7.3) * 0.04;
+    const glow = ctx.createRadialGradient(fireX, fireY - 26, 10, fireX, fireY - 26, W * 0.30 * flick);
+    glow.addColorStop(0, 'rgba(255,172,74,.20)');
+    glow.addColorStop(0.42, 'rgba(206,116,42,.08)');
+    glow.addColorStop(1, 'rgba(255,140,50,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+  }
 
   // Everyone standing, back row first so the near ones overlap them.
   const order = camp.slots.map((s, i) => i)
