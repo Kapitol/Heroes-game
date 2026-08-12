@@ -328,7 +328,24 @@ def import_parts():
             # by a third, and the boots come to rest on the thighs — which is
             # what the weights said before this line existed
             # (`Feet: LeftUpLeg=851`). A real part is skinned; the helper is not.
-            meshes = [o for o in fresh if o.type == 'MESH'
+            # **And some of them are skinned, which is how one got through.**
+            # The `vertex_groups` test below is the right test for most of the
+            # pack, but in several parts the helper carries the same 50 groups
+            # every real piece does — so it was worn, renamed `T1_<part>.002`
+            # like a real mesh, and exported. Only its *data* still said
+            # `Icosphere`, which is the name glTF writes, which is why it turned
+            # up in the finished GLB under a name nothing in this file uses.
+            #
+            # It cost more than a stray mesh. doll.html sizes a doll by the union
+            # of its meshes, and a sphere spanning z -1..1 makes every character
+            # measure 2.81 units instead of 1.81 — so every doll this project
+            # has ever baked came out at 64% of the height its `--fh` asked for,
+            # and by *different* amounts, since a hood or a raised weapon moves
+            # the top of the union. That is why the Warlock stood a head shorter
+            # than the Paladin beside him.
+            helper = lambda o: (o.data.name.split('.')[0] == 'Icosphere'
+                                or len(o.data.vertices) <= 48)
+            meshes = [o for o in fresh if o.type == 'MESH' and not helper(o)
                       and (o.vertex_groups or any(d.type == 'ARMATURE' for d in o.modifiers))]
             # Everything to delete is listed before anything is deleted:
             # removing an object invalidates every Python reference to it, and
@@ -835,6 +852,30 @@ def main():
             bpy.data.objects.remove(o, do_unlink=True)
         except ReferenceError:
             pass
+
+    # **Throw the pack's helper spheres away before exporting.** Every part file
+    # ships a 42-vertex `Icosphere` spanning z -1..1, skinned to nothing;
+    # `import_parts` already refuses to *wear* them, but nothing removed them
+    # from the scene, so they went into the GLB — and doll.html sizes a doll by
+    # the union of its meshes, so every character in this game has been measured
+    # as 2.81 units tall instead of 1.81 and rendered at 64% of the height its
+    # `--fh` asked for. It also varies per character: a hood or a raised weapon
+    # moves the top of the union, which is why the Warlock came out visibly
+    # shorter than the Paladin standing next to him.
+    #
+    # A real part is skinned. Nothing else belongs in the file.
+    # Swept by mesh *data* name as well as by skinning, because the ones that
+    # come in skinned keep their weights right up to the export and only the
+    # datablock still says what they are.
+    def junk(o):
+        if o.data.name.split('.')[0] == 'Icosphere':
+            return True
+        return (not o.vertex_groups
+                and not any(m.type == 'ARMATURE' for m in o.modifiers))
+
+    for o in [o for o in bpy.context.scene.objects if o.type == 'MESH' and junk(o)]:
+        print(f'outfit: dropped helper mesh {o.name}')
+        bpy.data.objects.remove(o, do_unlink=True)
 
     smooth([o for o in bpy.context.scene.objects if o.type == 'MESH'])
 

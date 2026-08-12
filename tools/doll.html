@@ -507,8 +507,38 @@ function attachSword(doll) {
 // untiered mesh left is a bare head, and a figure scaled to make a head 230
 // pixels tall is a giant. The union of all five is constant, which is the only
 // property that actually matters.
+// **The figure sets the scale, not what it carries.** A weapon is in the union
+// of meshes too, so a doll holding a spear measured taller than the same doll
+// holding a sword and was shrunk to compensate — the Druid stood a head shorter
+// than the Paladin for no reason but the length of his stick. Props are named
+// `T<n>_weapon` and `T<n>_shield` by tools/outfit.py; everything else is him.
+// **And the pack's helper sphere is not part of him either.** Every Quaternius
+// part file ships a 42-vertex `Icosphere` spanning -1..1 in the model's own
+// units. `tools/outfit.py` refuses to *wear* them and still one reaches the
+// GLB, so the union of meshes measures 2.81 units against a figure of 1.81 —
+// and every doll this project has baked came out at 64% of the height its
+// `--fh` asked for. Worse, by different amounts: a hood or a raised weapon
+// moves the top of the union, which is what made the Warlock a head shorter
+// than the Paladin beside him.
+//
+// Filtered here rather than only at build time because it fixes every GLB
+// already on disk, and because this is the line that actually cares — a doll's
+// height is the thing `fh` is defined against.
 const bounds = new THREE.Box3();
-doll.traverse((o) => { if (o.isMesh) bounds.expandByObject(o); });
+// **Checked up the whole chain, not on the mesh alone.** GLTFLoader hangs the
+// mesh under a node that carries the name, so a spear arrives as a `T1_weapon`
+// group wrapping a mesh called something else entirely — and testing the mesh
+// let the Druid's spear back into the measurement, which is the same bug over
+// again with a different cause.
+const marked = (o) => /_weapon|_shield/i.test(o.name || '') || /^icosphere/i.test(o.name || '');
+const notHim = (o) => {
+  if (/^icosphere/i.test(o.geometry?.name || '')) return true;
+  if ((o.geometry?.attributes?.position?.count ?? 0) < 100) return true;
+  for (let n = o; n && n !== doll.parent; n = n.parent) if (marked(n)) return true;
+  return false;
+};
+doll.traverse((o) => { if (o.isMesh && !notHim(o)) bounds.expandByObject(o); });
+if (bounds.isEmpty()) doll.traverse((o) => { if (o.isMesh) bounds.expandByObject(o); });
 if (bounds.isEmpty()) bounds.setFromObject(doll);
 const height = bounds.max.y - bounds.min.y;
 const scale = 1 / height;                    // the doll is now exactly 1 unit tall
