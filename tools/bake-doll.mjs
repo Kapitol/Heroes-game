@@ -82,6 +82,24 @@ const yaw = Number(opt('yaw', 0));
 // blade at full extension runs off the right-hand edge and the bake quietly
 // ships a cropped sword. 420 clears the longest weapon in the pack with room
 // to spare, and costs nothing but bytes.
+// **Supersampling, because there is no other anti-aliasing in this pipeline.**
+// The page renders at `setPixelRatio(1)` with driver MSAA and the composite
+// copies pixel for pixel, so a cell is exactly as many samples as it is pixels
+// — and the camp then draws that sheet at about twice its baked size on a
+// retina display. Rendering each cell `ss` times larger and averaging it down
+// on the way into the sheet is true SSAA: it costs bake time and nothing else,
+// it cleans the silhouette and the specular sparkle on plate together, and it
+// leaves the sheet exactly the size it was.
+const SS = Math.max(1, Number(opt('ss', 2)));
+// **A supersampled strip has to fit in a canvas.** The page renders a whole
+// strip into one drawing buffer, so its width is `cellw * ss * frames` — and at
+// `ss 2` a 24-frame strip of 350px cells is 16,800 wide, past the 16,384 a
+// browser will hold. It does not fail loudly: the buffer is clamped and the
+// *last* cell comes back a sliver, which slices into a sheet whose final frame
+// has a content box a sixth of the width of the others, whose footprint anchor
+// is therefore somewhere else entirely, and whose hero visibly stands beside
+// his own selection ring one frame in twenty-four. Chunk the strip instead.
+const MAX_BUF = 16384;
 const CELL_W = Number(opt('cellw', 420));
 const CELL_H = Number(opt('cellh', 380));
 const FH = Number(opt('fh', 230));       // bind-pose height in pixels
@@ -144,11 +162,28 @@ if (!out || (!clip && !poses.length && !argv.includes('--seg'))) {
   process.exit(1);
 }
 
+/**
+ * Split one strip into as many shots as the buffer limit needs.
+ *
+ * The cells are identical either way — a strip is only a way of taking several
+ * frames in one page load — so this changes nothing but how many shots are
+ * taken. `at`/`of` carry the frame's place in the whole clip, so a chunked
+ * strip samples the same phases the unchunked one would.
+ */
+function chunked(shot) {
+  const per = Math.max(1, Math.floor(MAX_BUF / (CELL_W * SS)));
+  if (shot.strip <= per) return [shot];
+  const out = [];
+  for (let i = 0; i < shot.strip; i += per)
+    out.push({ ...shot, strip: Math.min(per, shot.strip - i), at: i, of: shot.strip });
+  return out;
+}
+
 /** One cell's URL. `p` pins a phase; without it the strip walks the clip. */
 const url = (o) => {
   const q = new URLSearchParams({
-    shot: '1', char, w: String(CELL_W * (o.strip || 1)), h: String(CELL_H),
-    fh: String(FH), by: String(BY), bg: 'none', strip: String(o.strip || 1),
+    shot: '1', char, w: String(CELL_W * SS * (o.strip || 1)), h: String(CELL_H * SS),
+    fh: String(FH * SS), by: String(BY), bg: 'none', strip: String(o.strip || 1),
     clip: o.clip, clipfile: findClip(o.clip), skin: skin || '', motion: motionChar,
     // Authored for this character, or borrowed? Borrowed plays rotations-only.
     foreign: (() => {
@@ -156,6 +191,8 @@ const url = (o) => {
       return f === `${char}@${o.clip}` || f === `${alias}-${o.clip}` ? '0' : '1';
     })(),
   });
+  // A chunked strip has to sample the phases it would have sampled whole.
+  if (o.of) { q.set('at', String(o.at)); q.set('of', String(o.of)); }
   if (o.p != null) q.set('p', String(o.p));
   if (glb) q.set('glb', String(glb));
   if (o.tier) q.set('tier', String(o.tier));
@@ -182,7 +219,7 @@ const segs = all('seg').map((s) => {
 });
 
 const shots = segs.length ? segs : clip
-  ? [{ clip: String(clip), strip: frames, loop }]
+  ? chunked({ clip: String(clip), strip: frames, loop })
   : poses.map((spec) => {
     const at = spec.lastIndexOf('@');
     return { clip: spec.slice(0, at), p: Number(spec.slice(at + 1)), strip: 1 };
@@ -217,19 +254,41 @@ const png = await withPage(async (page) => {
   //
   // Rows are stacked in the same grid `Atlas.sheet` slices, so a tiered sheet
   // is a plain sheet with more rows — `sliceGrid` needs telling nothing new.
-  return page.evaluate(async (rows, cellW, cellH, levels) => {
+  return page.evaluate(async (rows, cellW, cellH, levels, ss) => {
     const load = (src) => new Promise((res) => {
       const im = new Image(); im.onload = () => res(im); im.src = src;
     });
     const grid = await Promise.all(rows.map((r) => Promise.all(r.map(load))));
-    const width = Math.max(...grid.map((r) => r.reduce((a, i) => a + i.width, 0)));
+    // Every shot came back `ss` times oversized; the sheet is the intended size
+    // and the averaging happens here, once, on the way in.
+    const width = Math.max(...grid.map((r) => r.reduce((a, i) => a + i.width / ss, 0)));
     const c = document.createElement('canvas');
-    c.width = width; c.height = cellH * grid.length;
+    c.width = Math.round(width); c.height = cellH * grid.length;
     const x = c.getContext('2d');
+    x.imageSmoothingEnabled = true;
+    x.imageSmoothingQuality = 'high';
     grid.forEach((row, r) => {
       let at = 0;
-      for (const im of row) { x.drawImage(im, at, r * cellH); at += im.width; }
+      for (const im of row) {
+        const w = im.width / ss;
+        x.drawImage(im, at, r * cellH, w, cellH);
+        at += w;
+      }
     });
+
+    // **Clean the resample halo before anything measures this sheet.**
+    // Averaging `ss x ss` samples spreads a trace of alpha into pixels that
+    // were empty — a value of 1 or 2 out of 255, invisible to the eye and
+    // entirely visible to `sliceGrid`, which trims each cell to whatever is
+    // not transparent. The first supersampled bake moved the hero's footprint
+    // anchor sideways and he stood beside his own selection ring. Anything this
+    // faint is resampler noise, not silhouette.
+    if (ss > 1) {
+      const img = x.getImageData(0, 0, c.width, c.height);
+      const d = img.data;
+      for (let i = 3; i < d.length; i += 4) if (d[i] < 8) d[i] = 0;
+      x.putImageData(img, 0, 0);
+    }
 
     // **Posterize is a canvas pass over the finished sheet, not a shader.**
     // Quantising in the material would fight the lighting per-fragment and
@@ -246,7 +305,7 @@ const png = await withPage(async (page) => {
       x.putImageData(img, 0, 0);
     }
     return c.toDataURL('image/png').split(',')[1];
-  }, rows, CELL_W, CELL_H, posterize);
+  }, rows, CELL_W, CELL_H, posterize, SS);
 });
 
 writeFileSync(out, Buffer.from(png, 'base64'));

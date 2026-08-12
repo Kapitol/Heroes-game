@@ -121,6 +121,12 @@ const HEAD_TURN = qNum('headturn', 0);
 const LOOP = Q.has('loop') && Q.get('loop') !== '0';
 // A single named phase, for sheets whose cells come from different clips.
 const AT = Q.has('p') ? +Q.get('p') : null;
+// Where this strip sits inside the clip, when the baker has had to cut one
+// strip into several shots to stay inside the canvas limit. Without these a
+// chunk would re-sample the clip from the beginning and the second half of
+// every long animation would replay the first.
+const AT_OFF = +(Q.get('at') || 0);
+const AT_OF = +(Q.get('of') || 0);
 
 // `preserveDrawingBuffer` is not optional here. The shot is taken with
 // `canvas.toDataURL` — for the reason given in `tools/gauntlet/shot.mjs`, that
@@ -128,6 +134,24 @@ const AT = Q.has('p') ? +Q.get('p') : null;
 // throws its drawing buffer away after compositing unless told otherwise. The
 // first strip came back a blank canvas, not an empty scene.
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+// **Tone mapping, and it was missing entirely.** With `NoToneMapping` — the
+// default, and what every sheet before this was baked with — anything the
+// lights push over 1.0 hard-clips to 255. The key is 2.6 and the rim 1.4, so
+// every specular highlight on plate and steel came back as a flat white patch
+// with no rolloff at all, which is precisely the shape that tells an eye
+// "curved metal". ACES gives the shoulder back.
+//
+// `tone=none` reproduces any sheet baked before this existed; the intensities
+// below are unchanged, so a re-bake at `tone=none` is byte-identical.
+const TONE = Q.get('tone') || 'aces';
+renderer.toneMapping = TONE === 'none' ? THREE.NoToneMapping
+  : TONE === 'agx' ? THREE.AgXToneMapping
+  : THREE.ACESFilmicToneMapping;
+// A shoulder costs brightness: ACES maps 1.0 to about 0.8, so the whole figure
+// arrives darker than the same lights did without it. The exposure buys that
+// back rather than the three light intensities being retuned one at a time —
+// they were chosen against each other and should stay in proportion.
+renderer.toneMappingExposure = TONE === 'none' ? 1 : Number(Q.get('exposure') || 1.35);
 renderer.setPixelRatio(1);
 renderer.setSize(W, H, false);
 renderer.shadowMap.enabled = true;
@@ -147,7 +171,12 @@ const camera = new THREE.OrthographicCamera();
 camera.up.set(0, 1, 0);
 
 const key = new THREE.DirectionalLight(KEY ? new THREE.Color(KEY) : 0xfff0dc, 2.6);
-key.position.set(-3, 5, 3);
+// **Off the camera's axis.** The camera sits at (-8, 0, 0) and the key sat at
+// (-3, 5, 3) — nearly behind it — so the terminator and most of what the figure
+// self-shadowed fell on the far side, where nothing could see it. Swung round
+// and forward, the shadow of an arm lands on the chest and the shadow of the
+// pauldron on the shoulder, which is where a viewer reads depth from.
+key.position.set(-1.6, 5, 4.6);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 scene.add(key);
@@ -186,14 +215,46 @@ for (const l of [key, fill, rim]) l.intensity *= LIGHT;
  * camera.
  */
 if (GLB) {
-  const W_SKY = 64, H_SKY = 32;
+  // **A vertical ramp is not an environment.** The first version varied only
+  // with height, so after PMREM every direction on the horizon reflected the
+  // same grey — and a mirror that reflects one flat colour is a *painted*
+  // mirror. It is why armour read as grey paint rather than as steel however
+  // the metalness was set.
+  //
+  // This is still procedural and still costs nothing, but it has *things* in
+  // it: a bright soft key disc where the key light is, a dimmer cool one
+  // opposite it, a horizon band, and a dark floor. Those are what appear in a
+  // curved plate as moving bands of light and shade, which is the entire
+  // difference between metal and paint at this size.
+  const W_SKY = 256, H_SKY = 128;
   const px = new Uint8Array(W_SKY * H_SKY * 4);
+  // Equirectangular: u wraps the horizon, v runs top to bottom.
+  const blobs = [
+    // [u centre, v centre, radius, r, g, b] — the key, warm and high, then a
+    // cool bounce opposite, then a faint rim behind.
+    [0.62, 0.22, 0.20, 0xff, 0xf1, 0xd6],
+    [0.12, 0.40, 0.26, 0x6d, 0x80, 0xa8],
+    [0.86, 0.52, 0.16, 0xff, 0xd2, 0x9c],
+  ];
   for (let i = 0; i < H_SKY; i++) {
     const t = i / (H_SKY - 1);                 // 0 at the top of the sphere
     const sky = [0x8e, 0x93, 0xa6], floor = [0x1a, 0x15, 0x10];
+    // A horizon band, brightest just above the line and falling away both ways.
+    const horizon = Math.exp(-((t - 0.52) ** 2) / 0.0035) * 0.55;
     for (let j = 0; j < W_SKY; j++) {
       const at = (i * W_SKY + j) * 4;
-      for (let c = 0; c < 3; c++) px[at + c] = sky[c] * (1 - t) + floor[c] * t;
+      const u = j / (W_SKY - 1);
+      for (let c = 0; c < 3; c++) {
+        let v = sky[c] * (1 - t) + floor[c] * t;
+        v += 90 * horizon;
+        for (const [bu, bv, br, ...col] of blobs) {
+          // Shortest distance around the wrap, or the blob at u=0.86 tears.
+          const du = Math.min(Math.abs(u - bu), 1 - Math.abs(u - bu));
+          const d = Math.hypot(du * 1.6, t - bv) / br;
+          if (d < 1) v += (col[c] - v) * (1 - d) ** 2;
+        }
+        px[at + c] = Math.max(0, Math.min(255, v));
+      }
       px[at + 3] = 255;
     }
   }
@@ -205,7 +266,7 @@ if (GLB) {
   scene.environment = pmrem.fromEquirectangular(tex).texture;
   // The environment lights the plates; it must not also wash out the character,
   // whose look was settled against the three lights above and nothing else.
-  scene.environmentIntensity = 0.6;
+  scene.environmentIntensity = Number(Q.get('env') || 0.75);
   pmrem.dispose();
   tex.dispose();
 }
@@ -495,7 +556,16 @@ ground.receiveShadow = true;
 scene.add(ground);
 scene.add(doll);
 
-Object.assign(key.shadow.camera, { left: -2, right: 2, top: 2, bottom: -2, near: 0.1, far: 20 });
+// **The frustum was four world units across a figure one unit tall**, so three
+// quarters of a 2048 map was spent on empty ground either side of him. Tightened
+// to the doll's own box, the same map lands about four times the texels on the
+// only thing that casts.
+Object.assign(key.shadow.camera, { left: -0.9, right: 0.9, top: 1.25, bottom: -0.35, near: 0.1, far: 20 });
+// Without a bias, a self-shadowing curved surface stipples: shoulders, thighs
+// and the crown of the helm came back speckled rather than shaded. `normalBias`
+// is the one that matters on curves; the depth bias only cleans up the rest.
+key.shadow.normalBias = 0.02;
+key.shadow.bias = -0.0004;
 key.shadow.camera.updateProjectionMatrix();
 
 /** A bone by either spelling — FBXLoader strips Mixamo's colon, glTF keeps it. */
@@ -549,9 +619,11 @@ function frame(i) {
   // A one-shot is sampled across its whole length, endpoints included, so the
   // strip shows the pose it settles into rather than stopping a frame short.
   if (mixer) {
+    const n = AT_OF || STRIP;
+    const at = AT_OFF + i;
     const phase = AT != null ? AT
-      : LOOP ? i / STRIP
-        : i / Math.max(1, STRIP - 1);
+      : LOOP ? at / n
+        : at / Math.max(1, n - 1);
     mixer.setTime(0);
     mixer.update(phase * duration);
     turnHead(phase);
