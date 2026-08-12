@@ -791,10 +791,17 @@ function drawDepthPass(ctx, S, t, painted) {
       const kind = propAt(x, y, b);
       if (!kind) continue;
       const seed = (x * 31 + y * 17) & 1023;
-      if (sheet && b.art.cells[kind]) {
+      // **A kind may bring its own sheet.** The painted prop sheets hold
+      // twelve objects of every sort at one scale; the rendered trees are
+      // twenty of one sort at another, and forcing them into a shared grid
+      // would mean re-cutting the painted sheets to match a bake. `sheets`
+      // overrides per kind and leaves everything else exactly where it was.
+      const own = b.art && b.art.sheets && b.art.sheets[kind];
+      const kindSheet = own ? Atlas.sheet(own.src, own.cols, own.rows, own.slice) : sheet;
+      const opts = own ? own.cells : (b.art && b.art.cells[kind]);
+      if (kindSheet && opts) {
         // Pick which of the sheet's variants stands here, deterministically,
         // and jitter it off the tile centre so the verge isn't a grid.
-        const opts = b.art.cells[kind];
         // **A different seed from the one that chose the kind.** This read
         // `hash2(x * 3 + 11, y * 7 + 5)`, which is the exact roll `pick` in
         // js/world.js uses to decide *which* prop stands here — so the two
@@ -806,8 +813,8 @@ function drawDepthPass(ctx, S, t, painted) {
         items.push({
           // Deliberately not called `sprite`: actors carry a sprite *spec*
           // under that name, and the draw branch below would collide.
-          propCell: opts[Math.floor(hv * opts.length) % opts.length], propSheet: sheet,
-          scale: b.art.propScale * (0.86 + hash2(x + 5, y - 3) * 0.3),
+          propCell: opts[Math.floor(hv * opts.length) % opts.length], propSheet: kindSheet,
+          scale: (own ? own.scale : b.art.propScale) * (0.86 + hash2(x + 5, y - 3) * 0.3),
           x: x + 0.2 + hash2(x, y + 91) * 0.6,
           y: y + 0.2 + hash2(x + 71, y) * 0.6,
         });
@@ -831,11 +838,51 @@ function drawDepthPass(ctx, S, t, painted) {
     // Scenery stands on the ground the verge pass drew; actors do not need
     // this because the road they walk is flat by construction.
     const p = toScreen(it.x, it.y, it.propSheet || it.prop ? heightAt(it.x, it.y) : 0);
-    if (it.propSheet) { Atlas.drawSprite(ctx, it.propSheet, it.propCell, p.x, p.y, it.scale); continue; }
+    if (it.propSheet) {
+      const fade = occlusion(it, S);
+      if (fade < 1) { ctx.save(); ctx.globalAlpha = fade; }
+      Atlas.drawSprite(ctx, it.propSheet, it.propCell, p.x, p.y, it.scale);
+      if (fade < 1) ctx.restore();
+      continue;
+    }
     if (it.prop) { drawProp(ctx, it.prop, p.x, p.y, t, it.seed, b); continue; }
     if (it.proj) { drawProjectile(ctx, p.x, p.y, it); continue; }
     drawFighter(ctx, it, p, t);
   }
+}
+
+/**
+ * How solid a piece of scenery is allowed to be, given who is standing behind it.
+ *
+ * **Only things in front of the hero can hide him**, and in this projection
+ * "in front" is `x + y` — the same sum the depth pass sorts on. Anything with
+ * a smaller sum is drawn before he is and cannot cover him however tall it is,
+ * so it never fades and the verge behind him stays whole.
+ *
+ * The ramp is **distance, not time**. A timed fade needs somewhere to keep a
+ * per-prop clock, and scenery here has no state at all — it is recomputed from
+ * the tile coordinate every frame, which is what lets the road run forever.
+ * Distance gives the same effect for free: the camera scrolls, the gap closes,
+ * and the tree thins out as it arrives rather than blinking when it crosses a
+ * line.
+ *
+ * A tree that has gone transparent is still *there* — it still sorts, still
+ * occludes nothing, and comes back the moment the hero walks clear.
+ */
+const NEAR = 2.6;          // tiles of separation before a prop is fully solid
+const HIDDEN = 0.28;       // how faint it gets directly over him
+
+function occlusion(prop, S) {
+  const h = S.hero;
+  if (!h || (prop.x + prop.y) <= (h.x + h.y)) return 1;
+  // Screen distance, not world: a prop one tile to the side covers nothing,
+  // while one a tile *along* the camera axis sits squarely on top of him — and
+  // those two are the same world distance.
+  const a = toScreen(prop.x, prop.y), b = toScreen(h.x, h.y);
+  const dx = Math.abs(a.x - b.x) / (TILE_W * NEAR);
+  const dy = Math.abs(a.y - b.y) / (TILE_H * NEAR * 1.6);
+  const d = Math.min(1, Math.hypot(dx, dy));
+  return HIDDEN + (1 - HIDDEN) * (d * d * (3 - 2 * d));
 }
 
 function drawFighter(ctx, o, p, t) {

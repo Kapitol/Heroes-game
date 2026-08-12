@@ -33,6 +33,16 @@ export const BIOMES = [
       groundScale: 0.30,
       roadScale: 0.26,
       propScale: 0.31,
+      // Twenty dead trees, rendered from meshes by tools/bake-trees.py at the
+      // road's own projection rather than painted. Their own sheet because
+      // they are twenty cells of one kind at a scale of their own — see
+      // `sheets` in js/render.js.
+      sheets: {
+        tree: {
+          src: 'art/props-trees.png', cols: 5, rows: 4, scale: 0.62,
+          cells: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+        },
+      },
       cells: {
         tree:  [0, 1, 2],
         grave: [3, 4, 5],
@@ -187,6 +197,16 @@ export const BIOMES = [
       // half of this biome worth looking at.
       roadInset: 0.7,
       propScale: 0.31,
+      // Twenty dead trees, rendered from meshes by tools/bake-trees.py at the
+      // road's own projection rather than painted. Their own sheet because
+      // they are twenty cells of one kind at a scale of their own — see
+      // `sheets` in js/render.js.
+      sheets: {
+        tree: {
+          src: 'art/props-trees.png', cols: 5, rows: 4, scale: 0.62,
+          cells: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+        },
+      },
       cells: {
         shard:   [0, 1, 2],
         brazier: [3, 4, 5],

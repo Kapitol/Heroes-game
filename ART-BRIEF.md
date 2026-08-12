@@ -175,6 +175,32 @@ node tools/bake-doll.mjs --out art/knight-walk.png --glb art/armour/knight.glb \
 
 Judge at `h=56` over a road screenshot, never from a 320px cell.
 
+### 1d. Rendered scenery — `props-trees.png`
+
+Not generated: **rendered**, by `tools/bake-trees.py`, from the dead trees in
+Quaternius' stylized tree pack. Twenty of them — `DeadTree_1–10` and
+`DeadBirch_1–10` — in one 5×4 sheet, shot at the road's own projection so a
+tree stands at the same angle as the ground under it. Nothing with leaves on
+it: the road starts outside a town and works its way underground.
+
+```bash
+blender --background --python tools/bake-trees.py -- --out art/props-trees.png
+```
+
+**Outstanding: the pack's `Textures` folder is not on disk.** Only `FBX` was
+downloaded, so every model arrives on a default grey material and the first
+sheet came back looking bleached — bright branches against a tan verge, more
+skeleton than wood. There is a dark bark colour standing in for it, applied in
+the bake to any model that brought no maps, and it is a stopgap.
+
+- **First choice: download the pack's own `Textures` folder** beside the FBX.
+  The bake already skips its stand-in for any model that carries maps, so the
+  textures take effect with no code change.
+- **If they are ever generated instead**, bark is a ground texture under all
+  the §1 rules — seamless, flat, evenly lit, and with **no directional grain**,
+  which for bark means no single run of vertical striation strong enough to
+  read as a direction when it tiles.
+
 ### 2. Prop sheet — `props-<area>.png` — **4 columns × 3 rows**
 
 The engine scatters these itself from a tile hash, choosing between variants
